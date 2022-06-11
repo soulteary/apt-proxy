@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	defaultHost   = "0.0.0.0"
-	defaultPort   = "3142"
-	defaultDir    = "./.aptcache"
-	defaultMirror = "" // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+	DEFAULT_HOST      = "0.0.0.0"
+	DEFAULT_PORT      = "3142"
+	DEFAULT_CACHE_DIR = "./.aptcache"
+	DEFAULT_MIRROR    = "" // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+	DEFAULT_DEBUG     = false
 )
 
 var (
@@ -30,18 +31,18 @@ func init() {
 		host string
 		port string
 	)
-	flag.StringVar(&host, "host", defaultHost, "the host to bind to")
-	flag.StringVar(&port, "port", defaultPort, "the port to bind to")
-	listen = host + ":" + port
-
-	flag.StringVar(&mirror, "mirror", defaultMirror, "the mirror for fetching packages")
-
-	flag.StringVar(&cacheDir, "cachedir", defaultDir, "the dir to store cache data in")
-	flag.BoolVar(&debug, "debug", false, "whether to output debugging logging")
+	flag.StringVar(&host, "host", DEFAULT_HOST, "the host to bind to")
+	flag.StringVar(&port, "port", DEFAULT_PORT, "the port to bind to")
+	flag.BoolVar(&debug, "debug", DEFAULT_DEBUG, "whether to output debugging logging")
+	flag.StringVar(&mirror, "mirror", DEFAULT_MIRROR, "the mirror for fetching packages")
+	flag.StringVar(&cacheDir, "cachedir", DEFAULT_CACHE_DIR, "the dir to store cache data in")
 	flag.Parse()
+
+	listen = host + ":" + port
 }
 
 func main() {
+
 	log.Printf("running apt-proxy %s", version)
 
 	if debug {
@@ -54,7 +55,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ap := proxy.NewAptProxyFromDefaults(defaultMirror)
+	ap := proxy.NewAptProxyFromDefaults(mirror)
 	ap.Handler = httpcache.NewHandler(cache, ap.Handler)
 
 	logger := httplog.NewResponseLogger(ap.Handler)
