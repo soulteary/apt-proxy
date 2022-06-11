@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/djherbis/stream.v1"
+	"github.com/soulteary/apt-proxy/pkgs/stream.v1"
 )
 
 const (

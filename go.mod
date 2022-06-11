@@ -2,10 +2,7 @@ module github.com/soulteary/apt-proxy
 
 go 1.18
 
-require (
-	github.com/stretchr/testify v1.7.2
-	gopkg.in/djherbis/stream.v1 v1.3.1
-)
+require github.com/stretchr/testify v1.7.2
 
 require (
 	github.com/davecgh/go-spew v1.1.0 // indirect
