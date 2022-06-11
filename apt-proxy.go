@@ -11,22 +11,32 @@ import (
 )
 
 const (
-	defaultListen = "0.0.0.0:3142"
+	defaultHost   = "0.0.0.0"
+	defaultPort   = "3142"
 	defaultDir    = "./.aptcache"
 	defaultMirror = "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
 )
 
 var (
-	version string
-	listen  string
-	dir     string
-	debug   bool
+	version  string
+	listen   string
+	mirror   string
+	cacheDir string
+	debug    bool
 )
 
 func init() {
-	flag.StringVar(&listen, "mirror", defaultMirror, "the mirror for fetching packages")
-	flag.StringVar(&listen, "listen", defaultListen, "the host and port to bind to")
-	flag.StringVar(&dir, "cachedir", defaultDir, "the dir to store cache data in")
+	var (
+		host string
+		port string
+	)
+	flag.StringVar(&host, "host", defaultHost, "the host to bind to")
+	flag.StringVar(&port, "port", defaultPort, "the port to bind to")
+	listen = host + ":" + port
+
+	flag.StringVar(&mirror, "mirror", defaultMirror, "the mirror for fetching packages")
+
+	flag.StringVar(&cacheDir, "cachedir", defaultDir, "the dir to store cache data in")
 	flag.BoolVar(&debug, "debug", false, "whether to output debugging logging")
 	flag.Parse()
 }
@@ -35,10 +45,11 @@ func main() {
 	log.Printf("running apt-proxy %s", version)
 
 	if debug {
+		log.Printf("enable debug: true")
 		httpcache.DebugLogging = true
 	}
 
-	cache, err := httpcache.NewDiskCache(dir)
+	cache, err := httpcache.NewDiskCache(cacheDir)
 	if err != nil {
 		log.Fatal(err)
 	}
