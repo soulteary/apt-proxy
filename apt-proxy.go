@@ -14,7 +14,7 @@ const (
 	defaultHost   = "0.0.0.0"
 	defaultPort   = "3142"
 	defaultDir    = "./.aptcache"
-	defaultMirror = "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+	defaultMirror = "" // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
 )
 
 var (

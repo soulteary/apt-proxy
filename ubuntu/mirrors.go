@@ -3,7 +3,7 @@ package ubuntu
 import (
 	"bufio"
 	"errors"
-	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
@@ -11,6 +11,7 @@ import (
 
 const (
 	mirrorsUrl       = "http://mirrors.ubuntu.com/mirrors.txt"
+	mirrorTimeout    = 15 //seconds
 	benchmarkUrl     = "dists/jammy/main/binary-amd64/Release"
 	benchmarkTimes   = 3
 	benchmarkBytes   = 1024 * 512 // 512Kb
@@ -41,7 +42,7 @@ func GetGeoMirrors() (m Mirrors, err error) {
 
 func (m Mirrors) Fastest() (string, error) {
 	ch := make(chan benchmarkResult)
-
+	log.Printf("Start benchmarking mirrors")
 	// kick off all benchmarks in parallel
 	for _, url := range m.URLs {
 		go func(u string) {
@@ -59,6 +60,7 @@ func (m Mirrors) Fastest() (string, error) {
 
 	// wait for the fastest results to come back
 	results, err := m.readResults(ch, readN)
+	log.Printf("Finished benchmarking mirrors")
 	if len(results) == 0 {
 		return "", errors.New("No results found: " + err.Error())
 	} else if err != nil {
@@ -73,8 +75,8 @@ func (m Mirrors) readResults(ch <-chan benchmarkResult, size int) (br []benchmar
 		select {
 		case r := <-ch:
 			br = append(br, r)
-			if len(br) == size {
-				return
+			if len(br) >= size {
+				return br, nil
 			}
 		case <-time.After(benchmarkTimeout * time.Second):
 			return br, errors.New("Timed out waiting for results")
@@ -87,20 +89,25 @@ func (m Mirrors) benchmark(url string, times int) (time.Duration, error) {
 	var d time.Duration
 	url = url + benchmarkUrl
 
+	timeout := time.Duration(mirrorTimeout * time.Second)
+	client := http.Client{
+		Timeout: timeout,
+	}
+
 	for i := 0; i < times; i++ {
 		timer := time.Now()
-		response, err := http.Get(url)
+		response, err := client.Get(url)
 		if err != nil {
 			return d, err
 		}
 
-		_, err = io.ReadAtLeast(response.Body, make([]byte, benchmarkBytes), benchmarkBytes)
+		defer response.Body.Close()
+		_, err = ioutil.ReadAll(response.Body)
 		if err != nil {
 			return d, err
 		}
 
 		sum = sum + int64(time.Since(timer))
-		response.Body.Close()
 	}
 
 	return time.Duration(sum / int64(times)), nil
