@@ -13,7 +13,7 @@ import (
 const (
 	defaultListen = "0.0.0.0:3142"
 	defaultDir    = "./.aptcache"
-	defaultMirror = "http://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+	defaultMirror = "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
 )
 
 var (

@@ -46,11 +46,16 @@ func NewRewriter(mirror string) *CommonURLRewriter {
 }
 
 func (ur *CommonURLRewriter) Rewrite(r *http.Request) {
-	url := r.URL.String()
-	if ur.mirror != nil && hostPattern.MatchString(url) {
-		r.Header.Add("Content-Location", url)
-		m := hostPattern.FindAllStringSubmatch(url, -1)
+	uri := r.URL.String()
+	if ur.mirror != nil && hostPattern.MatchString(uri) {
+		r.Header.Add("Content-Location", uri)
+		m := hostPattern.FindAllStringSubmatch(uri, -1)
+		// Fix the problem of double escaping of symbols
+		unescapedQuery, err := url.PathUnescape(m[0][2])
+		if err != nil {
+			unescapedQuery = m[0][2]
+		}
 		r.URL.Host = ur.mirror.Host
-		r.URL.Path = ur.mirror.Path + m[0][2]
+		r.URL.Path = ur.mirror.Path + unescapedQuery
 	}
 }
