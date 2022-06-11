@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/soulteary/apt-proxy/httpcache"
-	"github.com/soulteary/apt-proxy/httpcache/httplog"
+	"github.com/soulteary/apt-proxy/pkgs/httplog"
 	"github.com/soulteary/apt-proxy/proxy"
 )
 

@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/soulteary/apt-proxy/httpcache"
-	"github.com/soulteary/apt-proxy/httpcache/httplog"
+	"github.com/soulteary/apt-proxy/pkgs/httplog"
 )
 
 const (
