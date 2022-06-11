@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/lox/httpcache"
-	"github.com/lox/httpcache/httplog"
+	"github.com/soulteary/apt-proxy/httpcache"
+	"github.com/soulteary/apt-proxy/httpcache/httplog"
 	"github.com/soulteary/apt-proxy/proxy"
 )
 

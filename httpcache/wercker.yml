@@ -1,0 +1,9 @@
+# https://registry.hub.docker.com/u/library/golang/
+box: golang
+build:
+  steps:
+    - setup-go-workspace
+    - script:
+        name: go test
+        code: |
+          go test . ./cli/... ./httplog/...
