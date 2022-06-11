@@ -6,7 +6,7 @@ import (
 	"net/http/httputil"
 	"time"
 
-	"github.com/soulteary/apt-proxy/ubuntu"
+	"github.com/soulteary/apt-proxy/os/ubuntu"
 )
 
 var urlRewriter *ubuntu.CommonURLRewriter

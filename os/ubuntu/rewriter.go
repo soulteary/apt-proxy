@@ -12,7 +12,7 @@ type CommonURLRewriter struct {
 }
 
 var hostPattern = regexp.MustCompile(
-	`https?://(security|archive).ubuntu.com/ubuntu/(.+)$`,
+	`https?://(\w{2}.)?(security|archive).ubuntu.com/ubuntu/(.+)$`,
 )
 
 func NewRewriter(mirror string) *CommonURLRewriter {
