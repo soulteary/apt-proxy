@@ -10,18 +10,29 @@ type URLRewriter struct {
 	mirror *url.URL
 }
 
-func NewRewriter(mirror string) *URLRewriter {
+func NewRewriter(mirror string, osType string) *URLRewriter {
 	u := &URLRewriter{}
 
 	if len(mirror) == 0 {
 		// benchmark in the background to make sure we have the fastest
 		go func() {
-			mirrors, err := GetGeoMirrors()
+
+			uri := ""
+			res := ""
+			if osType == "ubuntu" {
+				uri = UBUNTU_MIRROR_URLS
+				res = UBUNTU_BENCHMAKR_URL
+			} else {
+				uri = ALPINE_MIRROR_URLS
+				res = ALPINE_BENCHMAKR_URL
+			}
+
+			mirrors, err := getGeoMirrors(uri)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			mirror, err := mirrors.Fastest()
+			mirror, err := mirrors.Fastest(res)
 			if err != nil {
 				log.Println("Error finding fastest mirror", err)
 			}

@@ -15,6 +15,7 @@ const (
 	DEFAULT_PORT      = "3142"
 	DEFAULT_CACHE_DIR = "./.aptcache"
 	DEFAULT_MIRROR    = "" // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+	DEFAULT_TYPE      = "ubuntu"
 	DEFAULT_DEBUG     = false
 )
 
@@ -22,6 +23,7 @@ var (
 	version  string
 	listen   string
 	mirror   string
+	types    string
 	cacheDir string
 	debug    bool
 )
@@ -35,6 +37,7 @@ func init() {
 	flag.StringVar(&port, "port", DEFAULT_PORT, "the port to bind to")
 	flag.BoolVar(&debug, "debug", DEFAULT_DEBUG, "whether to output debugging logging")
 	flag.StringVar(&mirror, "mirror", DEFAULT_MIRROR, "the mirror for fetching packages")
+	flag.StringVar(&types, "type", DEFAULT_TYPE, "the mirror type for fetching packages")
 	flag.StringVar(&cacheDir, "cachedir", DEFAULT_CACHE_DIR, "the dir to store cache data in")
 	flag.Parse()
 
@@ -55,7 +58,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ap := proxy.NewAptProxyFromDefaults(mirror)
+	ap := proxy.NewAptProxyFromDefaults(mirror, types)
 	ap.Handler = httpcache.NewHandler(cache, ap.Handler)
 
 	logger := httplog.NewResponseLogger(ap.Handler)

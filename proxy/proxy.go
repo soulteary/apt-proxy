@@ -22,8 +22,8 @@ type AptProxy struct {
 	Rules   []Rule
 }
 
-func NewAptProxyFromDefaults(mirror string) *AptProxy {
-	urlRewriter = linux.NewRewriter(mirror)
+func NewAptProxyFromDefaults(mirror string, osType string) *AptProxy {
+	urlRewriter = linux.NewRewriter(mirror, osType)
 	return &AptProxy{
 		Rules: DefaultRules,
 		Handler: &httputil.ReverseProxy{

@@ -6,7 +6,7 @@ import (
 )
 
 func TestMirrors(t *testing.T) {
-	mirrors, err := GetGeoMirrors()
+	mirrors, err := getGeoMirrors(UBUNTU_MIRROR_URLS)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,12 +17,12 @@ func TestMirrors(t *testing.T) {
 }
 
 func TestMirrorsBenchmark(t *testing.T) {
-	mirrors, err := GetGeoMirrors()
+	mirrors, err := getGeoMirrors(UBUNTU_MIRROR_URLS)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fastest, err := mirrors.Fastest()
+	fastest, err := mirrors.Fastest(UBUNTU_BENCHMAKR_URL)
 	if err != nil {
 		t.Fatal(err)
 	}

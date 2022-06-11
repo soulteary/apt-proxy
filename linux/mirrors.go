@@ -17,8 +17,8 @@ type Mirrors struct {
 	URLs []string
 }
 
-func GetGeoMirrors() (m Mirrors, err error) {
-	response, err := http.Get(mirrorsUrl)
+func getGeoMirrors(mirrorListUrl string) (m Mirrors, err error) {
+	response, err := http.Get(mirrorListUrl)
 	if err != nil {
 		return
 	}
@@ -35,13 +35,13 @@ func GetGeoMirrors() (m Mirrors, err error) {
 	return m, scanner.Err()
 }
 
-func (m Mirrors) Fastest() (string, error) {
+func (m Mirrors) Fastest(testUrl string) (string, error) {
 	ch := make(chan benchmarkResult)
 	log.Printf("Start benchmarking mirrors")
 	// kick off all benchmarks in parallel
 	for _, url := range m.URLs {
 		go func(u string) {
-			duration, err := benchmark(u, benchmarkUrl, benchmarkTimes)
+			duration, err := benchmark(u, testUrl, benchmarkTimes)
 			if err == nil {
 				ch <- benchmarkResult{u, duration}
 			}
