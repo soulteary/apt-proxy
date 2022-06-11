@@ -6,13 +6,13 @@ import (
 	"net/http/httputil"
 	"time"
 
-	"github.com/lox/apt-proxy/ubuntu"
+	"github.com/soulteary/apt-proxy/ubuntu"
 )
 
 var ubuntuRewriter = ubuntu.NewRewriter()
 
 var defaultTransport http.RoundTripper = &http.Transport{
-	Proxy: http.ProxyFromEnvironment,
+	Proxy:                 http.ProxyFromEnvironment,
 	ResponseHeaderTimeout: time.Second * 45,
 	DisableKeepAlives:     true,
 }

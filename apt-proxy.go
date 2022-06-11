@@ -5,9 +5,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/lox/apt-proxy/proxy"
 	"github.com/lox/httpcache"
 	"github.com/lox/httpcache/httplog"
+	"github.com/soulteary/apt-proxy/proxy"
 )
 
 const (

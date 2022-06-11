@@ -2,10 +2,7 @@ module github.com/soulteary/apt-proxy
 
 go 1.18
 
-require (
-	github.com/lox/apt-proxy v0.0.0-20141111010639-a873c37420e9
-	github.com/lox/httpcache v1.2.0
-)
+require github.com/lox/httpcache v1.2.0
 
 require (
 	github.com/rainycape/vfs v0.0.0-20170722131704-164487ec47b4 // indirect
