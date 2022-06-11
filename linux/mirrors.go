@@ -11,6 +11,10 @@ type Mirrors struct {
 }
 
 func getGeoMirrors(mirrorListUrl string) (m Mirrors, err error) {
+	if len(mirrorListUrl) == 0 {
+		m.URLs = DEBIAN_MIRROR_URLS
+		return m, nil
+	}
 	response, err := http.Get(mirrorListUrl)
 	if err != nil {
 		return
@@ -28,9 +32,9 @@ func getGeoMirrors(mirrorListUrl string) (m Mirrors, err error) {
 }
 
 func getPredefinedConfiguration(osType string) (string, string, *regexp.Regexp) {
-	if osType == "ubuntu" {
+	if osType == UBUNTU {
 		return UBUNTU_MIRROR_URLS, UBUNTU_BENCHMAKR_URL, UBUNTU_HOST_PATTERN
 	} else {
-		return ALPINE_MIRROR_URLS, ALPINE_BENCHMAKR_URL, ALPINE_HOST_PATTERN
+		return "", DEBIAN_BENCHMAKR_URL, DEBIAN_HOST_PATTERN
 	}
 }

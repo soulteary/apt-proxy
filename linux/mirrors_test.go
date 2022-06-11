@@ -16,7 +16,7 @@ func TestGetGeoMirrors(t *testing.T) {
 }
 
 func TestGetMirrorsUrlAndBenchmarkUrl(t *testing.T) {
-	url, res, pattern := getPredefinedConfiguration("ubuntu")
+	url, res, pattern := getPredefinedConfiguration(UBUNTU)
 	if url != UBUNTU_MIRROR_URLS || res != UBUNTU_BENCHMAKR_URL {
 		t.Fatal("Failed to get resource link")
 	}

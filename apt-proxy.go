@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/soulteary/apt-proxy/httpcache"
+	"github.com/soulteary/apt-proxy/linux"
 	"github.com/soulteary/apt-proxy/pkgs/httplog"
 	"github.com/soulteary/apt-proxy/proxy"
 )
@@ -15,7 +16,7 @@ const (
 	DEFAULT_PORT      = "3142"
 	DEFAULT_CACHE_DIR = "./.aptcache"
 	DEFAULT_MIRROR    = "" // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-	DEFAULT_TYPE      = "ubuntu"
+	DEFAULT_TYPE      = linux.UBUNTU
 	DEFAULT_DEBUG     = false
 )
 
@@ -37,9 +38,13 @@ func init() {
 	flag.StringVar(&port, "port", DEFAULT_PORT, "the port to bind to")
 	flag.BoolVar(&debug, "debug", DEFAULT_DEBUG, "whether to output debugging logging")
 	flag.StringVar(&mirror, "mirror", DEFAULT_MIRROR, "the mirror for fetching packages")
-	flag.StringVar(&types, "type", DEFAULT_TYPE, "the mirror type for fetching packages")
+	flag.StringVar(&types, "type", DEFAULT_TYPE, "select the type of system to cache: ubuntu/debian")
 	flag.StringVar(&cacheDir, "cachedir", DEFAULT_CACHE_DIR, "the dir to store cache data in")
 	flag.Parse()
+
+	if types != linux.UBUNTU && types != linux.DEBIAN {
+		types = linux.UBUNTU
+	}
 
 	listen = host + ":" + port
 }

@@ -24,8 +24,15 @@ type AptProxy struct {
 
 func NewAptProxyFromDefaults(mirror string, osType string) *AptProxy {
 	rewriter = linux.NewRewriter(mirror, osType)
+	var rules []linux.Rule
+	if osType == linux.UBUNTU {
+		rules = linux.UBUNTU_DEFAULT_CACHE_RULES
+	} else if osType == linux.DEBIAN {
+		rules = linux.DEBIAN_DEFAULT_CACHE_RULES
+	}
+
 	return &AptProxy{
-		Rules: linux.UBUNTU_DEFAULT_CACHE_RULES,
+		Rules: rules,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
 			Transport: defaultTransport,
