@@ -1,6 +1,7 @@
 package linux
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -63,4 +64,18 @@ func Rewrite(r *http.Request, rewriter *URLRewriter) {
 		r.URL.Host = rewriter.mirror.Host
 		r.URL.Path = rewriter.mirror.Path + unescapedQuery
 	}
+}
+
+func MatchingRule(subject string, rules []Rule) (*Rule, bool) {
+	for _, rule := range rules {
+		if rule.Pattern.MatchString(subject) {
+			return &rule, true
+		}
+	}
+	return nil, false
+}
+
+func (r *Rule) String() string {
+	return fmt.Sprintf("%s Cache-Control=%s Rewrite=%#v",
+		r.Pattern.String(), r.CacheControl, r.Rewrite)
 }

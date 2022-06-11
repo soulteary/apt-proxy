@@ -19,13 +19,13 @@ var defaultTransport http.RoundTripper = &http.Transport{
 
 type AptProxy struct {
 	Handler http.Handler
-	Rules   []Rule
+	Rules   []linux.Rule
 }
 
 func NewAptProxyFromDefaults(mirror string, osType string) *AptProxy {
 	rewriter = linux.NewRewriter(mirror, osType)
 	return &AptProxy{
-		Rules: DefaultRules,
+		Rules: linux.UBUNTU_DEFAULT_CACHE_RULES,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
 			Transport: defaultTransport,
@@ -34,7 +34,7 @@ func NewAptProxyFromDefaults(mirror string, osType string) *AptProxy {
 }
 
 func (ap *AptProxy) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	rule, match := matchingRule(r.URL.Path, ap.Rules)
+	rule, match := linux.MatchingRule(r.URL.Path, ap.Rules)
 	if match {
 		r.Header.Del("Cache-Control")
 		if rule.Rewrite {
@@ -54,7 +54,7 @@ func (ap *AptProxy) rewriteRequest(r *http.Request) {
 
 type responseWriter struct {
 	http.ResponseWriter
-	rule *Rule
+	rule *linux.Rule
 }
 
 func (rw *responseWriter) WriteHeader(status int) {
