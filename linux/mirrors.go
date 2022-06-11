@@ -25,3 +25,11 @@ func getGeoMirrors(mirrorListUrl string) (m Mirrors, err error) {
 
 	return m, scanner.Err()
 }
+
+func getLinuxMirrorsAndBenchmarkURL(osType string) (string, string) {
+	if osType == "ubuntu" {
+		return UBUNTU_MIRROR_URLS, UBUNTU_BENCHMAKR_URL
+	} else {
+		return ALPINE_MIRROR_URLS, ALPINE_BENCHMAKR_URL
+	}
+}

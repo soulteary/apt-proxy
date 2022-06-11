@@ -14,3 +14,10 @@ func TestGetGeoMirrors(t *testing.T) {
 		t.Fatal("No mirrors found")
 	}
 }
+
+func TestGetMirrorsUrlAndBenchmarkUrl(t *testing.T) {
+	url, res := getLinuxMirrorsAndBenchmarkURL("ubuntu")
+	if url != UBUNTU_MIRROR_URLS || res != UBUNTU_BENCHMAKR_URL {
+		t.Fatal("Failed to get resource link")
+	}
+}

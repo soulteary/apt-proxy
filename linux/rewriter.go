@@ -13,45 +13,39 @@ type URLRewriter struct {
 func NewRewriter(mirror string, osType string) *URLRewriter {
 	u := &URLRewriter{}
 
-	if len(mirror) == 0 {
-		// benchmark in the background to make sure we have the fastest
-		go func() {
+	if len(mirror) > 0 {
+		mirrorUrl, err := url.Parse(mirror)
+		if err == nil {
+			log.Printf("using ubuntu mirror %s", mirror)
+			u.mirror = mirrorUrl
+			return u
+		}
+	}
 
-			uri := ""
-			res := ""
-			if osType == "ubuntu" {
-				uri = UBUNTU_MIRROR_URLS
-				res = UBUNTU_BENCHMAKR_URL
-			} else {
-				uri = ALPINE_MIRROR_URLS
-				res = ALPINE_BENCHMAKR_URL
-			}
+	// benchmark in the background to make sure we have the fastest
+	go func() {
+		mirrorsListUrl, benchmarkUrl := getLinuxMirrorsAndBenchmarkURL(osType)
 
-			mirrors, err := getGeoMirrors(uri)
-			if err != nil {
-				log.Fatal(err)
-			}
+		mirrors, err := getGeoMirrors(mirrorsListUrl)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-			mirror, err := fastest(mirrors, res)
-			if err != nil {
-				log.Println("Error finding fastest mirror", err)
-			}
+		mirror, err := fastest(mirrors, benchmarkUrl)
+		if err != nil {
+			log.Println("Error finding fastest mirror", err)
+		}
 
-			if mirrorUrl, err := url.Parse(mirror); err == nil {
-				log.Printf("using ubuntu mirror %s", mirror)
-				u.mirror = mirrorUrl
-			}
-		}()
-	} else {
 		if mirrorUrl, err := url.Parse(mirror); err == nil {
 			log.Printf("using ubuntu mirror %s", mirror)
 			u.mirror = mirrorUrl
 		}
-	}
+	}()
+
 	return u
 }
 
-func (ur *URLRewriter) Rewrite(r *http.Request) {
+func Rewrite(r *http.Request, ur *URLRewriter) {
 	uri := r.URL.String()
 	if ur.mirror != nil && hostPattern.MatchString(uri) {
 		r.Header.Add("Content-Location", uri)
