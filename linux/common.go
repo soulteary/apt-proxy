@@ -24,6 +24,6 @@ const (
 	UBUNTU_BENCHMAKR_URL = "dists/jammy/main/binary-amd64/Release"
 )
 
-var hostPattern = regexp.MustCompile(
+var UBUNTU_HOST_PATTERN = regexp.MustCompile(
 	`https?://(\w{2}.)?(security|archive).ubuntu.com/ubuntu/(.+)$`,
 )
