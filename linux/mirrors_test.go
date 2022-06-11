@@ -1,4 +1,4 @@
-package ubuntu
+package linux
 
 import (
 	"log"

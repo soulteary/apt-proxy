@@ -1,22 +1,17 @@
-package ubuntu
+package linux
 
 import (
 	"bufio"
 	"errors"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
 )
 
-const (
-	mirrorsUrl       = "http://mirrors.ubuntu.com/mirrors.txt"
-	mirrorTimeout    = 15 //seconds
-	benchmarkUrl     = "dists/jammy/main/binary-amd64/Release"
-	benchmarkTimes   = 3
-	benchmarkBytes   = 1024 * 512 // 512Kb
-	benchmarkTimeout = 10         // 10 seconds
-)
+type benchmarkResult struct {
+	URL      string
+	Duration time.Duration
+}
 
 type Mirrors struct {
 	URLs []string
@@ -46,7 +41,7 @@ func (m Mirrors) Fastest() (string, error) {
 	// kick off all benchmarks in parallel
 	for _, url := range m.URLs {
 		go func(u string) {
-			duration, err := m.benchmark(u, benchmarkTimes)
+			duration, err := benchmark(u, benchmarkUrl, benchmarkTimes)
 			if err == nil {
 				ch <- benchmarkResult{u, duration}
 			}
@@ -82,38 +77,4 @@ func (m Mirrors) readResults(ch <-chan benchmarkResult, size int) (br []benchmar
 			return br, errors.New("Timed out waiting for results")
 		}
 	}
-}
-
-func (m Mirrors) benchmark(url string, times int) (time.Duration, error) {
-	var sum int64
-	var d time.Duration
-	url = url + benchmarkUrl
-
-	timeout := time.Duration(mirrorTimeout * time.Second)
-	client := http.Client{
-		Timeout: timeout,
-	}
-
-	for i := 0; i < times; i++ {
-		timer := time.Now()
-		response, err := client.Get(url)
-		if err != nil {
-			return d, err
-		}
-
-		defer response.Body.Close()
-		_, err = ioutil.ReadAll(response.Body)
-		if err != nil {
-			return d, err
-		}
-
-		sum = sum + int64(time.Since(timer))
-	}
-
-	return time.Duration(sum / int64(times)), nil
-}
-
-type benchmarkResult struct {
-	URL      string
-	Duration time.Duration
 }

@@ -6,10 +6,10 @@ import (
 	"net/http/httputil"
 	"time"
 
-	"github.com/soulteary/apt-proxy/os/ubuntu"
+	"github.com/soulteary/apt-proxy/linux"
 )
 
-var urlRewriter *ubuntu.CommonURLRewriter
+var urlRewriter *linux.URLRewriter
 
 var defaultTransport http.RoundTripper = &http.Transport{
 	Proxy:                 http.ProxyFromEnvironment,
@@ -23,7 +23,7 @@ type AptProxy struct {
 }
 
 func NewAptProxyFromDefaults(mirror string) *AptProxy {
-	urlRewriter = ubuntu.NewRewriter(mirror)
+	urlRewriter = linux.NewRewriter(mirror)
 	return &AptProxy{
 		Rules: DefaultRules,
 		Handler: &httputil.ReverseProxy{

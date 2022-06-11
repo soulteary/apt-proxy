@@ -1,22 +1,17 @@
-package ubuntu
+package linux
 
 import (
 	"log"
 	"net/http"
 	"net/url"
-	"regexp"
 )
 
-type CommonURLRewriter struct {
+type URLRewriter struct {
 	mirror *url.URL
 }
 
-var hostPattern = regexp.MustCompile(
-	`https?://(\w{2}.)?(security|archive).ubuntu.com/ubuntu/(.+)$`,
-)
-
-func NewRewriter(mirror string) *CommonURLRewriter {
-	u := &CommonURLRewriter{}
+func NewRewriter(mirror string) *URLRewriter {
+	u := &URLRewriter{}
 
 	if len(mirror) == 0 {
 		// benchmark in the background to make sure we have the fastest
@@ -45,7 +40,7 @@ func NewRewriter(mirror string) *CommonURLRewriter {
 	return u
 }
 
-func (ur *CommonURLRewriter) Rewrite(r *http.Request) {
+func (ur *URLRewriter) Rewrite(r *http.Request) {
 	uri := r.URL.String()
 	if ur.mirror != nil && hostPattern.MatchString(uri) {
 		r.Header.Add("Content-Location", uri)
