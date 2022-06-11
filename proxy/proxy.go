@@ -9,7 +9,7 @@ import (
 	"github.com/soulteary/apt-proxy/ubuntu"
 )
 
-var ubuntuRewriter = ubuntu.NewRewriter()
+var urlRewriter *ubuntu.CommonURLRewriter
 
 var defaultTransport http.RoundTripper = &http.Transport{
 	Proxy:                 http.ProxyFromEnvironment,
@@ -22,7 +22,8 @@ type AptProxy struct {
 	Rules   []Rule
 }
 
-func NewAptProxyFromDefaults() *AptProxy {
+func NewAptProxyFromDefaults(mirror string) *AptProxy {
+	urlRewriter = ubuntu.NewRewriter(mirror)
 	return &AptProxy{
 		Rules: DefaultRules,
 		Handler: &httputil.ReverseProxy{
@@ -46,7 +47,7 @@ func (ap *AptProxy) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 func (ap *AptProxy) rewriteRequest(r *http.Request) {
 	before := r.URL.String()
-	ubuntuRewriter.Rewrite(r)
+	urlRewriter.Rewrite(r)
 	log.Printf("rewrote %q to %q", before, r.URL.String())
 	r.Host = r.URL.Host
 }

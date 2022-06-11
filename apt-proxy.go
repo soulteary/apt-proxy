@@ -13,6 +13,7 @@ import (
 const (
 	defaultListen = "0.0.0.0:3142"
 	defaultDir    = "./.aptcache"
+	defaultMirror = "http://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 )
 
 func init() {
+	flag.StringVar(&listen, "mirror", defaultMirror, "the mirror for fetching packages")
 	flag.StringVar(&listen, "listen", defaultListen, "the host and port to bind to")
 	flag.StringVar(&dir, "cachedir", defaultDir, "the dir to store cache data in")
 	flag.BoolVar(&debug, "debug", false, "whether to output debugging logging")
@@ -41,7 +43,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ap := proxy.NewAptProxyFromDefaults()
+	ap := proxy.NewAptProxyFromDefaults(defaultMirror)
 	ap.Handler = httpcache.NewHandler(cache, ap.Handler)
 
 	logger := httplog.NewResponseLogger(ap.Handler)

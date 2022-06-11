@@ -11,10 +11,10 @@ import (
 
 const (
 	mirrorsUrl       = "http://mirrors.ubuntu.com/mirrors.txt"
-	benchmarkUrl     = "dists/saucy/main/binary-amd64/Packages.bz2"
+	benchmarkUrl     = "dists/jammy/main/binary-amd64/Release"
 	benchmarkTimes   = 3
 	benchmarkBytes   = 1024 * 512 // 512Kb
-	benchmarkTimeout = 20         // 20 seconds
+	benchmarkTimeout = 10         // 10 seconds
 )
 
 type Mirrors struct {
