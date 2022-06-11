@@ -32,7 +32,7 @@ func NewRewriter(mirror string, osType string) *URLRewriter {
 				log.Fatal(err)
 			}
 
-			mirror, err := mirrors.Fastest(res)
+			mirror, err := fastest(mirrors, res)
 			if err != nil {
 				log.Println("Error finding fastest mirror", err)
 			}
