@@ -3,9 +3,9 @@ package httpcache
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"net/http"
@@ -200,8 +200,8 @@ func (c *cache) Freshen(res *Resource, keys ...string) error {
 }
 
 func hashKey(key string) string {
-	h := sha256.New()
-	io.WriteString(h, key)
+	h := fnv.New64a()
+	h.Write([]byte(key))
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
