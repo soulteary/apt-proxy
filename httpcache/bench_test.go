@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/lox/httpcache"
+	"github.com/soulteary/apt-proxy/httpcache"
 )
 
 func BenchmarkCachingFiles(b *testing.B) {

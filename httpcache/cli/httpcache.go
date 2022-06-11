@@ -7,8 +7,8 @@ import (
 	"net/http/httputil"
 	"os"
 
-	"github.com/lox/httpcache"
-	"github.com/lox/httpcache/httplog"
+	"github.com/soulteary/apt-proxy/httpcache"
+	"github.com/soulteary/apt-proxy/httpcache/httplog"
 )
 
 const (
