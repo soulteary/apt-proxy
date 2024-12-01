@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
@@ -13,90 +14,158 @@ import (
 	"github.com/soulteary/apt-proxy/pkg/httplog"
 )
 
-type AppFlags struct {
+// Config holds all application configuration
+type Config struct {
 	Debug    bool
 	Version  string
 	CacheDir string
 	Mode     int
 	Listen   string
+	Mirrors  MirrorConfig
+}
 
-	// mirror
+// MirrorConfig holds mirror-specific configuration
+type MirrorConfig struct {
 	Ubuntu string
 	Debian string
 	CentOS string
 	Alpine string
 }
 
-func initStore(appFlags AppFlags) (cache httpcache.Cache, err error) {
-	cache, err = httpcache.NewDiskCache(appFlags.CacheDir)
-	if err != nil {
-		return cache, err
+// Server represents the main application server
+type Server struct {
+	config *Config
+	cache  httpcache.Cache
+	proxy  *server.AptProxy
+	logger *httplog.ResponseLogger
+	server *http.Server
+}
+
+// NewServer creates and initializes a new Server instance
+func NewServer(cfg *Config) (*Server, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration cannot be nil")
 	}
-	return cache, nil
+
+	s := &Server{
+		config: cfg,
+	}
+
+	if err := s.initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize server: %w", err)
+	}
+
+	return s, nil
 }
 
-func initProxy(appFlags AppFlags, cache httpcache.Cache) (ap *server.AptProxy) {
-	ap = server.CreateAptProxyRouter()
-	ap.Handler = httpcache.NewHandler(cache, ap.Handler)
-	return ap
+// initialize sets up all server components
+func (s *Server) initialize() error {
+	// Initialize cache
+	cache, err := httpcache.NewDiskCache(s.config.CacheDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize cache: %w", err)
+	}
+	s.cache = cache
+
+	// Initialize proxy
+	s.proxy = server.CreateAptProxyRouter()
+	s.proxy.Handler = httpcache.NewHandler(s.cache, s.proxy.Handler)
+
+	// Initialize logger
+	s.initLogger()
+
+	// Initialize HTTP server
+	s.server = &http.Server{
+		Addr:              s.config.Listen,
+		Handler:           s.proxy,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	return nil
 }
 
-func initLogger(appFlags AppFlags, ap *server.AptProxy) {
-	if appFlags.Debug {
-		log.Printf("enable debug: true")
+// initLogger configures the HTTP request/response logger
+func (s *Server) initLogger() {
+	if s.config.Debug {
+		log.Printf("debug mode enabled")
 		httpcache.DebugLogging = true
 	}
-	logger := httplog.NewResponseLogger(ap.Handler)
-	logger.DumpRequests = appFlags.Debug
-	logger.DumpResponses = appFlags.Debug
-	logger.DumpErrors = appFlags.Debug
-	ap.Handler = logger
+
+	s.logger = httplog.NewResponseLogger(s.proxy.Handler)
+	s.logger.DumpRequests = s.config.Debug
+	s.logger.DumpResponses = s.config.Debug
+	s.logger.DumpErrors = s.config.Debug
+	s.proxy.Handler = s.logger
 }
 
-func StartServer(appFlags *AppFlags, ap *server.AptProxy) {
-	log.Printf("proxy listening on %s", appFlags.Listen)
-	// graceful shutdown
-	// https://github.com/soulteary/flare/blob/main/cmd/daemon.go
+// Start begins serving requests and handles graceful shutdown
+func (s *Server) Start() error {
+	log.Printf("starting apt-proxy %s", s.config.Version)
+	log.Printf("listening on %s", s.config.Listen)
+
+	// Setup graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	srv := &http.Server{
-		Addr:              appFlags.Listen,
-		Handler:           ap,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       5 * time.Second,
-	}
-
+	// Start server in goroutine
+	serverErr := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("program startup error: %s\n", err)
+		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
 		}
 	}()
-	log.Println("Program has been started 🚀")
 
-	<-ctx.Done()
+	log.Println("server started successfully 🚀")
 
-	stop()
-	log.Println("The program is closing, to end immediately press CTRL+C")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("program force close: ", err)
+	// Wait for shutdown signal or server error
+	select {
+	case err := <-serverErr:
+		return fmt.Errorf("server error: %w", err)
+	case <-ctx.Done():
+		return s.shutdown()
 	}
 }
 
-func Daemon(appFlags *AppFlags) {
-	log.Printf("running apt-proxy %s", appFlags.Version)
+// shutdown performs a graceful server shutdown
+func (s *Server) shutdown() error {
+	log.Println("shutting down server...")
 
-	cache, err := initStore(*appFlags)
-	if err != nil {
-		log.Fatal(err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := s.server.Shutdown(ctx); err != nil {
+		return fmt.Errorf("failed to shutdown server gracefully: %w", err)
 	}
 
-	ap := initProxy(*appFlags, cache)
+	log.Println("server shutdown complete")
+	return nil
+}
 
-	initLogger(*appFlags, ap)
+// Daemon is the main entry point for starting the application
+func Daemon(flags *Config) {
+	cfg := &Config{
+		Debug:    flags.Debug,
+		Version:  flags.Version,
+		CacheDir: flags.CacheDir,
+		Mode:     flags.Mode,
+		Listen:   flags.Listen,
+		Mirrors: MirrorConfig{
+			Ubuntu: flags.Mirrors.Ubuntu,
+			Debian: flags.Mirrors.Debian,
+			CentOS: flags.Mirrors.CentOS,
+			Alpine: flags.Mirrors.Alpine,
+		},
+	}
 
-	StartServer(appFlags, ap)
+	server, err := NewServer(cfg)
+	if err != nil {
+		log.Fatalf("failed to create server: %v", err)
+	}
+
+	if err := server.Start(); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
 }

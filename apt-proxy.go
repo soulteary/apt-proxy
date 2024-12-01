@@ -5,6 +5,9 @@ import (
 )
 
 func main() {
-	flags := cli.ParseFlags()
-	cli.Daemon(&flags)
+	flags, err := cli.ParseFlags()
+	if err != nil {
+		panic(err)
+	}
+	cli.Daemon(flags)
 }

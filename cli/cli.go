@@ -2,73 +2,131 @@ package cli
 
 import (
 	"flag"
+	"fmt"
 
-	Define "github.com/soulteary/apt-proxy/internal/define"
-	State "github.com/soulteary/apt-proxy/internal/state"
+	"github.com/soulteary/apt-proxy/internal/define"
+	"github.com/soulteary/apt-proxy/internal/state"
 )
 
-const (
-	DEFAULT_HOST          = "0.0.0.0"
-	DEFAULT_PORT          = "3142"
-	DEFAULT_CACHE_DIR     = "./.aptcache"
-	DEFAULT_UBUNTU_MIRROR = "" // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-	DEFAULT_DEBIAN_MIRROR = "" // "https://mirrors.tuna.tsinghua.edu.cn/debian/"
-	DEFAULT_CENTOS_MIRROR = "" // "https://mirrors.tuna.tsinghua.edu.cn/centos/"
-	DEFAULT_ALPINE_MIRROR = "" // "https://mirrors.tuna.tsinghua.edu.cn/alpine/"
-	DEFAULT_MODE_NAME     = Define.LINUX_ALL_DISTROS
-	DEFAULT_DEBUG         = false
-)
-
-var Version string
-
-func getProxyMode(mode string) int {
-	if mode == Define.LINUX_DISTROS_UBUNTU {
-		return Define.TYPE_LINUX_DISTROS_UBUNTU
-	}
-
-	if mode == Define.LINUX_DISTROS_DEBIAN {
-		return Define.TYPE_LINUX_DISTROS_DEBIAN
-	}
-
-	if mode == Define.LINUX_DISTROS_CENTOS {
-		return Define.TYPE_LINUX_DISTROS_CENTOS
-	}
-
-	if mode == Define.LINUX_DISTROS_ALPINE {
-		return Define.TYPE_LINUX_DISTROS_ALPINE
-	}
-
-	return Define.TYPE_LINUX_ALL_DISTROS
+// defaults holds all default configuration values
+type defaults struct {
+	Host         string
+	Port         string
+	CacheDir     string
+	UbuntuMirror string
+	DebianMirror string
+	CentOSMirror string
+	AlpineMirror string
+	ModeName     string
+	Debug        bool
 }
 
-func ParseFlags() (appFlags AppFlags) {
+var (
+	// Version is set during build time
+	Version string
+
+	// defaultConfig holds default configuration values
+	defaultConfig = defaults{
+		Host:         "0.0.0.0",
+		Port:         "3142",
+		CacheDir:     "./.aptcache",
+		UbuntuMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+		DebianMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/debian/"
+		CentOSMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/centos/"
+		AlpineMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/alpine/"
+		ModeName:     define.LINUX_ALL_DISTROS,
+		Debug:        false,
+	}
+
+	// validModes maps mode strings to their corresponding integer values
+	validModes = map[string]int{
+		define.LINUX_DISTROS_UBUNTU: define.TYPE_LINUX_DISTROS_UBUNTU,
+		define.LINUX_DISTROS_DEBIAN: define.TYPE_LINUX_DISTROS_DEBIAN,
+		define.LINUX_DISTROS_CENTOS: define.TYPE_LINUX_DISTROS_CENTOS,
+		define.LINUX_DISTROS_ALPINE: define.TYPE_LINUX_DISTROS_ALPINE,
+		define.LINUX_ALL_DISTROS:    define.TYPE_LINUX_ALL_DISTROS,
+	}
+)
+
+// getProxyMode converts a mode string to its corresponding integer value
+func getProxyMode(mode string) (int, error) {
+	if modeValue, exists := validModes[mode]; exists {
+		return modeValue, nil
+	}
+	return 0, fmt.Errorf("invalid mode: %s", mode)
+}
+
+// ParseFlags parses command-line flags and returns a Config
+func ParseFlags() (*Config, error) {
+	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
+
 	var (
 		host     string
 		port     string
 		userMode string
+		config   Config
 	)
-	flag.StringVar(&host, "host", DEFAULT_HOST, "the host to bind to")
-	flag.StringVar(&port, "port", DEFAULT_PORT, "the port to bind to")
-	flag.StringVar(&userMode, "mode", DEFAULT_MODE_NAME, "select the mode of system to cache: `all` / `ubuntu` / `debian` / `centos` / `alpine`")
-	flag.BoolVar(&appFlags.Debug, "debug", DEFAULT_DEBUG, "whether to output debugging logging")
-	flag.StringVar(&appFlags.CacheDir, "cachedir", DEFAULT_CACHE_DIR, "the dir to store cache data in")
-	flag.StringVar(&appFlags.Ubuntu, "ubuntu", DEFAULT_UBUNTU_MIRROR, "the ubuntu mirror for fetching packages")
-	flag.StringVar(&appFlags.Debian, "debian", DEFAULT_DEBIAN_MIRROR, "the debian mirror for fetching packages")
-	flag.StringVar(&appFlags.CentOS, "centos", DEFAULT_CENTOS_MIRROR, "the centos mirror for fetching packages")
-	flag.StringVar(&appFlags.Alpine, "alpine", DEFAULT_ALPINE_MIRROR, "the alpine mirror for fetching packages")
-	flag.Parse()
 
-	mode := getProxyMode(userMode)
+	// Define flags
+	flags.StringVar(&host, "host", defaultConfig.Host, "the host to bind to")
+	flags.StringVar(&port, "port", defaultConfig.Port, "the port to bind to")
+	flags.StringVar(&userMode, "mode", defaultConfig.ModeName,
+		"select the mode of system to cache: all / ubuntu / debian / centos / alpine")
+	flags.BoolVar(&config.Debug, "debug", defaultConfig.Debug, "whether to output debugging logging")
+	flags.StringVar(&config.CacheDir, "cachedir", defaultConfig.CacheDir, "the dir to store cache data in")
+	flags.StringVar(&config.Mirrors.Ubuntu, "ubuntu", defaultConfig.UbuntuMirror, "the ubuntu mirror for fetching packages")
+	flags.StringVar(&config.Mirrors.Debian, "debian", defaultConfig.DebianMirror, "the debian mirror for fetching packages")
+	flags.StringVar(&config.Mirrors.CentOS, "centos", defaultConfig.CentOSMirror, "the centos mirror for fetching packages")
+	flags.StringVar(&config.Mirrors.Alpine, "alpine", defaultConfig.AlpineMirror, "the alpine mirror for fetching packages")
 
-	appFlags.Mode = mode
-	appFlags.Listen = host + ":" + port
-	appFlags.Version = Version
+	if err := flags.Parse(flag.Args()); err != nil {
+		return nil, fmt.Errorf("parsing flags: %w", err)
+	}
 
-	State.SetProxyMode(mode)
-	State.SetUbuntuMirror(appFlags.Ubuntu)
-	State.SetDebianMirror(appFlags.Debian)
-	State.SetCentOSMirror(appFlags.CentOS)
-	State.SetAlpineMirror(appFlags.Alpine)
+	// Validate and set mode
+	mode, err := getProxyMode(userMode)
+	if err != nil {
+		return nil, err
+	}
+	config.Mode = mode
 
-	return appFlags
+	// Set listen address
+	config.Listen = fmt.Sprintf("%s:%s", host, port)
+	config.Version = Version
+
+	// Update global state
+	if err := updateGlobalState(&config); err != nil {
+		return nil, fmt.Errorf("updating global state: %w", err)
+	}
+
+	return &config, nil
+}
+
+// updateGlobalState updates the global state with the current configuration
+func updateGlobalState(config *Config) error {
+	state.SetProxyMode(config.Mode)
+
+	state.SetUbuntuMirror(config.Mirrors.Ubuntu)
+	state.SetDebianMirror(config.Mirrors.Debian)
+	state.SetCentOSMirror(config.Mirrors.CentOS)
+	state.SetAlpineMirror(config.Mirrors.Alpine)
+
+	return nil
+}
+
+// ValidateConfig performs validation on the configuration
+func ValidateConfig(config *Config) error {
+	if config == nil {
+		return fmt.Errorf("configuration cannot be nil")
+	}
+
+	if config.CacheDir == "" {
+		return fmt.Errorf("cache directory must be specified")
+	}
+
+	if config.Listen == "" {
+		return fmt.Errorf("listen address must be specified")
+	}
+
+	return nil
 }
