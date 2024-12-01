@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	Define "github.com/soulteary/apt-proxy/define"
 	Benchmark "github.com/soulteary/apt-proxy/internal/benchmark"
-	Define "github.com/soulteary/apt-proxy/internal/define"
 	State "github.com/soulteary/apt-proxy/internal/state"
 )
 

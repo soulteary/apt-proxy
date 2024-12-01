@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	Define "github.com/soulteary/apt-proxy/internal/define"
+	Define "github.com/soulteary/apt-proxy/define"
 )
 
 func TestRuleToString(t *testing.T) {

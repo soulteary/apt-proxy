@@ -3,7 +3,7 @@ package state
 import (
 	"testing"
 
-	Define "github.com/soulteary/apt-proxy/internal/define"
+	Define "github.com/soulteary/apt-proxy/define"
 )
 
 func TestSetProxyMode(t *testing.T) {

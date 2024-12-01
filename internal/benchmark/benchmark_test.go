@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	Define "github.com/soulteary/apt-proxy/define"
 	Benchmark "github.com/soulteary/apt-proxy/internal/benchmark"
-	Define "github.com/soulteary/apt-proxy/internal/define"
 	Mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
 )
 

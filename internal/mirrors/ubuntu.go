@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"net/http"
 
-	Define "github.com/soulteary/apt-proxy/internal/define"
+	Define "github.com/soulteary/apt-proxy/define"
 )
 
 func GetUbuntuMirrorUrlsByGeo() (mirrors []string, err error) {

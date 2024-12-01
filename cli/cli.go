@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/soulteary/apt-proxy/internal/define"
+	"github.com/soulteary/apt-proxy/define"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	Define "github.com/soulteary/apt-proxy/internal/define"
+	Define "github.com/soulteary/apt-proxy/define"
 )
 
 func GenerateMirrorListByPredefined(osType int) (mirrors []string) {

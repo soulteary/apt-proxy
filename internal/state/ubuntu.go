@@ -3,7 +3,7 @@ package state
 import (
 	"net/url"
 
-	Define "github.com/soulteary/apt-proxy/internal/define"
+	Define "github.com/soulteary/apt-proxy/define"
 	Mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
 )
 

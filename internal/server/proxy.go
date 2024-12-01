@@ -8,7 +8,7 @@ import (
 	"net/http/httputil"
 	"time"
 
-	Define "github.com/soulteary/apt-proxy/internal/define"
+	Define "github.com/soulteary/apt-proxy/define"
 	Rewriter "github.com/soulteary/apt-proxy/internal/rewriter"
 	State "github.com/soulteary/apt-proxy/internal/state"
 )
