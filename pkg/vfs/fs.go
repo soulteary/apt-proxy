@@ -1,9 +1,11 @@
 package vfs
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // IMPORTANT: Note about wrapping os. functions: os.Open, os.OpenFile etc... will return a non-nil
@@ -41,11 +43,38 @@ func (fs *fileSystem) Open(path string) (RFile, error) {
 	return f, nil
 }
 
+var ErrInvalidPath = errors.New("invalid path: attempt to access parent directory")
+
+func containsDotDot(path string) bool {
+	return strings.Contains(path, "..")
+}
+
+func isUnderRoot(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".."
+}
+
 func (fs *fileSystem) OpenFile(path string, flag int, mode os.FileMode) (WFile, error) {
-	f, err := os.OpenFile(filepath.Join(fs.root, filepath.Clean(path)), flag, mode)
+	cleanPath := filepath.Clean(path)
+
+	if containsDotDot(cleanPath) {
+		return nil, ErrInvalidPath
+	}
+
+	fullPath := filepath.Join(fs.root, cleanPath)
+
+	if !isUnderRoot(fs.root, fullPath) {
+		return nil, ErrInvalidPath
+	}
+
+	f, err := os.OpenFile(fullPath, flag, mode)
 	if err != nil {
 		return nil, err
 	}
+
 	return f, nil
 }
 
