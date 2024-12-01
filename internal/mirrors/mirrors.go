@@ -139,7 +139,7 @@ func GetPredefinedConfiguration(proxyMode int) (string, *regexp.Regexp) {
 	case Define.TYPE_LINUX_DISTROS_UBUNTU:
 		return Define.UBUNTU_BENCHMAKR_URL, Define.UBUNTU_HOST_PATTERN
 	case Define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		return Define.UBUNTU_BENCHMAKR_URL, Define.UBUNTU_PORTS_HOST_PATTERN
+		return Define.UBUNTU_PORTS_BENCHMAKR_URL, Define.UBUNTU_PORTS_HOST_PATTERN
 	case Define.TYPE_LINUX_DISTROS_DEBIAN:
 		return Define.DEBIAN_BENCHMAKR_URL, Define.DEBIAN_HOST_PATTERN
 	case Define.TYPE_LINUX_DISTROS_CENTOS:

@@ -22,7 +22,7 @@ var hostPatternMap = map[*regexp.Regexp][]Define.Rule{
 }
 
 var (
-	rewriter         *Rewriter.URLRewriters
+	rewriters        *Rewriter.URLRewriters
 	defaultTransport = &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ResponseHeaderTimeout: 45 * time.Second,
@@ -45,7 +45,7 @@ type responseWriter struct {
 
 func CreateAptProxyRouter() *AptProxy {
 	mode := State.GetProxyMode()
-	rewriter = Rewriter.CreateNewRewriters(mode)
+	rewriters = Rewriter.CreateNewRewriters(mode)
 
 	return &AptProxy{
 		Rules: Rewriter.GetRewriteRulesByMode(mode),
@@ -104,7 +104,8 @@ func (ap *AptProxy) processMatchingRule(r *http.Request, rules []Define.Rule) *D
 
 func (ap *AptProxy) rewriteRequest(r *http.Request, rule *Define.Rule) {
 	before := r.URL.String()
-	Rewriter.RewriteRequestByMode(r, rewriter, rule.OS)
+	Rewriter.RewriteRequestByMode(r, rewriters, rule.OS)
+
 	r.Host = r.URL.Host
 	log.Printf("Rewrote %q to %q", before, r.URL.String())
 }

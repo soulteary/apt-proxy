@@ -80,8 +80,8 @@ var (
 	// Mirror states for different distributions
 	UbuntuMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_UBUNTU)
 	UbuntuPortsMirror = NewMirrorState(Define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
-	CentOSMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_CENTOS)
 	DebianMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_DEBIAN)
+	CentOSMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_CENTOS)
 	AlpineMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_ALPINE)
 )
 

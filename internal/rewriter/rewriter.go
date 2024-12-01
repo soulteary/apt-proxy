@@ -21,12 +21,12 @@ type URLRewriter struct {
 
 // URLRewriters manages rewriters for different distributions
 type URLRewriters struct {
-	ubuntu      *URLRewriter
-	ubuntuPorts *URLRewriter
-	debian      *URLRewriter
-	centos      *URLRewriter
-	alpine      *URLRewriter
-	mu          sync.RWMutex
+	Ubuntu      *URLRewriter
+	UbuntuPorts *URLRewriter
+	Debian      *URLRewriter
+	Centos      *URLRewriter
+	Alpine      *URLRewriter
+	Mu          sync.RWMutex
 }
 
 // getRewriterConfig returns configuration for a specific distribution
@@ -59,7 +59,7 @@ func createRewriter(mode int) *URLRewriter {
 	mirror := getMirror()
 
 	if mirror != nil {
-		log.Printf("using specified %s mirror %s", name, mirror)
+		log.Printf("using specified [%s] mirror [%s]", name, mirror)
 		rewriter.mirror = mirror
 		return rewriter
 	}
@@ -67,12 +67,12 @@ func createRewriter(mode int) *URLRewriter {
 	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(mode)
 	fastest, err := benchmarks.GetTheFastestMirror(mirrorURLs, benchmarkURL)
 	if err != nil {
-		log.Printf("Error finding fastest %s mirror: %v", name, err)
+		log.Printf("Error finding fastest [%s] mirror: %v", name, err)
 		return rewriter
 	}
 
 	if mirror, err := url.Parse(fastest); err == nil {
-		log.Printf("using fastest %s mirror %s", name, fastest)
+		log.Printf("using fastest [%s] mirror [%s]", name, fastest)
 		rewriter.mirror = mirror
 	}
 
@@ -85,21 +85,21 @@ func CreateNewRewriters(mode int) *URLRewriters {
 
 	switch mode {
 	case define.TYPE_LINUX_DISTROS_UBUNTU:
-		rewriters.ubuntu = createRewriter(mode)
+		rewriters.Ubuntu = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		rewriters.ubuntuPorts = createRewriter(mode)
+		rewriters.UbuntuPorts = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_DEBIAN:
-		rewriters.debian = createRewriter(mode)
+		rewriters.Debian = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_CENTOS:
-		rewriters.centos = createRewriter(mode)
+		rewriters.Centos = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_ALPINE:
-		rewriters.alpine = createRewriter(mode)
+		rewriters.Alpine = createRewriter(mode)
 	default:
-		rewriters.ubuntu = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU)
-		rewriters.ubuntuPorts = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
-		rewriters.debian = createRewriter(define.TYPE_LINUX_DISTROS_DEBIAN)
-		rewriters.centos = createRewriter(define.TYPE_LINUX_DISTROS_CENTOS)
-		rewriters.alpine = createRewriter(define.TYPE_LINUX_DISTROS_ALPINE)
+		rewriters.Ubuntu = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU)
+		rewriters.UbuntuPorts = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
+		rewriters.Debian = createRewriter(define.TYPE_LINUX_DISTROS_DEBIAN)
+		rewriters.Centos = createRewriter(define.TYPE_LINUX_DISTROS_CENTOS)
+		rewriters.Alpine = createRewriter(define.TYPE_LINUX_DISTROS_ALPINE)
 	}
 
 	return rewriters
@@ -131,21 +131,21 @@ func GetRewriteRulesByMode(mode int) []define.Rule {
 
 // RewriteRequestByMode rewrites the request URL based on the mode
 func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
-	rewriters.mu.RLock()
-	defer rewriters.mu.RUnlock()
+	rewriters.Mu.RLock()
+	defer rewriters.Mu.RUnlock()
 
-	var rewriter *URLRewriter
+	rewriter := &URLRewriter{}
 	switch mode {
 	case define.TYPE_LINUX_DISTROS_UBUNTU:
-		rewriter = rewriters.ubuntu
+		rewriter = rewriters.Ubuntu
 	case define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		rewriter = rewriters.ubuntuPorts
+		rewriter = rewriters.UbuntuPorts
 	case define.TYPE_LINUX_DISTROS_DEBIAN:
-		rewriter = rewriters.debian
+		rewriter = rewriters.Debian
 	case define.TYPE_LINUX_DISTROS_CENTOS:
-		rewriter = rewriters.centos
+		rewriter = rewriters.Centos
 	case define.TYPE_LINUX_DISTROS_ALPINE:
-		rewriter = rewriters.alpine
+		rewriter = rewriters.Alpine
 	}
 
 	if rewriter == nil || rewriter.mirror == nil || rewriter.pattern == nil {
