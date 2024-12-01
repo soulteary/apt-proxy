@@ -1,6 +1,6 @@
-version: "3"
-services:
+name: apt-cache
 
+services:
   apt-proxy:
     image: soulteary/apt-proxy
     restart: always
