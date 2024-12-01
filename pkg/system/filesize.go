@@ -9,10 +9,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func DiskAvailable() (int64, error) {
+func DiskAvailable() (uint64, error) {
 	var stat unix.Statfs_t
 	wd, err := os.Getwd()
-
 	if err != nil {
 		return 0, err
 	}
@@ -22,11 +21,11 @@ func DiskAvailable() (int64, error) {
 		return 0, err
 	}
 
-	return int64(stat.Bavail * uint64(stat.Bsize)), nil
+	return uint64(stat.Bavail) * uint64(stat.Bsize), nil
 }
 
-// https://stackoverflow.com/questions/32482673/how-to-get-directory-total-size
-func DirSize(path string) (int64, error) {
+// uint64 ver https://stackoverflow.com/questions/32482673/how-to-get-directory-total-size
+func DirSize(path string) (uint64, error) {
 	var size int64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -37,7 +36,7 @@ func DirSize(path string) (int64, error) {
 		}
 		return err
 	})
-	return size, err
+	return uint64(size), err
 }
 
 // https://hakk.dev/docs/golang-convert-file-size-human-readable/
@@ -54,13 +53,13 @@ func fileSizeRound(val float64, roundOn float64, places int) float64 {
 	return round / pow
 }
 
-// https://programming.guide/go/formatting-byte-size-to-human-readable-format.html
-func ByteCountDecimal(b int64) string {
+// uint64 ver https://programming.guide/go/formatting-byte-size-to-human-readable-format.html
+func ByteCountDecimal(b uint64) string {
 	const unit = 1000
 	if b < unit {
 		return fmt.Sprintf("%d B", b)
 	}
-	div, exp := int64(unit), 0
+	div, exp := uint64(unit), 0
 	for n := b / unit; n >= unit; n /= unit {
 		div *= unit
 		exp++

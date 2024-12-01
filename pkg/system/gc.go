@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-func GetMemoryUsageAndGoroutine() (int64, string) {
+func GetMemoryUsageAndGoroutine() (uint64, string) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	return int64(m.Alloc), strconv.Itoa(runtime.NumGoroutine())
+	return m.Alloc, strconv.Itoa(runtime.NumGoroutine())
 }
 
 func Stats(logPrint bool) string {
