@@ -37,6 +37,8 @@ Simply run the binary:
 2022/06/12 16:15:41 proxy listening on 0.0.0.0:3142
 ```
 
+## Ubuntu / Debian Support
+
 To use the proxy with `apt-get` commands, prefix them with the proxy settings:
 
 ```bash
