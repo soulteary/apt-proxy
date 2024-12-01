@@ -10,7 +10,7 @@ import (
 
 	Define "github.com/soulteary/apt-proxy/define"
 	Rewriter "github.com/soulteary/apt-proxy/internal/rewriter"
-	State "github.com/soulteary/apt-proxy/internal/state"
+	State "github.com/soulteary/apt-proxy/state"
 )
 
 var rewriter *Rewriter.URLRewriters

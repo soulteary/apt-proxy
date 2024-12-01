@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/soulteary/apt-proxy/define"
-	"github.com/soulteary/apt-proxy/internal/state"
+	"github.com/soulteary/apt-proxy/state"
 )
 
 // defaults holds all default configuration values

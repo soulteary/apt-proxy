@@ -188,7 +188,7 @@ ok  	github.com/soulteary/apt-proxy/internal/define	0.258s	coverage: 94.1% of st
 ok  	github.com/soulteary/apt-proxy/internal/mirrors	1.852s	coverage: 72.6% of statements
 ok  	github.com/soulteary/apt-proxy/internal/rewriter	6.155s	coverage: 69.8% of statements
 ok  	github.com/soulteary/apt-proxy/internal/server	0.649s	coverage: 34.1% of statements
-ok  	github.com/soulteary/apt-proxy/internal/state	0.348s	coverage: 100.0% of statements
+ok  	github.com/soulteary/apt-proxy/state	0.348s	coverage: 100.0% of statements
 ok  	github.com/soulteary/apt-proxy/pkg/httpcache	2.162s	coverage: 82.5% of statements
 ?   	github.com/soulteary/apt-proxy/pkg/httplog	[no test files]
 ok  	github.com/soulteary/apt-proxy/pkg/stream.v1	0.651s	coverage: 100.0% of statements

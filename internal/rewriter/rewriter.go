@@ -9,7 +9,7 @@ import (
 	Define "github.com/soulteary/apt-proxy/define"
 	Benchmark "github.com/soulteary/apt-proxy/internal/benchmark"
 	Mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
-	State "github.com/soulteary/apt-proxy/internal/state"
+	State "github.com/soulteary/apt-proxy/state"
 )
 
 type URLRewriters struct {
