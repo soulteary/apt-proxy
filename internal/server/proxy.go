@@ -65,6 +65,19 @@ func (ap *AptProxy) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		if Define.UBUNTU_PORTS_HOST_PATTERN.MatchString(r.URL.Path) {
+			rule, match := Rewriter.MatchingRule(r.URL.Path, Define.UBUNTU_PORTS_DEFAULT_CACHE_RULES)
+			if match {
+				r.Header.Del("Cache-Control")
+				if rule.Rewrite {
+					before := r.URL.String()
+					Rewriter.RewriteRequestByMode(r, rewriter, rule.OS)
+					log.Printf("rewrote %q to %q", before, r.URL.String())
+					r.Host = r.URL.Host
+				}
+			}
+		}
+
 		if Define.DEBIAN_HOST_PATTERN.MatchString(r.URL.Path) {
 			rule, match := Rewriter.MatchingRule(r.URL.Path, Define.DEBIAN_DEFAULT_CACHE_RULES)
 			if match {

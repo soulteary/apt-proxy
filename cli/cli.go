@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/soulteary/apt-proxy/define"
 	"github.com/soulteary/apt-proxy/internal/state"
@@ -10,15 +11,16 @@ import (
 
 // defaults holds all default configuration values
 type defaults struct {
-	Host         string
-	Port         string
-	CacheDir     string
-	UbuntuMirror string
-	DebianMirror string
-	CentOSMirror string
-	AlpineMirror string
-	ModeName     string
-	Debug        bool
+	Host              string
+	Port              string
+	CacheDir          string
+	UbuntuMirror      string
+	UbuntuPortsMirror string
+	DebianMirror      string
+	CentOSMirror      string
+	AlpineMirror      string
+	ModeName          string
+	Debug             bool
 }
 
 var (
@@ -27,24 +29,26 @@ var (
 
 	// defaultConfig holds default configuration values
 	defaultConfig = defaults{
-		Host:         "0.0.0.0",
-		Port:         "3142",
-		CacheDir:     "./.aptcache",
-		UbuntuMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-		DebianMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/debian/"
-		CentOSMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/centos/"
-		AlpineMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/alpine/"
-		ModeName:     define.LINUX_ALL_DISTROS,
-		Debug:        false,
+		Host:              "0.0.0.0",
+		Port:              "3142",
+		CacheDir:          "./.aptcache",
+		UbuntuMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+		UbuntuPortsMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/"
+		DebianMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/debian/"
+		CentOSMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/centos/"
+		AlpineMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/alpine/"
+		ModeName:          define.LINUX_ALL_DISTROS,
+		Debug:             false,
 	}
 
 	// validModes maps mode strings to their corresponding integer values
 	validModes = map[string]int{
-		define.LINUX_DISTROS_UBUNTU: define.TYPE_LINUX_DISTROS_UBUNTU,
-		define.LINUX_DISTROS_DEBIAN: define.TYPE_LINUX_DISTROS_DEBIAN,
-		define.LINUX_DISTROS_CENTOS: define.TYPE_LINUX_DISTROS_CENTOS,
-		define.LINUX_DISTROS_ALPINE: define.TYPE_LINUX_DISTROS_ALPINE,
-		define.LINUX_ALL_DISTROS:    define.TYPE_LINUX_ALL_DISTROS,
+		define.LINUX_DISTROS_UBUNTU:       define.TYPE_LINUX_DISTROS_UBUNTU,
+		define.LINUX_DISTROS_UBUNTU_PORTS: define.TYPE_LINUX_DISTROS_UBUNTU_PORTS,
+		define.LINUX_DISTROS_DEBIAN:       define.TYPE_LINUX_DISTROS_DEBIAN,
+		define.LINUX_DISTROS_CENTOS:       define.TYPE_LINUX_DISTROS_CENTOS,
+		define.LINUX_DISTROS_ALPINE:       define.TYPE_LINUX_DISTROS_ALPINE,
+		define.LINUX_ALL_DISTROS:          define.TYPE_LINUX_ALL_DISTROS,
 	}
 )
 
@@ -71,15 +75,16 @@ func ParseFlags() (*Config, error) {
 	flags.StringVar(&host, "host", defaultConfig.Host, "the host to bind to")
 	flags.StringVar(&port, "port", defaultConfig.Port, "the port to bind to")
 	flags.StringVar(&userMode, "mode", defaultConfig.ModeName,
-		"select the mode of system to cache: all / ubuntu / debian / centos / alpine")
+		"select the mode of system to cache: all / ubuntu / ubuntu-ports / debian / centos / alpine")
 	flags.BoolVar(&config.Debug, "debug", defaultConfig.Debug, "whether to output debugging logging")
 	flags.StringVar(&config.CacheDir, "cachedir", defaultConfig.CacheDir, "the dir to store cache data in")
 	flags.StringVar(&config.Mirrors.Ubuntu, "ubuntu", defaultConfig.UbuntuMirror, "the ubuntu mirror for fetching packages")
+	flags.StringVar(&config.Mirrors.UbuntuPorts, "ubuntu-ports", defaultConfig.UbuntuPortsMirror, "the ubuntu ports mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.Debian, "debian", defaultConfig.DebianMirror, "the debian mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.CentOS, "centos", defaultConfig.CentOSMirror, "the centos mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.Alpine, "alpine", defaultConfig.AlpineMirror, "the alpine mirror for fetching packages")
 
-	if err := flags.Parse(flag.Args()); err != nil {
+	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
 	}
 
@@ -107,6 +112,7 @@ func updateGlobalState(config *Config) error {
 	state.SetProxyMode(config.Mode)
 
 	state.SetUbuntuMirror(config.Mirrors.Ubuntu)
+	state.SetUbuntuPortsMirror(config.Mirrors.UbuntuPorts)
 	state.SetDebianMirror(config.Mirrors.Debian)
 	state.SetCentOSMirror(config.Mirrors.CentOS)
 	state.SetAlpineMirror(config.Mirrors.Alpine)

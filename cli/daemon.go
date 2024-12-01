@@ -26,10 +26,11 @@ type Config struct {
 
 // MirrorConfig holds mirror-specific configuration
 type MirrorConfig struct {
-	Ubuntu string
-	Debian string
-	CentOS string
-	Alpine string
+	Ubuntu      string
+	UbuntuPorts string
+	Debian      string
+	CentOS      string
+	Alpine      string
 }
 
 // Server represents the main application server
@@ -78,9 +79,9 @@ func (s *Server) initialize() error {
 	s.server = &http.Server{
 		Addr:              s.config.Listen,
 		Handler:           s.proxy,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       5 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		ReadHeaderTimeout: 50 * time.Second,
+		ReadTimeout:       50 * time.Second,
+		WriteTimeout:      100 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 
@@ -153,10 +154,11 @@ func Daemon(flags *Config) {
 		Mode:     flags.Mode,
 		Listen:   flags.Listen,
 		Mirrors: MirrorConfig{
-			Ubuntu: flags.Mirrors.Ubuntu,
-			Debian: flags.Mirrors.Debian,
-			CentOS: flags.Mirrors.CentOS,
-			Alpine: flags.Mirrors.Alpine,
+			Ubuntu:      flags.Mirrors.Ubuntu,
+			UbuntuPorts: flags.Mirrors.UbuntuPorts,
+			Debian:      flags.Mirrors.Debian,
+			CentOS:      flags.Mirrors.CentOS,
+			Alpine:      flags.Mirrors.Alpine,
 		},
 	}
 
