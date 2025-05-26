@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	Server "github.com/soulteary/apt-proxy/internal/server"
+	Server "github.com/apham0001/apt-proxy/internal/server"
 )
 
 func TestGetBaseTemplate(t *testing.T) {

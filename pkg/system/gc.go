@@ -1,6 +1,6 @@
 package system
 
-// https://github.com/soulteary/hosts-blackhole/blob/main/pkg/system/gc.go
+// https://github.com/apham0001/hosts-blackhole/blob/main/pkg/system/gc.go
 
 import (
 	"fmt"

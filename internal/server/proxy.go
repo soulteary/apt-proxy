@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"time"
 
-	Define "github.com/soulteary/apt-proxy/define"
-	Rewriter "github.com/soulteary/apt-proxy/internal/rewriter"
-	State "github.com/soulteary/apt-proxy/state"
+	Define "github.com/apham0001/apt-proxy/define"
+	Rewriter "github.com/apham0001/apt-proxy/internal/rewriter"
+	State "github.com/apham0001/apt-proxy/state"
 )
 
 var hostPatternMap = map[*regexp.Regexp][]Define.Rule{

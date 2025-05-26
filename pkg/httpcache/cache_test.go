@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/soulteary/apt-proxy/pkg/httpcache"
+	"github.com/apham0001/apt-proxy/pkg/httpcache"
 )
 
 func TestSaveResource(t *testing.T) {

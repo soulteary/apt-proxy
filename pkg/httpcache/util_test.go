@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/soulteary/apt-proxy/pkg/httpcache"
+	"github.com/apham0001/apt-proxy/pkg/httpcache"
 )
 
 func newRequest(method, url string, h ...string) *http.Request {

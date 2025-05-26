@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/soulteary/apt-proxy/cli"
+	"github.com/apham0001/apt-proxy/cli"
 )
 
 func main() {

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/soulteary/apt-proxy/define"
-	"github.com/soulteary/apt-proxy/state"
+	"github.com/apham0001/apt-proxy/define"
+	"github.com/apham0001/apt-proxy/state"
 )
 
 // defaults holds all default configuration values

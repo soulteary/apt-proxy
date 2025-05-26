@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	Server "github.com/soulteary/apt-proxy/internal/server"
+	Server "github.com/apham0001/apt-proxy/internal/server"
 )
 
 func TestIsInternalUrls(t *testing.T) {

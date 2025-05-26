@@ -7,10 +7,10 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/soulteary/apt-proxy/define"
-	"github.com/soulteary/apt-proxy/internal/benchmarks"
-	"github.com/soulteary/apt-proxy/internal/mirrors"
-	"github.com/soulteary/apt-proxy/state"
+	"github.com/apham0001/apt-proxy/define"
+	"github.com/apham0001/apt-proxy/internal/benchmarks"
+	"github.com/apham0001/apt-proxy/internal/mirrors"
+	"github.com/apham0001/apt-proxy/state"
 )
 
 // URLRewriter holds the mirror and pattern for URL rewriting

@@ -4,8 +4,8 @@ import (
 	"net/url"
 	"sync"
 
-	Define "github.com/soulteary/apt-proxy/define"
-	Mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
+	Define "github.com/apham0001/apt-proxy/define"
+	Mirrors "github.com/apham0001/apt-proxy/internal/mirrors"
 )
 
 var (

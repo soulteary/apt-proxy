@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soulteary/apt-proxy/pkg/httpcache"
-	"github.com/soulteary/apt-proxy/pkg/httplog"
+	"github.com/apham0001/apt-proxy/pkg/httpcache"
+	"github.com/apham0001/apt-proxy/pkg/httplog"
 )
 
 func testSetup() (*client, *upstreamServer) {

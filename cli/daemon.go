@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/soulteary/apt-proxy/internal/server"
-	"github.com/soulteary/apt-proxy/pkg/httpcache"
-	"github.com/soulteary/apt-proxy/pkg/httplog"
+	"github.com/apham0001/apt-proxy/internal/server"
+	"github.com/apham0001/apt-proxy/pkg/httpcache"
+	"github.com/apham0001/apt-proxy/pkg/httplog"
 )
 
 // Config holds all application configuration

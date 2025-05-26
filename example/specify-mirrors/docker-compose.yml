@@ -2,7 +2,7 @@ name: apt-cache
 
 services:
   apt-proxy:
-    image: soulteary/apt-proxy
+    image: apham0001/apt-proxy
     restart: always
     command: --ubuntu=cn:tsinghua --debian=cn:tsinghua
     environment:

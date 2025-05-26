@@ -1,6 +1,6 @@
 # APT Proxy
 
-[![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![goreportcard](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/soulteary/apt-proxy) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
+[![Security Scan](https://github.com/apham0001/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/apham0001/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/apham0001/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/apham0001/apt-proxy/actions/workflows/release.yaml) [![goreportcard](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/apham0001/apt-proxy) [![Docker Image](https://img.shields.io/docker/pulls/apham0001/apt-proxy.svg)](https://hub.docker.com/r/apham0001/apt-proxy)
 
 
 <p style="text-align: center;">
@@ -136,7 +136,7 @@ http_proxy=http://host.docker.internal:3142 apt-get -o Debug::pkgProblemResolver
 Deploy with a single command:
 
 ```bash
-docker run -d --name=apt-proxy -p 3142:3142 soulteary/apt-proxy
+docker run -d --name=apt-proxy -p 3142:3142 apham0001/apt-proxy
 ```
 
 ## Configuration Options
@@ -189,7 +189,7 @@ http_proxy=http://192.168.33.1:3142 apt-get -o Debug::pkgProblemResolver=true -o
 
 ## License
 
-This project is licensed under the [Apache License 2.0](https://github.com/soulteary/apt-proxy/blob/master/LICENSE).
+This project is licensed under the [Apache License 2.0](https://github.com/apham0001/apt-proxy/blob/master/LICENSE).
 
 ## Dependencies
 

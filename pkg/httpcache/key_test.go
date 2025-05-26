@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/soulteary/apt-proxy/pkg/httpcache"
+	"github.com/apham0001/apt-proxy/pkg/httpcache"
 )
 
 func mustParseUrl(u string) *url.URL {

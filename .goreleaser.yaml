@@ -5,7 +5,7 @@ builds:
       env:
         - CGO_ENABLED=0
       ldflags:
-        - -w -s -X "github.com/soulteary/apt-proxy/cli/cli.Version={{ .Tag }}"
+        - -w -s -X "github.com/apham0001/apt-proxy/cli/cli.Version={{ .Tag }}"
     id: macos
     goos: [ darwin ]
     goarch: [ amd64, arm64 ]
@@ -21,8 +21,8 @@ builds:
 dockers:
 
   - image_templates:
-      - "soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
-      - "soulteary/apt-proxy:linux-amd64"
+      - "apham0001/apt-proxy:linux-amd64-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-amd64"
     dockerfile: docker/Dockerfile.gorelease
     use: buildx
     goarch: amd64
@@ -31,16 +31,16 @@ dockers:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
       - "--label=org.opencontainers.image.description={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.url=https://github.com/soulteary/apt-proxy"
-      - "--label=org.opencontainers.image.source=https://github.com/soulteary/apt-proxy"
+      - "--label=org.opencontainers.image.url=https://github.com/apham0001/apt-proxy"
+      - "--label=org.opencontainers.image.source=https://github.com/apham0001/apt-proxy"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.licenses=Apache-v2"
 
   - image_templates:
-      - "soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
-      - "soulteary/apt-proxy:linux-arm64"
+      - "apham0001/apt-proxy:linux-arm64-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-arm64"
     dockerfile: docker/Dockerfile.gorelease
     use: buildx
     goos: linux
@@ -51,16 +51,16 @@ dockers:
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
       - "--label=org.opencontainers.image.description={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.url=https://github.com/soulteary/apt-proxy"
-      - "--label=org.opencontainers.image.source=https://github.com/soulteary/apt-proxy"
+      - "--label=org.opencontainers.image.url=https://github.com/apham0001/apt-proxy"
+      - "--label=org.opencontainers.image.source=https://github.com/apham0001/apt-proxy"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.licenses=Apache-v2"
 
   - image_templates:
-      - "soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
-      - "soulteary/apt-proxy:linux-armv7"
+      - "apham0001/apt-proxy:linux-armv7-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-armv7"
     dockerfile: docker/Dockerfile.gorelease
     use: buildx
     goos: linux
@@ -71,24 +71,24 @@ dockers:
       - "--platform=linux/arm/v7"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
       - "--label=org.opencontainers.image.description={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.url=https://github.com/soulteary/apt-proxy"
-      - "--label=org.opencontainers.image.source=https://github.com/soulteary/apt-proxy"
+      - "--label=org.opencontainers.image.url=https://github.com/apham0001/apt-proxy"
+      - "--label=org.opencontainers.image.source=https://github.com/apham0001/apt-proxy"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.licenses=Apache-v2"
 
 docker_manifests:
-  - name_template: "soulteary/apt-proxy:{{ .Tag }}"
+  - name_template: "apham0001/apt-proxy:{{ .Tag }}"
     image_templates:
-      - "soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
-      - "soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
-      - "soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-amd64-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-arm64-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-armv7-{{ .Tag }}"
     skip_push: "false"
 
-  - name_template: "soulteary/apt-proxy:latest"
+  - name_template: "apham0001/apt-proxy:latest"
     image_templates:
-      - "soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
-      - "soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
-      - "soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-amd64-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-arm64-{{ .Tag }}"
+      - "apham0001/apt-proxy:linux-armv7-{{ .Tag }}"
     skip_push: "false"

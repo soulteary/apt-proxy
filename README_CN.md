@@ -1,6 +1,6 @@
 # APT Proxy / 轻量 APT 加速工具
 
-[![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![goreportcard](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/soulteary/apt-proxy) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
+[![Security Scan](https://github.com/apham0001/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/apham0001/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/apham0001/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/apham0001/apt-proxy/actions/workflows/release.yaml) [![goreportcard](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/apham0001/apt-proxy) [![Docker Image](https://img.shields.io/docker/pulls/apham0001/apt-proxy.svg)](https://hub.docker.com/r/apham0001/apt-proxy)
 
 
 <p style="text-align: center;">
@@ -136,7 +136,7 @@ http_proxy=http://host.docker.internal:3142 apt-get -o Debug::pkgProblemResolver
 使用单个命令部署：
 
 ```bash
-docker run -d --name=apt-proxy -p 3142:3142 soulteary/apt-proxy
+docker run -d --name=apt-proxy -p 3142:3142 apham0001/apt-proxy
 ```
 
 ## 配置选项
@@ -192,7 +192,7 @@ http_proxy=http://192.168.33.1:3142 apt-get -o Debug::pkgProblemResolver=true -o
 
 ## 开源协议
 
-这个项目基于 [Apache License 2.0](https://github.com/soulteary/apt-proxy/blob/master/LICENSE)。
+这个项目基于 [Apache License 2.0](https://github.com/apham0001/apt-proxy/blob/master/LICENSE)。
 
 ## 依赖组件
 

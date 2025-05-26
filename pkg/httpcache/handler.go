@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soulteary/apt-proxy/pkg/stream.v1"
+	"github.com/apham0001/apt-proxy/pkg/stream.v1"
 )
 
 const (
