@@ -32,6 +32,8 @@ type MirrorConfig struct {
 	DebianSecurity	string
 	CentOS      	string
 	Alpine      	string
+	Rocky			string
+	Fedora			string
 }
 
 // Server represents the main application server
@@ -161,6 +163,8 @@ func Daemon(flags *Config) {
 			DebianSecurity:	flags.Mirrors.DebianSecurity,
 			CentOS:      	flags.Mirrors.CentOS,
 			Alpine:      	flags.Mirrors.Alpine,
+			Rocky:			flags.Mirrors.Rocky,
+			Fedora:			flags.Mirrors.Fedora,
 		},
 	}
 

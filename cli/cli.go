@@ -20,6 +20,8 @@ type defaults struct {
 	DebianSecurityMirror	string
 	CentOSMirror      		string
 	AlpineMirror      		string
+	RockyMirror      		string
+	FedoraMirror     		string
 	ModeName          		string
 	Debug             		bool
 }
@@ -39,6 +41,8 @@ var (
 		DebianSecurityMirror:	"", // "https://mirrors.tuna.tsinghua.edu.cn/debian-security/"
 		CentOSMirror:      		"", // "https://mirrors.tuna.tsinghua.edu.cn/centos/"
 		AlpineMirror:      		"", // "https://mirrors.tuna.tsinghua.edu.cn/alpine/"
+		RockyMirror:      		"", // "https://mirrors.tuna.tsinghua.edu.cn/rocky/"
+		FedoraMirror:     		"", // "https://mirrors.tuna.tsinghua.edu.cn/fedora/"
 		ModeName:          		define.LINUX_ALL_DISTROS,
 		Debug:             		false,
 	}
@@ -51,6 +55,8 @@ var (
 		define.LINUX_DISTROS_DEBIAN_SECURITY:	define.TYPE_LINUX_DISTROS_DEBIAN_SECURITY,
 		define.LINUX_DISTROS_CENTOS:       		define.TYPE_LINUX_DISTROS_CENTOS,
 		define.LINUX_DISTROS_ALPINE:       		define.TYPE_LINUX_DISTROS_ALPINE,
+		define.LINUX_DISTROS_ROCKY:				define.TYPE_LINUX_DISTROS_ROCKY,
+		define.LINUX_DISTROS_FEDORA:			define.TYPE_LINUX_DISTROS_FEDORA,
 		define.LINUX_ALL_DISTROS:          		define.TYPE_LINUX_ALL_DISTROS,
 	}
 )
@@ -78,7 +84,7 @@ func ParseFlags() (*Config, error) {
 	flags.StringVar(&host, "host", defaultConfig.Host, "the host to bind to")
 	flags.StringVar(&port, "port", defaultConfig.Port, "the port to bind to")
 	flags.StringVar(&userMode, "mode", defaultConfig.ModeName,
-		"select the mode of system to cache: all / ubuntu / ubuntu-ports / debian / centos / alpine")
+		"select the mode of system to cache: all / ubuntu / ubuntu-ports / debian / debian-security / centos / alpine / rocky / fedora")
 	flags.BoolVar(&config.Debug, "debug", defaultConfig.Debug, "whether to output debugging logging")
 	flags.StringVar(&config.CacheDir, "cachedir", defaultConfig.CacheDir, "the dir to store cache data in")
 	flags.StringVar(&config.Mirrors.Ubuntu, "ubuntu", defaultConfig.UbuntuMirror, "the ubuntu mirror for fetching packages")
@@ -87,6 +93,8 @@ func ParseFlags() (*Config, error) {
 	flags.StringVar(&config.Mirrors.DebianSecurity, "debian-security", defaultConfig.DebianSecurityMirror, "the debian security mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.CentOS, "centos", defaultConfig.CentOSMirror, "the centos mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.Alpine, "alpine", defaultConfig.AlpineMirror, "the alpine mirror for fetching packages")
+	flags.StringVar(&config.Mirrors.Rocky, "rocky", defaultConfig.RockyMirror, "the rocky mirror for fetching packages")
+	flags.StringVar(&config.Mirrors.Fedora, "fedora", defaultConfig.FedoraMirror, "the fedora mirror for fetching packages")
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
@@ -121,6 +129,8 @@ func updateGlobalState(config *Config) error {
 	state.SetDebianSecurityMirror(config.Mirrors.DebianSecurity)
 	state.SetCentOSMirror(config.Mirrors.CentOS)
 	state.SetAlpineMirror(config.Mirrors.Alpine)
+	state.SetRockyMirror(config.Mirrors.Rocky)
+	state.SetFedoraMirror(config.Mirrors.Fedora)
 
 	return nil
 }

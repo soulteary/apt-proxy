@@ -83,6 +83,8 @@ var (
 	DebianMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_DEBIAN)
 	DebianSecurityMirror 	= NewMirrorState(Define.TYPE_LINUX_DISTROS_DEBIAN_SECURITY)
 	CentOSMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_CENTOS)
+	RockyMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_ROCKY)
+	FedoraMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_FEDORA)
 	AlpineMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_ALPINE)
 )
 
@@ -106,6 +108,14 @@ func ResetDebianSecurityMirror()           { DebianSecurityMirror.Reset() }
 func SetCentOSMirror(input string) { CentOSMirror.Set(input) }
 func GetCentOSMirror() *url.URL    { return CentOSMirror.Get() }
 func ResetCentOSMirror()           { CentOSMirror.Reset() }
+
+func SetRockyMirror(input string) { RockyMirror.Set(input) }
+func GetRockyMirror() *url.URL    { return RockyMirror.Get() }
+func ResetRockyMirror()           { RockyMirror.Reset() }
+
+func SetFedoraMirror(input string) { FedoraMirror.Set(input) }
+func GetFedoraMirror() *url.URL    { return FedoraMirror.Get() }
+func ResetFedoraMirror()           { FedoraMirror.Reset() }
 
 func SetAlpineMirror(input string) { AlpineMirror.Set(input) }
 func GetAlpineMirror() *url.URL    { return AlpineMirror.Get() }

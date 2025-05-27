@@ -17,6 +17,8 @@ func GenerateMirrorListByPredefined(osType int) (mirrors []string) {
 		src = append(src, Define.BUILDIN_DEBIAN_SECURITY_MIRRORS...)
 		src = append(src, Define.BUILDIN_CENTOS_MIRRORS...)
 		src = append(src, Define.BUILDIN_ALPINE_MIRRORS...)
+		src = append(src, Define.BUILDIN_ROCKY_MIRRORS...)
+		src = append(src, Define.BUILDIN_FEDORA_MIRRORS...)
 	case Define.TYPE_LINUX_DISTROS_UBUNTU:
 		src = Define.BUILDIN_UBUNTU_MIRRORS
 	case Define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
@@ -29,6 +31,10 @@ func GenerateMirrorListByPredefined(osType int) (mirrors []string) {
 		src = Define.BUILDIN_CENTOS_MIRRORS
 	case Define.TYPE_LINUX_DISTROS_ALPINE:
 		src = Define.BUILDIN_ALPINE_MIRRORS
+	case Define.TYPE_LINUX_DISTROS_ROCKY:
+		src = Define.BUILDIN_ROCKY_MIRRORS
+	case Define.TYPE_LINUX_DISTROS_FEDORA:
+		src = Define.BUILDIN_FEDORA_MIRRORS
 	}
 
 	for _, mirror := range src {
@@ -43,6 +49,8 @@ var BUILDIN_DEBIAN_MIRRORS           = GenerateMirrorListByPredefined(Define.TYP
 var BUILDIN_DEBIAN_SECURITY_MIRRORS  = GenerateMirrorListByPredefined(Define.TYPE_LINUX_DISTROS_DEBIAN_SECURITY)
 var BUILDIN_CENTOS_MIRRORS           = GenerateMirrorListByPredefined(Define.TYPE_LINUX_DISTROS_CENTOS)
 var BUILDIN_ALPINE_MIRRORS           = GenerateMirrorListByPredefined(Define.TYPE_LINUX_DISTROS_ALPINE)
+var BUILDIN_ROCKY_MIRRORS            = GenerateMirrorListByPredefined(Define.TYPE_LINUX_DISTROS_ROCKY)
+var BUILDIN_FEDORA_MIRRORS           = GenerateMirrorListByPredefined(Define.TYPE_LINUX_DISTROS_FEDORA)
 
 func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 	if mode == Define.TYPE_LINUX_DISTROS_UBUNTU {
@@ -82,12 +90,22 @@ func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 		return BUILDIN_ALPINE_MIRRORS
 	}
 
+	if mode == Define.TYPE_LINUX_DISTROS_ROCKY {
+		return BUILDIN_ROCKY_MIRRORS
+	}
+
+	if mode == Define.TYPE_LINUX_DISTROS_FEDORA {
+		return BUILDIN_FEDORA_MIRRORS
+	}
+
 	mirrors = append(mirrors, BUILDIN_UBUNTU_MIRRORS...)
 	mirrors = append(mirrors, BUILDIN_UBUNTU_PORTS_MIRRORS...)
 	mirrors = append(mirrors, BUILDIN_DEBIAN_MIRRORS...)
 	mirrors = append(mirrors, BUILDIN_DEBIAN_SECURITY_MIRRORS...)
 	mirrors = append(mirrors, BUILDIN_CENTOS_MIRRORS...)
 	mirrors = append(mirrors, BUILDIN_ALPINE_MIRRORS...)
+	mirrors = append(mirrors, BUILDIN_ROCKY_MIRRORS...)
+	mirrors = append(mirrors, BUILDIN_FEDORA_MIRRORS...)
 	return mirrors
 }
 
@@ -145,6 +163,18 @@ func GetMirrorURLByAliases(osType int, alias string) string {
 				return GetFullMirrorURL(mirror)
 			}
 		}
+	case Define.TYPE_LINUX_DISTROS_ROCKY:
+		for _, mirror := range Define.BUILDIN_ROCKY_MIRRORS {
+			if mirror.Alias == alias {
+				return GetFullMirrorURL(mirror)
+			}
+		}
+	case Define.TYPE_LINUX_DISTROS_FEDORA:
+		for _, mirror := range Define.BUILDIN_FEDORA_MIRRORS {
+			if mirror.Alias == alias {
+				return GetFullMirrorURL(mirror)
+			}
+		}
 	}
 	return ""
 }
@@ -163,6 +193,10 @@ func GetPredefinedConfiguration(proxyMode int) (string, *regexp.Regexp) {
 		return Define.CENTOS_BENCHMAKR_URL, Define.CENTOS_HOST_PATTERN
 	case Define.TYPE_LINUX_DISTROS_ALPINE:
 		return Define.ALPINE_BENCHMAKR_URL, Define.ALPINE_HOST_PATTERN
+	case Define.TYPE_LINUX_DISTROS_ROCKY:
+		return Define.ROCKY_BENCHMAKR_URL, Define.ROCKY_HOST_PATTERN
+	case Define.TYPE_LINUX_DISTROS_FEDORA:
+		return Define.FEDORA_BENCHMAKR_URL, Define.FEDORA_HOST_PATTERN
 	}
 	return "", nil
 }

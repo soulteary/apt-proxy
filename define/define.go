@@ -13,6 +13,8 @@ const (
 	LINUX_DISTROS_DEBIAN       		string = "debian"
 	LINUX_DISTROS_DEBIAN_SECURITY	string = "debian-security"
 	LINUX_DISTROS_CENTOS       		string = "centos"
+	LINUX_DISTROS_ROCKY        		string = "rocky"
+	LINUX_DISTROS_FEDORA       		string = "fedora"
 	LINUX_DISTROS_ALPINE       		string = "alpine"
 )
 
@@ -23,7 +25,9 @@ const (
 	TYPE_LINUX_DISTROS_DEBIAN       	int = 3
 	TYPE_LINUX_DISTROS_DEBIAN_SECURITY	int = 4
 	TYPE_LINUX_DISTROS_CENTOS       	int = 5
-	TYPE_LINUX_DISTROS_ALPINE       	int = 6
+	TYPE_LINUX_DISTROS_ROCKY        	int = 7
+	TYPE_LINUX_DISTROS_FEDORA       	int = 8
+	TYPE_LINUX_DISTROS_ALPINE       	int = 9
 )
 
 type Rule struct {

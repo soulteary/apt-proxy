@@ -22,7 +22,7 @@ const (
 
 func IsInternalUrls(url string) bool {
 	u := strings.ToLower(url)
-	return !(strings.Contains(u, "/ubuntu") || strings.Contains(u, "/debian") || strings.Contains(u, "/debian-security") || strings.Contains(u, "/centos") || strings.Contains(u, "/alpine"))
+	return !(strings.Contains(u, "/ubuntu") || strings.Contains(u, "/debian") || strings.Contains(u, "/debian-security") || strings.Contains(u, "/centos") || strings.Contains(u, "/rocky") || strings.Contains(u, "/fedora") || strings.Contains(u, "/alpine"))
 }
 
 func GetInternalResType(url string) int {

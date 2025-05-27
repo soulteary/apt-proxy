@@ -27,6 +27,8 @@ type URLRewriters struct {
 	DebianSecurity *URLRewriter
 	Centos         *URLRewriter
 	Alpine         *URLRewriter
+	Rocky          *URLRewriter
+	Fedora         *URLRewriter
 	Mu             sync.RWMutex
 }
 
@@ -45,6 +47,10 @@ func getRewriterConfig(mode int) (getMirror func() *url.URL, name string) {
 		return state.GetCentOSMirror, "CentOS"
 	case define.TYPE_LINUX_DISTROS_ALPINE:
 		return state.GetAlpineMirror, "Alpine"
+	case define.TYPE_LINUX_DISTROS_ROCKY:
+		return state.GetRockyMirror, "Rocky"
+	case define.TYPE_LINUX_DISTROS_FEDORA:
+		return state.GetFedoraMirror, "Fedora"
 	default:
 		return nil, ""
 	}
@@ -99,6 +105,10 @@ func CreateNewRewriters(mode int) *URLRewriters {
 		rewriters.Centos = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_ALPINE:
 		rewriters.Alpine = createRewriter(mode)
+	case define.TYPE_LINUX_DISTROS_ROCKY:
+		rewriters.Rocky = createRewriter(mode)
+	case define.TYPE_LINUX_DISTROS_FEDORA:
+		rewriters.Fedora = createRewriter(mode)
 	default:
 		rewriters.Ubuntu = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU)
 		rewriters.UbuntuPorts = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
@@ -106,6 +116,8 @@ func CreateNewRewriters(mode int) *URLRewriters {
 		rewriters.DebianSecurity = createRewriter(define.TYPE_LINUX_DISTROS_DEBIAN_SECURITY)
 		rewriters.Centos = createRewriter(define.TYPE_LINUX_DISTROS_CENTOS)
 		rewriters.Alpine = createRewriter(define.TYPE_LINUX_DISTROS_ALPINE)
+		rewriters.Rocky = createRewriter(define.TYPE_LINUX_DISTROS_ROCKY)
+		rewriters.Fedora = createRewriter(define.TYPE_LINUX_DISTROS_FEDORA)
 	}
 
 	return rewriters
@@ -126,6 +138,10 @@ func GetRewriteRulesByMode(mode int) []define.Rule {
 		return define.CENTOS_DEFAULT_CACHE_RULES
 	case define.TYPE_LINUX_DISTROS_ALPINE:
 		return define.ALPINE_DEFAULT_CACHE_RULES
+	case define.TYPE_LINUX_DISTROS_ROCKY:
+		return define.ROCKY_DEFAULT_CACHE_RULES
+	case define.TYPE_LINUX_DISTROS_FEDORA:
+		return define.FEDORA_DEFAULT_CACHE_RULES
 	default:
 		rules := make([]define.Rule, 0)
 		rules = append(rules, define.UBUNTU_DEFAULT_CACHE_RULES...)
@@ -134,6 +150,8 @@ func GetRewriteRulesByMode(mode int) []define.Rule {
 		rules = append(rules, define.DEBIAN_SECURITY_DEFAULT_CACHE_RULES...)
 		rules = append(rules, define.CENTOS_DEFAULT_CACHE_RULES...)
 		rules = append(rules, define.ALPINE_DEFAULT_CACHE_RULES...)
+		rules = append(rules, define.ROCKY_DEFAULT_CACHE_RULES...)
+		rules = append(rules, define.FEDORA_DEFAULT_CACHE_RULES...)
 		return rules
 	}
 }
@@ -157,6 +175,10 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 		rewriter = rewriters.Centos
 	case define.TYPE_LINUX_DISTROS_ALPINE:
 		rewriter = rewriters.Alpine
+	case define.TYPE_LINUX_DISTROS_ROCKY:
+		rewriter = rewriters.Rocky
+	case define.TYPE_LINUX_DISTROS_FEDORA:
+		rewriter = rewriters.Fedora
 	}
 
 	if rewriter == nil || rewriter.mirror == nil || rewriter.pattern == nil {
