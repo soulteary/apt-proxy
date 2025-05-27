@@ -9,23 +9,15 @@ const CENTOS_BENCHMAKR_URL = "TIME"
 // https://www.centos.org/download/mirrors/ 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol
 var CENTOS_OFFICIAL_MIRRORS = []string{
-	"mirrors.bfsu.edu.cn/centos/",
-	"mirrors.cqu.edu.cn/CentOS/",
-	"http://mirrors.neusoft.edu.cn/centos/",
-	"mirrors.nju.edu.cn/centos/",
-	"mirrors.huaweicloud.com/centos/",
-	"mirror.lzu.edu.cn/centos/",
-	"http://mirrors.njupt.edu.cn/centos/",
-	"mirrors.163.com/centos/",
-	"mirrors.bupt.edu.cn/centos/",
-	"ftp.sjtu.edu.cn/centos/",
+	"http://mirror.centos.org/centos/",
+	"http://centos.mirrors.proxad.net/centos/",
+	"http://centos.mirrors.ovh.net/ftp.centos.org/",
+	"http://ftp.rezopole.net/centos/",
+	"http://mirror.ibcp.fr/pub/centos/",
 	"mirrors.tuna.tsinghua.edu.cn/centos/",
-	"mirrors.ustc.edu.cn/centos/",
 }
 
-var CENTOS_CUSTOM_MIRRORS = []string{
-	"mirrors.aliyun.com/centos/",
-}
+var CENTOS_CUSTOM_MIRRORS = []string{}
 
 var BUILDIN_CENTOS_MIRRORS = GenerateBuildInList(CENTOS_OFFICIAL_MIRRORS, CENTOS_CUSTOM_MIRRORS)
 

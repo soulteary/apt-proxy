@@ -7,21 +7,23 @@ import (
 )
 
 const (
-	LINUX_ALL_DISTROS          string = "all"
-	LINUX_DISTROS_UBUNTU       string = "ubuntu"
-	LINUX_DISTROS_UBUNTU_PORTS string = "ubuntu-ports"
-	LINUX_DISTROS_DEBIAN       string = "debian"
-	LINUX_DISTROS_CENTOS       string = "centos"
-	LINUX_DISTROS_ALPINE       string = "alpine"
+	LINUX_ALL_DISTROS          		string = "all"
+	LINUX_DISTROS_UBUNTU       		string = "ubuntu"
+	LINUX_DISTROS_UBUNTU_PORTS 		string = "ubuntu-ports"
+	LINUX_DISTROS_DEBIAN       		string = "debian"
+	LINUX_DISTROS_DEBIAN_SECURITY	string = "debian-security"
+	LINUX_DISTROS_CENTOS       		string = "centos"
+	LINUX_DISTROS_ALPINE       		string = "alpine"
 )
 
 const (
-	TYPE_LINUX_ALL_DISTROS          int = 0
-	TYPE_LINUX_DISTROS_UBUNTU       int = 1
-	TYPE_LINUX_DISTROS_UBUNTU_PORTS int = 2
-	TYPE_LINUX_DISTROS_DEBIAN       int = 3
-	TYPE_LINUX_DISTROS_CENTOS       int = 4
-	TYPE_LINUX_DISTROS_ALPINE       int = 5
+	TYPE_LINUX_ALL_DISTROS          	int = 0
+	TYPE_LINUX_DISTROS_UBUNTU       	int = 1
+	TYPE_LINUX_DISTROS_UBUNTU_PORTS 	int = 2
+	TYPE_LINUX_DISTROS_DEBIAN       	int = 3
+	TYPE_LINUX_DISTROS_DEBIAN_SECURITY	int = 4
+	TYPE_LINUX_DISTROS_CENTOS       	int = 5
+	TYPE_LINUX_DISTROS_ALPINE       	int = 6
 )
 
 type Rule struct {

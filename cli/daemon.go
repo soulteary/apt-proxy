@@ -26,11 +26,12 @@ type Config struct {
 
 // MirrorConfig holds mirror-specific configuration
 type MirrorConfig struct {
-	Ubuntu      string
-	UbuntuPorts string
-	Debian      string
-	CentOS      string
-	Alpine      string
+	Ubuntu			string
+	UbuntuPorts		string
+	Debian      	string
+	DebianSecurity	string
+	CentOS      	string
+	Alpine      	string
 }
 
 // Server represents the main application server
@@ -154,11 +155,12 @@ func Daemon(flags *Config) {
 		Mode:     flags.Mode,
 		Listen:   flags.Listen,
 		Mirrors: MirrorConfig{
-			Ubuntu:      flags.Mirrors.Ubuntu,
-			UbuntuPorts: flags.Mirrors.UbuntuPorts,
-			Debian:      flags.Mirrors.Debian,
-			CentOS:      flags.Mirrors.CentOS,
-			Alpine:      flags.Mirrors.Alpine,
+			Ubuntu:      	flags.Mirrors.Ubuntu,
+			UbuntuPorts:	flags.Mirrors.UbuntuPorts,
+			Debian:      	flags.Mirrors.Debian,
+			DebianSecurity:	flags.Mirrors.DebianSecurity,
+			CentOS:      	flags.Mirrors.CentOS,
+			Alpine:      	flags.Mirrors.Alpine,
 		},
 	}
 

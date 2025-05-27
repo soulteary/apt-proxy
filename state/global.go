@@ -78,11 +78,12 @@ func (m *MirrorState) Reset() {
 
 var (
 	// Mirror states for different distributions
-	UbuntuMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_UBUNTU)
-	UbuntuPortsMirror = NewMirrorState(Define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
-	DebianMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_DEBIAN)
-	CentOSMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_CENTOS)
-	AlpineMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_ALPINE)
+	UbuntuMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_UBUNTU)
+	UbuntuPortsMirror 		= NewMirrorState(Define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
+	DebianMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_DEBIAN)
+	DebianSecurityMirror 	= NewMirrorState(Define.TYPE_LINUX_DISTROS_DEBIAN_SECURITY)
+	CentOSMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_CENTOS)
+	AlpineMirror      		= NewMirrorState(Define.TYPE_LINUX_DISTROS_ALPINE)
 )
 
 // Convenience functions for backward compatibility
@@ -97,6 +98,10 @@ func ResetUbuntuPortsMirror()           { UbuntuPortsMirror.Reset() }
 func SetDebianMirror(input string) { DebianMirror.Set(input) }
 func GetDebianMirror() *url.URL    { return DebianMirror.Get() }
 func ResetDebianMirror()           { DebianMirror.Reset() }
+
+func SetDebianSecurityMirror(input string) { DebianSecurityMirror.Set(input) }
+func GetDebianSecurityMirror() *url.URL    { return DebianSecurityMirror.Get() }
+func ResetDebianSecurityMirror()           { DebianSecurityMirror.Reset() }
 
 func SetCentOSMirror(input string) { CentOSMirror.Set(input) }
 func GetCentOSMirror() *url.URL    { return CentOSMirror.Get() }

@@ -11,16 +11,17 @@ import (
 
 // defaults holds all default configuration values
 type defaults struct {
-	Host              string
-	Port              string
-	CacheDir          string
-	UbuntuMirror      string
-	UbuntuPortsMirror string
-	DebianMirror      string
-	CentOSMirror      string
-	AlpineMirror      string
-	ModeName          string
-	Debug             bool
+	Host              		string
+	Port              		string
+	CacheDir          		string
+	UbuntuMirror      		string
+	UbuntuPortsMirror 		string
+	DebianMirror      		string
+	DebianSecurityMirror	string
+	CentOSMirror      		string
+	AlpineMirror      		string
+	ModeName          		string
+	Debug             		bool
 }
 
 var (
@@ -29,26 +30,28 @@ var (
 
 	// defaultConfig holds default configuration values
 	defaultConfig = defaults{
-		Host:              "0.0.0.0",
-		Port:              "3142",
-		CacheDir:          "./.aptcache",
-		UbuntuMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-		UbuntuPortsMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/"
-		DebianMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/debian/"
-		CentOSMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/centos/"
-		AlpineMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/alpine/"
-		ModeName:          define.LINUX_ALL_DISTROS,
-		Debug:             false,
+		Host:              		"0.0.0.0",
+		Port:              		"3142",
+		CacheDir:          		"./.aptcache",
+		UbuntuMirror:      		"", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+		UbuntuPortsMirror: 		"", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/"
+		DebianMirror:      		"", // "https://mirrors.tuna.tsinghua.edu.cn/debian/"
+		DebianSecurityMirror:	"", // "https://mirrors.tuna.tsinghua.edu.cn/debian-security/"
+		CentOSMirror:      		"", // "https://mirrors.tuna.tsinghua.edu.cn/centos/"
+		AlpineMirror:      		"", // "https://mirrors.tuna.tsinghua.edu.cn/alpine/"
+		ModeName:          		define.LINUX_ALL_DISTROS,
+		Debug:             		false,
 	}
 
 	// validModes maps mode strings to their corresponding integer values
 	validModes = map[string]int{
-		define.LINUX_DISTROS_UBUNTU:       define.TYPE_LINUX_DISTROS_UBUNTU,
-		define.LINUX_DISTROS_UBUNTU_PORTS: define.TYPE_LINUX_DISTROS_UBUNTU_PORTS,
-		define.LINUX_DISTROS_DEBIAN:       define.TYPE_LINUX_DISTROS_DEBIAN,
-		define.LINUX_DISTROS_CENTOS:       define.TYPE_LINUX_DISTROS_CENTOS,
-		define.LINUX_DISTROS_ALPINE:       define.TYPE_LINUX_DISTROS_ALPINE,
-		define.LINUX_ALL_DISTROS:          define.TYPE_LINUX_ALL_DISTROS,
+		define.LINUX_DISTROS_UBUNTU:       		define.TYPE_LINUX_DISTROS_UBUNTU,
+		define.LINUX_DISTROS_UBUNTU_PORTS:		define.TYPE_LINUX_DISTROS_UBUNTU_PORTS,
+		define.LINUX_DISTROS_DEBIAN:       		define.TYPE_LINUX_DISTROS_DEBIAN,
+		define.LINUX_DISTROS_DEBIAN_SECURITY:	define.TYPE_LINUX_DISTROS_DEBIAN_SECURITY,
+		define.LINUX_DISTROS_CENTOS:       		define.TYPE_LINUX_DISTROS_CENTOS,
+		define.LINUX_DISTROS_ALPINE:       		define.TYPE_LINUX_DISTROS_ALPINE,
+		define.LINUX_ALL_DISTROS:          		define.TYPE_LINUX_ALL_DISTROS,
 	}
 )
 
@@ -81,6 +84,7 @@ func ParseFlags() (*Config, error) {
 	flags.StringVar(&config.Mirrors.Ubuntu, "ubuntu", defaultConfig.UbuntuMirror, "the ubuntu mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.UbuntuPorts, "ubuntu-ports", defaultConfig.UbuntuPortsMirror, "the ubuntu ports mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.Debian, "debian", defaultConfig.DebianMirror, "the debian mirror for fetching packages")
+	flags.StringVar(&config.Mirrors.DebianSecurity, "debian-security", defaultConfig.DebianSecurityMirror, "the debian security mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.CentOS, "centos", defaultConfig.CentOSMirror, "the centos mirror for fetching packages")
 	flags.StringVar(&config.Mirrors.Alpine, "alpine", defaultConfig.AlpineMirror, "the alpine mirror for fetching packages")
 
@@ -114,6 +118,7 @@ func updateGlobalState(config *Config) error {
 	state.SetUbuntuMirror(config.Mirrors.Ubuntu)
 	state.SetUbuntuPortsMirror(config.Mirrors.UbuntuPorts)
 	state.SetDebianMirror(config.Mirrors.Debian)
+	state.SetDebianSecurityMirror(config.Mirrors.DebianSecurity)
 	state.SetCentOSMirror(config.Mirrors.CentOS)
 	state.SetAlpineMirror(config.Mirrors.Alpine)
 
