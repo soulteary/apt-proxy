@@ -6,7 +6,7 @@ const (
 	DEBIAN_BENCHMAKR_URL = "dists/bullseye/main/binary-amd64/Release"
 )
 
-var DEBIAN_HOST_PATTERN = regexp.MustCompile(`/debian/(.+)$`)
+var DEBIAN_HOST_PATTERN = regexp.MustCompile(`/debian(-security)?/(.+)$`)
 
 // https://www.debian.org/mirror/list 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol
