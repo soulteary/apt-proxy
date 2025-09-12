@@ -1,11 +1,11 @@
 package server
 
 import (
-	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
+	"strings"
 	"time"
 
 	Define "github.com/soulteary/apt-proxy/define"
@@ -70,10 +70,21 @@ func (ap *AptProxy) handleRequest(rw http.ResponseWriter, r *http.Request) *Defi
 }
 
 func (ap *AptProxy) handleInternalURLs(rw http.ResponseWriter, r *http.Request) *Define.Rule {
-	tpl, status := RenderInternalUrls(r.URL.Path)
+	content, status := RenderInternalUrls(r.URL.Path)
+	switch { // [FIXME] It's ugly to guess the mime type from the file extension
+	case strings.HasSuffix(r.URL.Path, ".css"):
+		rw.Header().Set("Content-Type", "text/css")
+	case strings.HasSuffix(r.URL.Path, ".woff2"):
+		rw.Header().Set("Content-Type", "font/woff2")
+	case strings.HasSuffix(r.URL.Path, ".svg"):
+		rw.Header().Set("Content-Type", "image/svg+xml")
+	case strings.HasSuffix(r.URL.Path, ".png"):
+		rw.Header().Set("Content-Type", "image/png")
+	default:
+		rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	}
 	rw.WriteHeader(status)
-	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := io.WriteString(rw, tpl); err != nil {
+	if _, err := rw.Write(content); err != nil {
 		log.Printf("Error rendering internal URLs: %v", err)
 	}
 	return nil
