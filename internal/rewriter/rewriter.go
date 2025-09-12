@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/soulteary/apt-proxy/define"
@@ -171,6 +172,13 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 
 	r.URL.Scheme = rewriter.mirror.Scheme
 	r.URL.Host = rewriter.mirror.Host
+	if mode == define.TYPE_LINUX_DISTROS_DEBIAN {
+		slugs_query := strings.Split(r.URL.Path, "/")
+		slugs_mirror := strings.Split(rewriter.mirror.Path, "/")
+		slugs_mirror[0] = slugs_query[0]
+		r.URL.Path = strings.Join(slugs_query, "/")
+		return
+	}
 	r.URL.Path = rewriter.mirror.Path + unescapedQuery
 }
 
