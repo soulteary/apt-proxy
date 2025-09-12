@@ -39,7 +39,7 @@ func TestRenderInternalUrls(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatal("test render internal urls failed")
 	}
-	if res != "pong" {
+	if string(res) != "pong" {
 		t.Fatal("test render internal urls failed")
 	}
 
@@ -53,7 +53,7 @@ func TestRenderInternalUrls(t *testing.T) {
 	if !(code == http.StatusOK || code == http.StatusBadGateway) {
 		t.Fatal("test render internal urls failed")
 	}
-	if res == "" {
+	if len(res) == 0 {
 		t.Fatal("test render internal urls failed")
 	}
 }
