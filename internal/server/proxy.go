@@ -36,8 +36,9 @@ var (
 // PackageStruct is the main HTTP handler that routes requests to appropriate
 // distribution-specific handlers and applies caching rules.
 type PackageStruct struct {
-	Handler http.Handler  // The underlying HTTP handler (typically a reverse proxy)
-	Rules   []define.Rule // Caching rules for different package types
+	Handler  http.Handler  // The underlying HTTP handler (typically a reverse proxy)
+	Rules    []define.Rule // Caching rules for different package types
+	CacheDir string        // Cache directory path for statistics
 }
 
 // responseWriter wraps http.ResponseWriter to inject cache control headers
@@ -50,12 +51,13 @@ type responseWriter struct {
 // CreatePackageStructRouter initializes and returns a new PackageStruct instance
 // configured for the current proxy mode. It sets up URL rewriters and
 // caching rules based on the configured distribution mode.
-func CreatePackageStructRouter() *PackageStruct {
+func CreatePackageStructRouter(cacheDir string) *PackageStruct {
 	mode := state.GetProxyMode()
 	rewriters = rewriter.CreateNewRewriters(mode)
 
 	return &PackageStruct{
-		Rules: rewriter.GetRewriteRulesByMode(mode),
+		Rules:    rewriter.GetRewriteRulesByMode(mode),
+		CacheDir: cacheDir,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
 			Transport: defaultTransport,
@@ -88,7 +90,7 @@ func (ap *PackageStruct) handleRequest(rw http.ResponseWriter, r *http.Request) 
 // handleInternalURLs processes requests for internal pages (e.g., status page, ping endpoint).
 // These requests are served directly without proxying or caching.
 func (ap *PackageStruct) handleInternalURLs(rw http.ResponseWriter, r *http.Request) *define.Rule {
-	tpl, status := RenderInternalUrls(r.URL.Path)
+	tpl, status := RenderInternalUrls(r.URL.Path, ap.CacheDir)
 	rw.WriteHeader(status)
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := io.WriteString(rw, tpl); err != nil {

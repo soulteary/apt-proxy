@@ -35,7 +35,8 @@ func TestGetInternalResType(t *testing.T) {
 }
 
 func TestRenderInternalUrls(t *testing.T) {
-	res, code := server.RenderInternalUrls(server.INTERNAL_PAGE_PING)
+	cacheDir := "./.aptcache"
+	res, code := server.RenderInternalUrls(server.INTERNAL_PAGE_PING, cacheDir)
 	if code != http.StatusOK {
 		t.Fatal("test render internal urls failed")
 	}
@@ -43,12 +44,12 @@ func TestRenderInternalUrls(t *testing.T) {
 		t.Fatal("test render internal urls failed")
 	}
 
-	_, code = server.RenderInternalUrls("/url-not-exists")
+	_, code = server.RenderInternalUrls("/url-not-exists", cacheDir)
 	if code != http.StatusNotFound {
 		t.Fatal("test render internal urls failed")
 	}
 
-	res, code = server.RenderInternalUrls(server.INTERNAL_PAGE_HOME)
+	res, code = server.RenderInternalUrls(server.INTERNAL_PAGE_HOME, cacheDir)
 	fmt.Println(res)
 	if !(code == http.StatusOK || code == http.StatusBadGateway) {
 		t.Fatal("test render internal urls failed")

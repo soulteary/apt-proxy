@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -37,16 +38,13 @@ func GetInternalResType(url string) int {
 	return TYPE_NOT_FOUND
 }
 
-// TODO: use configuration
-const CACHE_META_DIR = "./.aptcache/header/v1"
 const LABEL_NO_VALID_VALUE = "N/A"
 
-func RenderInternalUrls(url string) (string, int) {
+func RenderInternalUrls(url string, cacheDir string) (string, int) {
 	switch GetInternalResType(url) {
 	case TYPE_HOME:
 		cacheSizeLabel := LABEL_NO_VALID_VALUE
-		// TODO: use configuration
-		cacheSize, err := system.DirSize("./.aptcache")
+		cacheSize, err := system.DirSize(cacheDir)
 		if err == nil {
 			cacheSizeLabel = system.ByteCountDecimal(cacheSize)
 			// } else {
@@ -54,8 +52,9 @@ func RenderInternalUrls(url string) (string, int) {
 		}
 
 		filesNumberLabel := LABEL_NO_VALID_VALUE
-		if _, err := os.Stat(CACHE_META_DIR); !os.IsNotExist(err) {
-			files, err := os.ReadDir(CACHE_META_DIR)
+		cacheMetaDir := filepath.Join(cacheDir, "header", "v1")
+		if _, err := os.Stat(cacheMetaDir); !os.IsNotExist(err) {
+			files, err := os.ReadDir(cacheMetaDir)
 			if err == nil {
 				filesNumberLabel = strconv.Itoa(len(files))
 				// } else {

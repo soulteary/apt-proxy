@@ -74,7 +74,7 @@ func (s *Server) initialize() error {
 	s.cache = cache
 
 	// Initialize proxy
-	s.proxy = server.CreatePackageStructRouter()
+	s.proxy = server.CreatePackageStructRouter(s.config.CacheDir)
 	s.proxy.Handler = httpcache.NewHandler(s.cache, s.proxy.Handler)
 
 	// Initialize logger
