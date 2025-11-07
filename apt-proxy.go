@@ -1,13 +1,17 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/soulteary/apt-proxy/cli"
 )
 
 func main() {
 	flags, err := cli.ParseFlags()
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 	cli.Daemon(flags)
 }

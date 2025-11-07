@@ -58,7 +58,11 @@ func CreateAptProxyRouter() *AptProxy {
 
 func (ap *AptProxy) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if rule := ap.handleRequest(rw, r); rule != nil {
-		ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
+		if ap.Handler != nil {
+			ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
+		} else {
+			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
+		}
 	}
 }
 
@@ -103,11 +107,17 @@ func (ap *AptProxy) processMatchingRule(r *http.Request, rules []Define.Rule) *D
 }
 
 func (ap *AptProxy) rewriteRequest(r *http.Request, rule *Define.Rule) {
+	if r.URL == nil {
+		log.Printf("Error: request URL is nil, cannot rewrite")
+		return
+	}
 	before := r.URL.String()
 	Rewriter.RewriteRequestByMode(r, rewriters, rule.OS)
 
-	r.Host = r.URL.Host
-	log.Printf("Rewrote %q to %q", before, r.URL.String())
+	if r.URL != nil {
+		r.Host = r.URL.Host
+		log.Printf("Rewrote %q to %q", before, r.URL.String())
+	}
 }
 
 func (rw *responseWriter) WriteHeader(status int) {

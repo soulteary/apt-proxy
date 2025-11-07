@@ -132,6 +132,9 @@ func GetRewriteRulesByMode(mode int) []define.Rule {
 
 // RewriteRequestByMode rewrites the request URL based on the mode
 func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
+	if rewriters == nil {
+		return
+	}
 	rewriters.Mu.RLock()
 	defer rewriters.Mu.RUnlock()
 

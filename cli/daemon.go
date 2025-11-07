@@ -147,6 +147,14 @@ func (s *Server) shutdown() error {
 
 // Daemon is the main entry point for starting the application
 func Daemon(flags *Config) {
+	if flags == nil {
+		log.Fatalf("configuration cannot be nil")
+	}
+
+	if err := ValidateConfig(flags); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
+	}
+
 	cfg := &Config{
 		Debug:    flags.Debug,
 		Version:  flags.Version,

@@ -203,7 +203,13 @@ func (h *Handler) needsValidation(res *Resource, r *cacheRequest) bool {
 
 // pipeUpstream makes the request via the upstream handler, the response is not stored or modified
 func (h *Handler) pipeUpstream(w http.ResponseWriter, r *cacheRequest) {
-	rw := newResponseStreamer(w)
+	rw, err := newResponseStreamer(w)
+	if err != nil {
+		debugf("error creating response streamer: %v", err)
+		w.Header().Set(CacheHeader, "SKIP")
+		h.upstream.ServeHTTP(w, r.Request)
+		return
+	}
 	rdr, err := rw.Stream.NextReader()
 	if err != nil {
 		debugf("error creating next stream reader: %v", err)
@@ -236,7 +242,13 @@ func (h *Handler) pipeUpstream(w http.ResponseWriter, r *cacheRequest) {
 
 // passUpstream makes the request via the upstream handler and stores the result
 func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
-	rw := newResponseStreamer(w)
+	rw, err := newResponseStreamer(w)
+	if err != nil {
+		debugf("error creating response streamer: %v", err)
+		w.Header().Set(CacheHeader, "SKIP")
+		h.upstream.ServeHTTP(w, r.Request)
+		return
+	}
 	rdr, err := rw.Stream.NextReader()
 	if err != nil {
 		debugf("error creating next stream reader: %v", err)
@@ -519,16 +531,16 @@ func (r *cacheRequest) isCacheable() bool {
 	return true
 }
 
-func newResponseStreamer(w http.ResponseWriter) *responseStreamer {
+func newResponseStreamer(w http.ResponseWriter) (*responseStreamer, error) {
 	strm, err := stream.NewStream("responseBuffer", stream.NewMemFS())
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create response stream: %w", err)
 	}
 	return &responseStreamer{
 		ResponseWriter: w,
 		Stream:         strm,
 		C:              make(chan struct{}),
-	}
+	}, nil
 }
 
 type responseStreamer struct {
