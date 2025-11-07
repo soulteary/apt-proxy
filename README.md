@@ -2,7 +2,6 @@
 
 [![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![goreportcard](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/soulteary/apt-proxy) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
 
-
 <p style="text-align: center;">
   <a href="README.md">ENGLISH</a> | <a href="README_CN.md"  target="_blank">中文文档</a>
 </p>
@@ -13,9 +12,18 @@
 
 <img src="example/assets/preview.png" width="600"/>
 
-APT Proxy is a lightweight and reliable caching tool for **APT, YUM, and APK packages (supporting Ubuntu, Debian, CentOS, and Alpine Linux)**. It's designed to work seamlessly with both traditional system installations and Docker environments.
+## Overview
 
-It serves as a drop-in replacement for [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/).
+APT Proxy is a lightweight, high-performance caching proxy for package managers. It accelerates package downloads by caching frequently used packages locally, dramatically reducing download times for subsequent installations. Whether you're managing multiple servers, building Docker images, or working in bandwidth-constrained environments, APT Proxy helps you save time and bandwidth.
+
+### Key Features
+
+- **Multi-Distribution Support**: Works with APT (Ubuntu/Debian), YUM (CentOS), and APK (Alpine Linux)
+- **Lightweight**: Binary size is just over 2MB - minimal resource footprint
+- **Smart Mirror Selection**: Automatically benchmarks and selects the fastest mirror
+- **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
+- **Drop-in Replacement**: Compatible with [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) configurations
+- **Zero Configuration**: Works out of the box with sensible defaults
 
 ## Supported Platforms
 
@@ -23,180 +31,310 @@ It serves as a drop-in replacement for [apt-cacher-ng](https://www.unix-ag.uni-k
 - ARM: ARM64v8 / ARM32v6 / ARM32v7
 - macOS: x86_64 / Apple Silicon (ARM64v8)
 
-## Getting Started
+## Quick Start
 
-Simply run the binary:
+### Installation
+
+Download the latest release for your platform from the [releases page](https://github.com/soulteary/apt-proxy/releases), or use Docker:
+
+```bash
+docker pull soulteary/apt-proxy
+```
+
+### Running APT Proxy
+
+Simply run the binary - no configuration required:
 
 ```bash
 ./apt-proxy
+```
 
-2022/06/12 16:15:40 running apt-proxy
-2022/06/12 16:15:41 Start benchmarking mirrors
+You should see output similar to:
+
+```
+2022/06/12 16:15:40 starting apt-proxy
+2022/06/12 16:15:41 Starting benchmark for mirrors
 2022/06/12 16:15:41 Finished benchmarking mirrors
 2022/06/12 16:15:41 using fastest mirror https://mirrors.company.ltd/ubuntu/
 2022/06/12 16:15:41 proxy listening on 0.0.0.0:3142
+2022/06/12 16:15:41 server started successfully 🚀
 ```
 
-## Ubuntu / Debian Support
+The proxy is now running and ready to cache packages. By default, it listens on `0.0.0.0:3142` and automatically selects the fastest mirror for your location.
 
-To use the proxy with `apt-get` commands, prefix them with the proxy settings:
+## Usage Examples
+
+### Ubuntu / Debian
+
+Configure your system to use the proxy by setting the `http_proxy` environment variable:
 
 ```bash
-# Update package lists using apt-proxy
-http_proxy=http://your-domain-or-ip-address:3142 apt-get -o pkgProblemResolver=true -o Acquire::http=true update 
-# Install packages using apt-proxy
-http_proxy=http://your-domain-or-ip-address:3142 apt-get -o pkgProblemResolver=true -o Acquire::http=true install vim -y
+# Update package lists (first run will download and cache)
+http_proxy=http://your-domain-or-ip-address:3142 \
+  apt-get -o pkgProblemResolver=true -o Acquire::http=true update
+
+# Install packages (subsequent installs will use cached packages)
+http_proxy=http://your-domain-or-ip-address:3142 \
+  apt-get -o pkgProblemResolver=true -o Acquire::http=true install vim -y
 ```
 
-Subsequent package operations will be significantly faster as packages are cached locally.
-
-## CentOS Support
-
-While CentOS uses Yum instead of APT, APT-Proxy provides acceleration for both CentOS 7 and 8.
-
-For CentOS 7:
+**Tip**: For convenience, you can export the proxy settings in your shell:
 
 ```bash
-cat /etc/yum.repos.d/CentOS-Base.repo | sed -e s/mirrorlist.*$// | sed -e s/#baseurl/baseurl/ | sed -e s#http://mirror.centos.org#http://your-domain-or-ip-address:3142# | tee /etc/yum.repos.d/CentOS-Base.repo
+export http_proxy=http://your-domain-or-ip-address:3142
+apt-get update
+apt-get install vim -y
 ```
 
-For CentOS 8:
+After the first download, all subsequent package operations will be significantly faster as packages are served from the local cache.
+
+### CentOS
+
+APT Proxy works with YUM repositories. Configure your CentOS system to use the proxy:
+
+**For CentOS 7:**
 
 ```bash
-sed -i -e "s#mirror.centos.org#http://your-domain-or-ip-address:3142#g" /etc/yum.repos.d/CentOS-*
-sed -i -e "s/#baseurl/baseurl/" /etc/yum.repos.d/CentOS-*
-sed -i -e "s#\$releasever/#8-stream/#" /etc/yum.repos.d/CentOS-*
+# Configure repository to use proxy
+cat /etc/yum.repos.d/CentOS-Base.repo | \
+  sed -e s/mirrorlist.*$// \
+      -e s/#baseurl/baseurl/ \
+      -e s#http://mirror.centos.org#http://your-domain-or-ip-address:3142# | \
+  tee /etc/yum.repos.d/CentOS-Base.repo
+
+# Verify configuration
+yum update
 ```
 
-Verify the configuration by running `yum update`.
-
-## Alpine Linux Support
-
-APT Proxy also accelerates package downloads for Alpine Linux:
+**For CentOS 8:**
 
 ```bash
-cat /etc/apk/repositories | sed -e s#https://.*.alpinelinux.org#http://your-domain-or-ip-address:3142# | tee /etc/apk/repositories
+# Update all CentOS repositories to use proxy
+sed -i -e "s#mirror.centos.org#http://your-domain-or-ip-address:3142#g" \
+       -e "s/#baseurl/baseurl/" \
+       -e "s#\$releasever/#8-stream/#" \
+       /etc/yum.repos.d/CentOS-*
+
+# Verify configuration
+yum update
 ```
 
-Verify the configuration by running `apk update`.
+### Alpine Linux
 
-## Mirror Configuration
-
-You can specify mirrors in two ways:
-
-Using Full URLs:
+Configure Alpine's APK package manager to use the proxy:
 
 ```bash
-# Cache both Ubuntu and Debian packages
-./apt-proxy --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
-# Cache Ubuntu packages only
+# Update repositories to use proxy
+cat /etc/apk/repositories | \
+  sed -e s#https://.*.alpinelinux.org#http://your-domain-or-ip-address:3142# | \
+  tee /etc/apk/repositories
+
+# Verify configuration
+apk update
+```
+
+## Advanced Configuration
+
+### Custom Mirror Selection
+
+By default, APT Proxy automatically benchmarks available mirrors and selects the fastest one. However, you can specify custom mirrors if needed.
+
+**Using Full URLs:**
+
+```bash
+# Cache multiple distributions
+./apt-proxy \
+  --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ \
+  --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
+
+# Cache only Ubuntu packages (reduces memory usage)
 ./apt-proxy --mode=ubuntu --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
-# Cache Debian packages only
+
+# Cache only Debian packages
 ./apt-proxy --mode=debian --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
 ```
 
-Using Shortcuts:
+**Using Mirror Shortcuts:**
+
+For convenience, you can use predefined shortcuts instead of full URLs:
 
 ```bash
-go run apt-proxy.go --ubuntu=cn:tsinghua --debian=cn:163
-2022/06/15 10:55:26 running apt-proxy
-2022/06/15 10:55:26 using specify debian mirror https://mirrors.163.com/debian/
-2022/06/15 10:55:26 using specify ubuntu mirror https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
-2022/06/15 10:55:26 proxy listening on 0.0.0.0:3142
+./apt-proxy --ubuntu=cn:tsinghua --debian=cn:163
 ```
 
-Available shortcuts:
+**Available Shortcuts:**
 
-- cn:tsinghua
-- cn:ustc
-- cn:163
-- cn:aliyun
-- cn:huaweicloud
-- cn:tencent and more...
+- `cn:tsinghua` - Tsinghua University Mirror
+- `cn:ustc` - USTC Mirror
+- `cn:163` - NetEase Mirror
+- `cn:aliyun` - Alibaba Cloud Mirror
+- `cn:huaweicloud` - Huawei Cloud Mirror
+- `cn:tencent` - Tencent Cloud Mirror
+
+Example output:
+
+```
+2022/06/15 10:55:26 starting apt-proxy
+2022/06/15 10:55:26 using specified debian mirror https://mirrors.163.com/debian/
+2022/06/15 10:55:26 using specified ubuntu mirror https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
+2022/06/15 10:55:26 proxy listening on 0.0.0.0:3142
+2022/06/15 10:55:26 server started successfully 🚀
+```
 
 ## Docker Integration
 
-To accelerate package installation in Docker containers:
+### Running APT Proxy in Docker
+
+Deploy APT Proxy as a Docker container:
+
+```bash
+docker run -d \
+  --name=apt-proxy \
+  -p 3142:3142 \
+  -v apt-proxy-cache:/app/.aptcache \
+  soulteary/apt-proxy
+```
+
+The `-v apt-proxy-cache:/app/.aptcache` option persists the cache across container restarts.
+
+### Using APT Proxy in Docker Builds
+
+Accelerate package installation in your Docker containers:
 
 ```bash
 # Start a container (Ubuntu or Debian)
 docker run --rm -it ubuntu
-# or
-docker run --rm -it debian
 
-# Install packages using the proxy
-http_proxy=http://host.docker.internal:3142 apt-get -o Debug::pkgProblemResolver=true -o Debug::Acquire::http=true update && \
-http_proxy=http://host.docker.internal:3142 apt-get -o Debug::pkgProblemResolver=true -o Debug::Acquire::http=true install vim -y
+# Inside the container, use the proxy
+http_proxy=http://host.docker.internal:3142 \
+  apt-get -o Debug::pkgProblemResolver=true -o Acquire::http=true update
+
+http_proxy=http://host.docker.internal:3142 \
+  apt-get -o Debug::pkgProblemResolver=true -o Acquire::http=true install vim -y
 ```
 
-## Docker Deployment
+**Note**: `host.docker.internal` works on Docker Desktop. For Linux, use the host's IP address or configure Docker networking appropriately.
 
-<img src="example/assets/dockerhub.png" width="600"/>
+### Docker Compose Example
 
-Deploy with a single command:
-
-```bash
-docker run -d --name=apt-proxy -p 3142:3142 soulteary/apt-proxy
-```
+See the [example directory](example/) for complete Docker Compose configurations.
 
 ## Configuration Options
 
+View all available options:
+
 ```bash
 ./apt-proxy -h
+```
 
-Usage of apt-proxy:
-  -alpine string
-    	the alpine mirror for fetching packages
-  -cachedir string
-    	the dir to store cache data in (default "./.aptcache")
-  -centos string
-    	the centos mirror for fetching packages
-  -debian string
-    	the debian mirror for fetching packages
-  -debug
-    	whether to output debugging logging
-  -host string
-    	the host to bind to (default "0.0.0.0")
-  -mode all
-    	select the mode of system to cache: all / `ubuntu` / `debian` / `centos` / `alpine` (default "all")
-  -port string
-    	the port to bind to (default "3142")
-  -ubuntu string
-    	the ubuntu mirror for fetching packages
+**Available Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-host` | Network interface to bind to | `0.0.0.0` |
+| `-port` | Port to listen on | `3142` |
+| `-mode` | Distribution mode: `all`, `ubuntu`, `ubuntu-ports`, `debian`, `centos`, `alpine` | `all` |
+| `-cachedir` | Directory to store cached packages | `./.aptcache` |
+| `-ubuntu` | Ubuntu mirror URL or shortcut | (auto-select) |
+| `-ubuntu-ports` | Ubuntu Ports mirror URL or shortcut | (auto-select) |
+| `-debian` | Debian mirror URL or shortcut | (auto-select) |
+| `-centos` | CentOS mirror URL or shortcut | (auto-select) |
+| `-alpine` | Alpine mirror URL or shortcut | (auto-select) |
+| `-debug` | Enable verbose debug logging | `false` |
+
+**Example with Custom Configuration:**
+
+```bash
+./apt-proxy \
+  --host=0.0.0.0 \
+  --port=3142 \
+  --cachedir=/var/cache/apt-proxy \
+  --mode=ubuntu \
+  --ubuntu=cn:tsinghua \
+  --debug
 ```
 
 ## Development
 
-Running Tests:
+### Building from Source
 
 ```bash
-# Run tests with coverage reporting
+git clone https://github.com/soulteary/apt-proxy.git
+cd apt-proxy
+go build -o apt-proxy .
+```
+
+### Running Tests
+
+```bash
+# Run all tests with coverage
 go test -cover ./...
 
-# Generate and view detailed coverage report
+# Generate detailed coverage report
 go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
 
-## Debugging Package Operations
+### Contributing
 
-For Ubuntu/Debian:
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Troubleshooting
+
+### Debug Mode
+
+Enable debug logging to troubleshoot issues:
 
 ```bash
-http_proxy=http://192.168.33.1:3142 apt-get -o Debug::pkgProblemResolver=true -o Debug::Acquire::http=true update
-http_proxy=http://192.168.33.1:3142 apt-get -o Debug::pkgProblemResolver=true -o Debug::Acquire::http=true install apache2
+./apt-proxy --debug
 ```
+
+### Debugging Package Operations
+
+For detailed debugging of package manager operations (Ubuntu/Debian):
+
+```bash
+# Enable verbose debugging
+http_proxy=http://192.168.33.1:3142 \
+  apt-get -o Debug::pkgProblemResolver=true \
+          -o Debug::Acquire::http=true \
+          update
+
+http_proxy=http://192.168.33.1:3142 \
+  apt-get -o Debug::pkgProblemResolver=true \
+          -o Debug::Acquire::http=true \
+          install apache2
+```
+
+### Common Issues
+
+**Issue**: Packages not being cached
+**Solution**: Ensure the proxy URL is correctly configured and accessible from your client machines.
+
+**Issue**: Slow first-time downloads
+**Solution**: This is expected - the first download populates the cache. Subsequent downloads will be faster.
+
+**Issue**: Cache directory growing too large
+**Solution**: The cache directory can be cleaned manually, or you can set a custom cache directory with `--cachedir`.
 
 ## License
 
 This project is licensed under the [Apache License 2.0](https://github.com/soulteary/apt-proxy/blob/master/LICENSE).
 
-## Dependencies
+## Acknowledgments
 
-- No License Specified
-  - [lox/apt-proxy](https://github.com/lox/apt-proxy#readme)
-- MIT License
-    - [lox/httpcache](https://github.com/lox/httpcache/blob/master/LICENSE)
-    - [djherbis/stream](https://github.com/djherbis/stream/blob/master/LICENSE)
-- Mozilla Public License 2.0
-    - [rainycape/vfs](https://github.com/rainycape/vfs/blob/master/LICENSE)
+This project builds upon the excellent work of:
+
+- [lox/apt-proxy](https://github.com/lox/apt-proxy) - Original APT proxy implementation
+- [lox/httpcache](https://github.com/lox/httpcache) - HTTP caching library (MIT License)
+- [djherbis/stream](https://github.com/djherbis/stream) - Stream handling library (MIT License)
+- [rainycape/vfs](https://github.com/rainycape/vfs) - Virtual filesystem library (Mozilla Public License 2.0)
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/soulteary/apt-proxy/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/soulteary/apt-proxy/discussions)
+
+---
+
+Made with ❤️ by the APT Proxy community

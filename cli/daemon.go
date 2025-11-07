@@ -33,16 +33,19 @@ type MirrorConfig struct {
 	Alpine      string
 }
 
-// Server represents the main application server
+// Server represents the main application server that handles HTTP requests,
+// manages caching, and coordinates all server components.
 type Server struct {
-	config *Config
-	cache  httpcache.Cache
-	proxy  *server.AptProxy
-	logger *httplog.ResponseLogger
-	server *http.Server
+	config *Config              // Application configuration
+	cache  httpcache.Cache      // HTTP cache implementation
+	proxy  *server.AptProxy     // Main proxy router
+	logger *httplog.ResponseLogger // Request/response logger
+	server *http.Server         // HTTP server instance
 }
 
-// NewServer creates and initializes a new Server instance
+// NewServer creates and initializes a new Server instance with the provided
+// configuration. It sets up caching, proxy routing, logging, and HTTP server.
+// Returns an error if initialization fails.
 func NewServer(cfg *Config) (*Server, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("configuration cannot be nil")
@@ -59,7 +62,9 @@ func NewServer(cfg *Config) (*Server, error) {
 	return s, nil
 }
 
-// initialize sets up all server components
+// initialize sets up all server components including cache, proxy router,
+// logging, and HTTP server configuration. This method is called automatically
+// by NewServer and should not be called directly.
 func (s *Server) initialize() error {
 	// Initialize cache
 	cache, err := httpcache.NewDiskCache(s.config.CacheDir)
@@ -88,7 +93,8 @@ func (s *Server) initialize() error {
 	return nil
 }
 
-// initLogger configures the HTTP request/response logger
+// initLogger configures the HTTP request/response logger based on debug settings.
+// If debug mode is enabled, it enables verbose logging for requests, responses, and errors.
 func (s *Server) initLogger() {
 	if s.config.Debug {
 		log.Printf("debug mode enabled")
@@ -102,7 +108,9 @@ func (s *Server) initLogger() {
 	s.proxy.Handler = s.logger
 }
 
-// Start begins serving requests and handles graceful shutdown
+// Start begins serving HTTP requests and handles graceful shutdown on SIGINT or SIGTERM.
+// The server runs in a goroutine while the main goroutine waits for shutdown signals.
+// Returns an error if the server fails to start or encounters a fatal error.
 func (s *Server) Start() error {
 	log.Printf("starting apt-proxy %s", s.config.Version)
 	log.Printf("listening on %s", s.config.Listen)
@@ -130,7 +138,9 @@ func (s *Server) Start() error {
 	}
 }
 
-// shutdown performs a graceful server shutdown
+// shutdown performs a graceful server shutdown with a 5-second timeout.
+// It allows in-flight requests to complete before closing the server.
+// Returns an error if shutdown fails or times out.
 func (s *Server) shutdown() error {
 	log.Println("shutting down server...")
 
@@ -145,7 +155,9 @@ func (s *Server) shutdown() error {
 	return nil
 }
 
-// Daemon is the main entry point for starting the application
+// Daemon is the main entry point for starting the application daemon.
+// It validates the configuration, creates and starts the server, and handles
+// any startup errors. This function blocks until the server shuts down.
 func Daemon(flags *Config) {
 	if flags == nil {
 		log.Fatalf("configuration cannot be nil")

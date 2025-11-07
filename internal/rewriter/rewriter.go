@@ -130,7 +130,10 @@ func GetRewriteRulesByMode(mode int) []define.Rule {
 	}
 }
 
-// RewriteRequestByMode rewrites the request URL based on the mode
+// RewriteRequestByMode rewrites the request URL to point to the configured mirror
+// for the specified distribution mode. It matches the request path against
+// distribution-specific patterns and replaces the URL scheme, host, and path
+// with the mirror's configuration. If rewriters is nil, the function returns early.
 func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	if rewriters == nil {
 		return

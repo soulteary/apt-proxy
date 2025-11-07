@@ -52,7 +52,8 @@ var (
 	}
 )
 
-// getProxyMode converts a mode string to its corresponding integer value
+// getProxyMode converts a mode string (e.g., "ubuntu", "debian", "all") to its
+// corresponding integer constant. Returns an error if the mode is invalid.
 func getProxyMode(mode string) (int, error) {
 	if modeValue, exists := validModes[mode]; exists {
 		return modeValue, nil
@@ -60,7 +61,9 @@ func getProxyMode(mode string) (int, error) {
 	return 0, fmt.Errorf("invalid mode: %s", mode)
 }
 
-// ParseFlags parses command-line flags and returns a Config
+// ParseFlags parses command-line flags and returns a Config struct with all
+// application settings. It validates the mode parameter and sets up global state.
+// Returns an error if flag parsing fails or if an invalid mode is specified.
 func ParseFlags() (*Config, error) {
 	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
 
@@ -107,7 +110,9 @@ func ParseFlags() (*Config, error) {
 	return &config, nil
 }
 
-// updateGlobalState updates the global state with the current configuration
+// updateGlobalState updates the global state with the current configuration,
+// including proxy mode and mirror URLs for all supported distributions.
+// This enables components throughout the application to access configuration.
 func updateGlobalState(config *Config) error {
 	state.SetProxyMode(config.Mode)
 
@@ -120,7 +125,8 @@ func updateGlobalState(config *Config) error {
 	return nil
 }
 
-// ValidateConfig performs validation on the configuration
+// ValidateConfig performs validation on the configuration to ensure all required
+// fields are set and valid. Returns an error if validation fails.
 func ValidateConfig(config *Config) error {
 	if config == nil {
 		return fmt.Errorf("configuration cannot be nil")
