@@ -38,7 +38,7 @@ type MirrorConfig struct {
 type Server struct {
 	config *Config                 // Application configuration
 	cache  httpcache.Cache         // HTTP cache implementation
-	proxy  *server.AptProxy        // Main proxy router
+	proxy  *server.PackageStruct   // Main proxy router
 	logger *httplog.ResponseLogger // Request/response logger
 	server *http.Server            // HTTP server instance
 }
@@ -74,7 +74,7 @@ func (s *Server) initialize() error {
 	s.cache = cache
 
 	// Initialize proxy
-	s.proxy = server.CreateAptProxyRouter()
+	s.proxy = server.CreatePackageStructRouter()
 	s.proxy.Handler = httpcache.NewHandler(s.cache, s.proxy.Handler)
 
 	// Initialize logger

@@ -33,9 +33,9 @@ var (
 	}
 )
 
-// AptProxy is the main HTTP handler that routes requests to appropriate
+// PackageStruct is the main HTTP handler that routes requests to appropriate
 // distribution-specific handlers and applies caching rules.
-type AptProxy struct {
+type PackageStruct struct {
 	Handler http.Handler  // The underlying HTTP handler (typically a reverse proxy)
 	Rules   []define.Rule // Caching rules for different package types
 }
@@ -47,14 +47,14 @@ type responseWriter struct {
 	rule *define.Rule // The matched caching rule for this request
 }
 
-// CreateAptProxyRouter initializes and returns a new AptProxy instance
+// CreatePackageStructRouter initializes and returns a new PackageStruct instance
 // configured for the current proxy mode. It sets up URL rewriters and
 // caching rules based on the configured distribution mode.
-func CreateAptProxyRouter() *AptProxy {
+func CreatePackageStructRouter() *PackageStruct {
 	mode := state.GetProxyMode()
 	rewriters = rewriter.CreateNewRewriters(mode)
 
-	return &AptProxy{
+	return &PackageStruct{
 		Rules: rewriter.GetRewriteRulesByMode(mode),
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
@@ -66,7 +66,7 @@ func CreateAptProxyRouter() *AptProxy {
 // ServeHTTP implements http.Handler interface. It processes incoming requests,
 // matches them against caching rules, and routes them to the appropriate handler.
 // If a matching rule is found, the request is processed with cache control headers.
-func (ap *AptProxy) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if rule := ap.handleRequest(rw, r); rule != nil {
 		if ap.Handler != nil {
 			ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
@@ -78,7 +78,7 @@ func (ap *AptProxy) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 // handleRequest processes the incoming request and determines which handler
 // should process it. Returns a matching caching rule if found, nil otherwise.
-func (ap *AptProxy) handleRequest(rw http.ResponseWriter, r *http.Request) *define.Rule {
+func (ap *PackageStruct) handleRequest(rw http.ResponseWriter, r *http.Request) *define.Rule {
 	if IsInternalUrls(r.URL.Path) {
 		return ap.handleInternalURLs(rw, r)
 	}
@@ -87,7 +87,7 @@ func (ap *AptProxy) handleRequest(rw http.ResponseWriter, r *http.Request) *defi
 
 // handleInternalURLs processes requests for internal pages (e.g., status page, ping endpoint).
 // These requests are served directly without proxying or caching.
-func (ap *AptProxy) handleInternalURLs(rw http.ResponseWriter, r *http.Request) *define.Rule {
+func (ap *PackageStruct) handleInternalURLs(rw http.ResponseWriter, r *http.Request) *define.Rule {
 	tpl, status := RenderInternalUrls(r.URL.Path)
 	rw.WriteHeader(status)
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -100,7 +100,7 @@ func (ap *AptProxy) handleInternalURLs(rw http.ResponseWriter, r *http.Request) 
 // handleExternalURLs processes requests for external package repositories.
 // It matches the request path against known distribution patterns and returns
 // the appropriate caching rule if a match is found.
-func (ap *AptProxy) handleExternalURLs(r *http.Request) *define.Rule {
+func (ap *PackageStruct) handleExternalURLs(r *http.Request) *define.Rule {
 	path := r.URL.Path
 	for pattern, rules := range hostPatternMap {
 		if pattern.MatchString(path) {
@@ -113,7 +113,7 @@ func (ap *AptProxy) handleExternalURLs(r *http.Request) *define.Rule {
 // processMatchingRule processes a request that matches a distribution pattern.
 // It finds the specific caching rule, removes client cache control headers,
 // and rewrites the URL if necessary.
-func (ap *AptProxy) processMatchingRule(r *http.Request, rules []define.Rule) *define.Rule {
+func (ap *PackageStruct) processMatchingRule(r *http.Request, rules []define.Rule) *define.Rule {
 	rule, match := rewriter.MatchingRule(r.URL.Path, rules)
 	if !match {
 		return nil
@@ -129,7 +129,7 @@ func (ap *AptProxy) processMatchingRule(r *http.Request, rules []define.Rule) *d
 // rewriteRequest rewrites the request URL to point to the configured mirror
 // for the distribution. This enables transparent proxying to different mirrors
 // while maintaining the original request path structure.
-func (ap *AptProxy) rewriteRequest(r *http.Request, rule *define.Rule) {
+func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *define.Rule) {
 	if r.URL == nil {
 		log.Printf("Error: request URL is nil, cannot rewrite")
 		return
