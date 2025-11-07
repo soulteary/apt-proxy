@@ -87,15 +87,30 @@ func GetFullMirrorURL(mirror define.UrlWithAlias) string {
 		if strings.HasPrefix(mirror.URL, "http://") {
 			return mirror.URL
 		}
-		return "http://" + mirror.URL
+		url, err := BuildHTTPURL(mirror.URL)
+		if err != nil {
+			// Fallback to concatenation if template fails
+			return "http://" + mirror.URL
+		}
+		return url
 	}
 	if mirror.Https {
 		if strings.HasPrefix(mirror.URL, "https://") {
 			return mirror.URL
 		}
+		url, err := BuildHTTPSURL(mirror.URL)
+		if err != nil {
+			// Fallback to concatenation if template fails
+			return "https://" + mirror.URL
+		}
+		return url
+	}
+	url, err := BuildHTTPSURL(mirror.URL)
+	if err != nil {
+		// Fallback to concatenation if template fails
 		return "https://" + mirror.URL
 	}
-	return "https://" + mirror.URL
+	return url
 }
 
 func GetMirrorURLByAliases(osType int, alias string) string {

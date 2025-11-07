@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/soulteary/apt-proxy/define"
+	"github.com/soulteary/apt-proxy/internal/mirrors"
 	"github.com/soulteary/apt-proxy/state"
 )
 
@@ -98,8 +99,14 @@ func ParseFlags() (*Config, error) {
 	}
 	config.Mode = mode
 
-	// Set listen address
-	config.Listen = fmt.Sprintf("%s:%s", host, port)
+	// Set listen address using templates
+	listenAddr, err := mirrors.BuildListenAddress(host, port)
+	if err != nil {
+		// Fallback to fmt.Sprintf if template fails
+		config.Listen = fmt.Sprintf("%s:%s", host, port)
+	} else {
+		config.Listen = listenAddr
+	}
 	config.Version = Version
 
 	// Update global state

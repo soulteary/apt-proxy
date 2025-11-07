@@ -185,7 +185,14 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 		r.URL.Path = strings.Join(slugs_query, "/")
 		return
 	}
-	r.URL.Path = rewriter.mirror.Path + unescapedQuery
+	// Use templates for path construction
+	path, err := mirrors.BuildPathWithQuery(rewriter.mirror.Path, unescapedQuery)
+	if err != nil {
+		// Fallback to concatenation if template fails
+		r.URL.Path = rewriter.mirror.Path + unescapedQuery
+	} else {
+		r.URL.Path = path
+	}
 }
 
 // MatchingRule finds a matching rule for the given path
