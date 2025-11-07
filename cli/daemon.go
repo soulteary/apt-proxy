@@ -40,6 +40,7 @@ type Server struct {
 	cache  httpcache.Cache         // HTTP cache implementation
 	proxy  *server.PackageStruct   // Main proxy router
 	logger *httplog.ResponseLogger // Request/response logger
+	router http.Handler            // HTTP router with orthodox routing
 	server *http.Server            // HTTP server instance
 }
 
@@ -75,15 +76,28 @@ func (s *Server) initialize() error {
 
 	// Initialize proxy
 	s.proxy = server.CreatePackageStructRouter(s.config.CacheDir)
-	s.proxy.Handler = httpcache.NewHandler(s.cache, s.proxy.Handler)
+
+	// Wrap proxy with cache
+	cachedHandler := httpcache.NewHandler(s.cache, s.proxy.Handler)
+	s.proxy.Handler = cachedHandler
 
 	// Initialize logger
-	s.initLogger()
+	if s.config.Debug {
+		log.Printf("debug mode enabled")
+		httpcache.DebugLogging = true
+	}
+	s.logger = httplog.NewResponseLogger(cachedHandler)
+	s.logger.DumpRequests = s.config.Debug
+	s.logger.DumpResponses = s.config.Debug
+	s.logger.DumpErrors = s.config.Debug
+
+	// Create router with orthodox routing (home and ping handlers)
+	s.router = server.CreateRouter(s.logger, s.config.CacheDir)
 
 	// Initialize HTTP server
 	s.server = &http.Server{
 		Addr:              s.config.Listen,
-		Handler:           s.proxy,
+		Handler:           s.router,
 		ReadHeaderTimeout: 50 * time.Second,
 		ReadTimeout:       50 * time.Second,
 		WriteTimeout:      100 * time.Second,
@@ -91,21 +105,6 @@ func (s *Server) initialize() error {
 	}
 
 	return nil
-}
-
-// initLogger configures the HTTP request/response logger based on debug settings.
-// If debug mode is enabled, it enables verbose logging for requests, responses, and errors.
-func (s *Server) initLogger() {
-	if s.config.Debug {
-		log.Printf("debug mode enabled")
-		httpcache.DebugLogging = true
-	}
-
-	s.logger = httplog.NewResponseLogger(s.proxy.Handler)
-	s.logger.DumpRequests = s.config.Debug
-	s.logger.DumpResponses = s.config.Debug
-	s.logger.DumpErrors = s.config.Debug
-	s.proxy.Handler = s.logger
 }
 
 // Start begins serving HTTP requests and handles graceful shutdown on SIGINT or SIGTERM.

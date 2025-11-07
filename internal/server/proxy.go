@@ -49,8 +49,7 @@ type responseWriter struct {
 }
 
 // CreatePackageStructRouter initializes and returns a new PackageStruct instance
-// configured for the current proxy mode. It sets up URL rewriters and
-// caching rules based on the configured distribution mode.
+// configured for the current proxy mode. It sets up URL rewriters and caching rules.
 func CreatePackageStructRouter(cacheDir string) *PackageStruct {
 	mode := state.GetProxyMode()
 	rewriters = rewriter.CreateNewRewriters(mode)
@@ -65,38 +64,63 @@ func CreatePackageStructRouter(cacheDir string) *PackageStruct {
 	}
 }
 
+// CreateRouter creates an http.Handler with orthodox routing using http.ServeMux.
+// It registers home and ping handlers, and uses the provided handler for package requests.
+func CreateRouter(handler http.Handler, cacheDir string) http.Handler {
+	// Use http.ServeMux for orthodox routing
+	mux := http.NewServeMux()
+
+	// Register ping endpoint handler first (most specific route)
+	mux.HandleFunc("/_/ping/", func(rw http.ResponseWriter, r *http.Request) {
+		handlePing(rw, r)
+	})
+
+	// Register home page handler for exact "/" path
+	mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
+		// Only handle exact "/" path, delegate everything else to package proxy
+		if r.URL.Path != "/" {
+			handler.ServeHTTP(rw, r)
+			return
+		}
+		handleHomePage(rw, r, cacheDir)
+	})
+
+	return mux
+}
+
+// handleHomePage serves the home page with statistics
+func handleHomePage(rw http.ResponseWriter, r *http.Request, cacheDir string) {
+	tpl, status := RenderInternalUrls("/", cacheDir)
+	rw.WriteHeader(status)
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := io.WriteString(rw, tpl); err != nil {
+		log.Printf("Error rendering home page: %v", err)
+	}
+}
+
+// handlePing serves the ping endpoint
+func handlePing(rw http.ResponseWriter, r *http.Request) {
+	rw.WriteHeader(http.StatusOK)
+	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if _, err := io.WriteString(rw, "pong"); err != nil {
+		log.Printf("Error writing ping response: %v", err)
+	}
+}
+
 // ServeHTTP implements http.Handler interface. It processes incoming requests,
 // matches them against caching rules, and routes them to the appropriate handler.
 // If a matching rule is found, the request is processed with cache control headers.
 func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	if rule := ap.handleRequest(rw, r); rule != nil {
+	rule := ap.handleExternalURLs(r)
+	if rule != nil {
 		if ap.Handler != nil {
 			ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
 		} else {
 			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
 		}
+	} else {
+		http.NotFound(rw, r)
 	}
-}
-
-// handleRequest processes the incoming request and determines which handler
-// should process it. Returns a matching caching rule if found, nil otherwise.
-func (ap *PackageStruct) handleRequest(rw http.ResponseWriter, r *http.Request) *define.Rule {
-	if IsInternalUrls(r.URL.Path) {
-		return ap.handleInternalURLs(rw, r)
-	}
-	return ap.handleExternalURLs(r)
-}
-
-// handleInternalURLs processes requests for internal pages (e.g., status page, ping endpoint).
-// These requests are served directly without proxying or caching.
-func (ap *PackageStruct) handleInternalURLs(rw http.ResponseWriter, r *http.Request) *define.Rule {
-	tpl, status := RenderInternalUrls(r.URL.Path, ap.CacheDir)
-	rw.WriteHeader(status)
-	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := io.WriteString(rw, tpl); err != nil {
-		log.Printf("Error rendering internal URLs: %v", err)
-	}
-	return nil
 }
 
 // handleExternalURLs processes requests for external package repositories.
