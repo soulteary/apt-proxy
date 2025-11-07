@@ -66,11 +66,18 @@ func (fs *fileSystem) OpenFile(path string, flag int, mode os.FileMode) (WFile, 
 
 	fullPath := filepath.Join(fs.root, cleanPath)
 
-	if !isUnderRoot(fs.root, fullPath) {
+	// Resolve to absolute path to prevent path traversal
+	absPath, err := filepath.Abs(fullPath)
+	if err != nil {
 		return nil, ErrInvalidPath
 	}
 
-	f, err := os.OpenFile(fullPath, flag, mode)
+	// Ensure the resolved path is within the root directory
+	if !isUnderRoot(fs.root, absPath) {
+		return nil, ErrInvalidPath
+	}
+
+	f, err := os.OpenFile(absPath, flag, mode)
 	if err != nil {
 		return nil, err
 	}
