@@ -4,8 +4,8 @@ import (
 	"net/url"
 	"sync"
 
-	Define "github.com/soulteary/apt-proxy/define"
-	Mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
+	define "github.com/soulteary/apt-proxy/define"
+	mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
 )
 
 var (
@@ -50,7 +50,7 @@ func (m *MirrorState) Set(input string) {
 	}
 
 	mirror := input
-	if alias := Mirrors.GetMirrorURLByAliases(m.distType, input); alias != "" {
+	if alias := mirrors.GetMirrorURLByAliases(m.distType, input); alias != "" {
 		mirror = alias
 	}
 
@@ -78,11 +78,11 @@ func (m *MirrorState) Reset() {
 
 var (
 	// Mirror states for different distributions
-	UbuntuMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_UBUNTU)
-	UbuntuPortsMirror = NewMirrorState(Define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
-	DebianMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_DEBIAN)
-	CentOSMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_CENTOS)
-	AlpineMirror      = NewMirrorState(Define.TYPE_LINUX_DISTROS_ALPINE)
+	UbuntuMirror      = NewMirrorState(define.TYPE_LINUX_DISTROS_UBUNTU)
+	UbuntuPortsMirror = NewMirrorState(define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
+	DebianMirror      = NewMirrorState(define.TYPE_LINUX_DISTROS_DEBIAN)
+	CentOSMirror      = NewMirrorState(define.TYPE_LINUX_DISTROS_CENTOS)
+	AlpineMirror      = NewMirrorState(define.TYPE_LINUX_DISTROS_ALPINE)
 )
 
 // Convenience functions for backward compatibility

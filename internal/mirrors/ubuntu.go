@@ -4,11 +4,11 @@ import (
 	"bufio"
 	"net/http"
 
-	Define "github.com/soulteary/apt-proxy/define"
+	define "github.com/soulteary/apt-proxy/define"
 )
 
 func GetUbuntuMirrorUrlsByGeo() (mirrors []string, err error) {
-	response, err := http.Get(Define.UBUNTU_GEO_MIRROR_API)
+	response, err := http.Get(define.UBUNTU_GEO_MIRROR_API)
 	if err != nil {
 		return mirrors, err
 	}

@@ -36,11 +36,11 @@ type MirrorConfig struct {
 // Server represents the main application server that handles HTTP requests,
 // manages caching, and coordinates all server components.
 type Server struct {
-	config *Config              // Application configuration
-	cache  httpcache.Cache      // HTTP cache implementation
-	proxy  *server.AptProxy     // Main proxy router
+	config *Config                 // Application configuration
+	cache  httpcache.Cache         // HTTP cache implementation
+	proxy  *server.AptProxy        // Main proxy router
 	logger *httplog.ResponseLogger // Request/response logger
-	server *http.Server         // HTTP server instance
+	server *http.Server            // HTTP server instance
 }
 
 // NewServer creates and initializes a new Server instance with the provided

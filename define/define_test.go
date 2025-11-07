@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	Define "github.com/soulteary/apt-proxy/define"
+	define "github.com/soulteary/apt-proxy/define"
 )
 
 func TestRuleToString(t *testing.T) {
-	r := Define.Rule{
+	r := define.Rule{
 		Pattern:      regexp.MustCompile(`a$`),
 		CacheControl: "1",
 		Rewrite:      true,
@@ -23,42 +23,42 @@ func TestRuleToString(t *testing.T) {
 }
 
 func TestGenerateAliasFromURL(t *testing.T) {
-	if Define.GenerateAliasFromURL("http://mirrors.cn99.com/ubuntu/") != "cn:cn99" {
+	if define.GenerateAliasFromURL("http://mirrors.cn99.com/ubuntu/") != "cn:cn99" {
 		t.Fatal("generate alias from url failed")
 	}
 
-	if Define.GenerateAliasFromURL("https://mirrors.tuna.tsinghua.edu.cn/ubuntu/") != "cn:tsinghua" {
+	if define.GenerateAliasFromURL("https://mirrors.tuna.tsinghua.edu.cn/ubuntu/") != "cn:tsinghua" {
 		t.Fatal("generate alias from url failed")
 	}
 
-	if Define.GenerateAliasFromURL("mirrors.cnnic.cn/ubuntu/") != "cn:cnnic" {
+	if define.GenerateAliasFromURL("mirrors.cnnic.cn/ubuntu/") != "cn:cnnic" {
 		t.Fatal("generate alias from url failed")
 	}
 }
 
 func TestGenerateBuildInMirorItem(t *testing.T) {
-	mirror := Define.GenerateBuildInMirorItem("http://mirrors.tuna.tsinghua.edu.cn/ubuntu/", true)
+	mirror := define.GenerateBuildInMirorItem("http://mirrors.tuna.tsinghua.edu.cn/ubuntu/", true)
 	if !(mirror.Http == true && mirror.Https == false) || mirror.Official != true {
 		t.Fatal("generate build-in mirror item failed")
 	}
-	mirror = Define.GenerateBuildInMirorItem("https://mirrors.tuna.tsinghua.edu.cn/ubuntu/", false)
+	mirror = define.GenerateBuildInMirorItem("https://mirrors.tuna.tsinghua.edu.cn/ubuntu/", false)
 	if !(mirror.Http == false && mirror.Https == true) || mirror.Official != false {
 		t.Fatal("generate build-in mirror item failed")
 	}
 }
 
 func TestGenerateBuildInList(t *testing.T) {
-	mirrors := Define.GenerateBuildInList(Define.UBUNTU_OFFICIAL_MIRRORS, Define.UBUNTU_CUSTOM_MIRRORS)
+	mirrors := define.GenerateBuildInList(define.UBUNTU_OFFICIAL_MIRRORS, define.UBUNTU_CUSTOM_MIRRORS)
 
 	count := 0
-	for _, url := range Define.UBUNTU_OFFICIAL_MIRRORS {
+	for _, url := range define.UBUNTU_OFFICIAL_MIRRORS {
 		if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
 			count += 1
 		} else {
 			count += 2
 		}
 	}
-	for _, url := range Define.UBUNTU_CUSTOM_MIRRORS {
+	for _, url := range define.UBUNTU_CUSTOM_MIRRORS {
 		if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
 			count += 1
 		} else {
