@@ -1,3 +1,4 @@
 .aptcache
 apt-proxy
 coverage.out
+coverage.html

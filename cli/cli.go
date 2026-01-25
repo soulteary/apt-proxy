@@ -8,96 +8,121 @@ import (
 	"github.com/soulteary/apt-proxy/define"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
 	"github.com/soulteary/apt-proxy/state"
+	"github.com/soulteary/cli-kit/configutil"
 )
 
-// defaults holds all default configuration values
-type defaults struct {
-	Host              string
-	Port              string
-	CacheDir          string
-	UbuntuMirror      string
-	UbuntuPortsMirror string
-	DebianMirror      string
-	CentOSMirror      string
-	AlpineMirror      string
-	ModeName          string
-	Debug             bool
-}
+// Environment variable names for configuration
+const (
+	EnvHost        = "APT_PROXY_HOST"
+	EnvPort        = "APT_PROXY_PORT"
+	EnvMode        = "APT_PROXY_MODE"
+	EnvCacheDir    = "APT_PROXY_CACHEDIR"
+	EnvDebug       = "APT_PROXY_DEBUG"
+	EnvUbuntu      = "APT_PROXY_UBUNTU"
+	EnvUbuntuPorts = "APT_PROXY_UBUNTU_PORTS"
+	EnvDebian      = "APT_PROXY_DEBIAN"
+	EnvCentOS      = "APT_PROXY_CENTOS"
+	EnvAlpine      = "APT_PROXY_ALPINE"
+)
+
+// Default configuration values
+const (
+	DefaultHost     = "0.0.0.0"
+	DefaultPort     = "3142"
+	DefaultCacheDir = "./.aptcache"
+)
 
 var (
 	// Version is set during build time
 	Version string
 
-	// defaultConfig holds default configuration values
-	defaultConfig = defaults{
-		Host:              "0.0.0.0",
-		Port:              "3142",
-		CacheDir:          "./.aptcache",
-		UbuntuMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-		UbuntuPortsMirror: "", // "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/"
-		DebianMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/debian/"
-		CentOSMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/centos/"
-		AlpineMirror:      "", // "https://mirrors.tuna.tsinghua.edu.cn/alpine/"
-		ModeName:          define.LINUX_ALL_DISTROS,
-		Debug:             false,
-	}
-
-	// validModes maps mode strings to their corresponding integer values
-	validModes = map[string]int{
-		define.LINUX_DISTROS_UBUNTU:       define.TYPE_LINUX_DISTROS_UBUNTU,
-		define.LINUX_DISTROS_UBUNTU_PORTS: define.TYPE_LINUX_DISTROS_UBUNTU_PORTS,
-		define.LINUX_DISTROS_DEBIAN:       define.TYPE_LINUX_DISTROS_DEBIAN,
-		define.LINUX_DISTROS_CENTOS:       define.TYPE_LINUX_DISTROS_CENTOS,
-		define.LINUX_DISTROS_ALPINE:       define.TYPE_LINUX_DISTROS_ALPINE,
-		define.LINUX_ALL_DISTROS:          define.TYPE_LINUX_ALL_DISTROS,
+	// allowedModes defines the valid mode values for proxy operation
+	allowedModes = []string{
+		define.LINUX_ALL_DISTROS,
+		define.LINUX_DISTROS_UBUNTU,
+		define.LINUX_DISTROS_UBUNTU_PORTS,
+		define.LINUX_DISTROS_DEBIAN,
+		define.LINUX_DISTROS_CENTOS,
+		define.LINUX_DISTROS_ALPINE,
 	}
 )
 
-// getProxyMode converts a mode string (e.g., "ubuntu", "debian", "all") to its
-// corresponding integer constant. Returns an error if the mode is invalid.
-func getProxyMode(mode string) (int, error) {
-	if modeValue, exists := validModes[mode]; exists {
-		return modeValue, nil
+// modeToInt converts a validated mode string to its corresponding integer constant.
+// This function should only be called after mode validation via configutil.ResolveEnum.
+func modeToInt(mode string) int {
+	switch mode {
+	case define.LINUX_DISTROS_UBUNTU:
+		return define.TYPE_LINUX_DISTROS_UBUNTU
+	case define.LINUX_DISTROS_UBUNTU_PORTS:
+		return define.TYPE_LINUX_DISTROS_UBUNTU_PORTS
+	case define.LINUX_DISTROS_DEBIAN:
+		return define.TYPE_LINUX_DISTROS_DEBIAN
+	case define.LINUX_DISTROS_CENTOS:
+		return define.TYPE_LINUX_DISTROS_CENTOS
+	case define.LINUX_DISTROS_ALPINE:
+		return define.TYPE_LINUX_DISTROS_ALPINE
+	default:
+		return define.TYPE_LINUX_ALL_DISTROS
 	}
-	return 0, fmt.Errorf("invalid mode: %s", mode)
 }
 
 // ParseFlags parses command-line flags and returns a Config struct with all
 // application settings. It validates the mode parameter and sets up global state.
+// Configuration priority: CLI flag > environment variable > default value.
 // Returns an error if flag parsing fails or if an invalid mode is specified.
 func ParseFlags() (*Config, error) {
 	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
 
-	var (
-		host     string
-		port     string
-		userMode string
-		config   Config
-	)
-
-	// Define flags
-	flags.StringVar(&host, "host", defaultConfig.Host, "the host to bind to")
-	flags.StringVar(&port, "port", defaultConfig.Port, "the port to bind to")
-	flags.StringVar(&userMode, "mode", defaultConfig.ModeName,
+	// Define flags (for CLI compatibility and help text)
+	flags.String("host", DefaultHost, "the host to bind to")
+	flags.String("port", DefaultPort, "the port to bind to")
+	flags.String("mode", define.LINUX_ALL_DISTROS,
 		"select the mode of system to cache: all / ubuntu / ubuntu-ports / debian / centos / alpine")
-	flags.BoolVar(&config.Debug, "debug", defaultConfig.Debug, "whether to output debugging logging")
-	flags.StringVar(&config.CacheDir, "cachedir", defaultConfig.CacheDir, "the dir to store cache data in")
-	flags.StringVar(&config.Mirrors.Ubuntu, "ubuntu", defaultConfig.UbuntuMirror, "the ubuntu mirror for fetching packages")
-	flags.StringVar(&config.Mirrors.UbuntuPorts, "ubuntu-ports", defaultConfig.UbuntuPortsMirror, "the ubuntu ports mirror for fetching packages")
-	flags.StringVar(&config.Mirrors.Debian, "debian", defaultConfig.DebianMirror, "the debian mirror for fetching packages")
-	flags.StringVar(&config.Mirrors.CentOS, "centos", defaultConfig.CentOSMirror, "the centos mirror for fetching packages")
-	flags.StringVar(&config.Mirrors.Alpine, "alpine", defaultConfig.AlpineMirror, "the alpine mirror for fetching packages")
+	flags.Bool("debug", false, "whether to output debugging logging")
+	flags.String("cachedir", DefaultCacheDir, "the dir to store cache data in")
+	flags.String("ubuntu", "", "the ubuntu mirror for fetching packages")
+	flags.String("ubuntu-ports", "", "the ubuntu ports mirror for fetching packages")
+	flags.String("debian", "", "the debian mirror for fetching packages")
+	flags.String("centos", "", "the centos mirror for fetching packages")
+	flags.String("alpine", "", "the alpine mirror for fetching packages")
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
 	}
 
-	// Validate and set mode
-	mode, err := getProxyMode(userMode)
+	// Resolve configuration with priority: CLI > ENV > default
+	host := configutil.ResolveString(flags, "host", EnvHost, DefaultHost, true)
+	port := configutil.ResolveString(flags, "port", EnvPort, DefaultPort, true)
+	debug := configutil.ResolveBool(flags, "debug", EnvDebug, false)
+	cacheDir := configutil.ResolveString(flags, "cachedir", EnvCacheDir, DefaultCacheDir, true)
+
+	// Validate and resolve mode using enum validation
+	modeName, err := configutil.ResolveEnum(flags, "mode", EnvMode, define.LINUX_ALL_DISTROS, allowedModes, false)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid mode: %w", err)
 	}
-	config.Mode = mode
+
+	// Resolve mirror configurations
+	ubuntu := configutil.ResolveString(flags, "ubuntu", EnvUbuntu, "", true)
+	ubuntuPorts := configutil.ResolveString(flags, "ubuntu-ports", EnvUbuntuPorts, "", true)
+	debian := configutil.ResolveString(flags, "debian", EnvDebian, "", true)
+	centos := configutil.ResolveString(flags, "centos", EnvCentOS, "", true)
+	alpine := configutil.ResolveString(flags, "alpine", EnvAlpine, "", true)
+
+	// Build configuration
+	config := Config{
+		Debug:    debug,
+		Version:  Version,
+		CacheDir: cacheDir,
+		Mode:     modeToInt(modeName),
+		Mirrors: MirrorConfig{
+			Ubuntu:      ubuntu,
+			UbuntuPorts: ubuntuPorts,
+			Debian:      debian,
+			CentOS:      centos,
+			Alpine:      alpine,
+		},
+	}
 
 	// Set listen address using templates
 	listenAddr, err := mirrors.BuildListenAddress(host, port)
@@ -107,7 +132,6 @@ func ParseFlags() (*Config, error) {
 	} else {
 		config.Listen = listenAddr
 	}
-	config.Version = Version
 
 	// Update global state
 	if err := updateGlobalState(&config); err != nil {

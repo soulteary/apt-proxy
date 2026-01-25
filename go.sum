@@ -1,2 +1,4 @@
+github.com/soulteary/cli-kit v1.1.0 h1:yXiEYVRmY3F7UF9ObyG5r2R+kUETz0TCdvrTgdEsr4A=
+github.com/soulteary/cli-kit v1.1.0/go.mod h1:Z32KzEtl9FEFtKAsGhekTzPMUcg7Js7YvJzIyT/8Urk=
 golang.org/x/sys v0.27.0 h1:wBqf8DvsY9Y/2P8gAfPDEYNuS30J4lPHJxXSb/nJZ+s=
 golang.org/x/sys v0.27.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
