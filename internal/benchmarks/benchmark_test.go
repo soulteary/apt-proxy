@@ -173,3 +173,219 @@ func TestMin(t *testing.T) {
 		}
 	}
 }
+
+// Tests for BenchmarkCache
+
+func TestBenchmarkCache(t *testing.T) {
+	cache := &BenchmarkCache{
+		results: make(map[int]CachedResult),
+	}
+
+	// Test GetCachedResult with no cache
+	_, ok := cache.GetCachedResult(1)
+	if ok {
+		t.Error("GetCachedResult() should return false for empty cache")
+	}
+
+	// Test SetCachedResult and GetCachedResult
+	cache.SetCachedResult(1, "http://mirror.example.com", 1*time.Hour)
+	result, ok := cache.GetCachedResult(1)
+	if !ok {
+		t.Error("GetCachedResult() should return true after SetCachedResult")
+	}
+	if result != "http://mirror.example.com" {
+		t.Errorf("GetCachedResult() = %q, want %q", result, "http://mirror.example.com")
+	}
+
+	// Test ClearCache
+	cache.ClearCache()
+	_, ok = cache.GetCachedResult(1)
+	if ok {
+		t.Error("GetCachedResult() should return false after ClearCache")
+	}
+}
+
+func TestCachedResultExpiration(t *testing.T) {
+	cache := &BenchmarkCache{
+		results: make(map[int]CachedResult),
+	}
+
+	// Set with very short TTL
+	cache.SetCachedResult(1, "http://mirror.example.com", 1*time.Millisecond)
+
+	// Wait for expiration
+	time.Sleep(10 * time.Millisecond)
+
+	// Should not be available anymore
+	_, ok := cache.GetCachedResult(1)
+	if ok {
+		t.Error("GetCachedResult() should return false for expired cache entry")
+	}
+}
+
+func TestGetTheFastestMirrorWithCache(t *testing.T) {
+	// Clear any existing cache
+	ClearBenchmarkCache()
+
+	// Create a fast server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	mirrors := []string{server.URL}
+
+	// First call should run benchmark and cache result
+	result1, err := GetTheFastestMirrorWithCache(1, mirrors, "/test")
+	if err != nil {
+		t.Fatalf("GetTheFastestMirrorWithCache() error = %v", err)
+	}
+	if result1 != server.URL {
+		t.Errorf("GetTheFastestMirrorWithCache() = %q, want %q", result1, server.URL)
+	}
+
+	// Second call should return cached result
+	result2, err := GetTheFastestMirrorWithCache(1, mirrors, "/test")
+	if err != nil {
+		t.Fatalf("GetTheFastestMirrorWithCache() error = %v", err)
+	}
+	if result2 != result1 {
+		t.Errorf("GetTheFastestMirrorWithCache() = %q, want cached %q", result2, result1)
+	}
+
+	// Clean up
+	ClearBenchmarkCache()
+}
+
+func TestGetTheFastestMirrorAsync(t *testing.T) {
+	// Clear any existing cache
+	ClearBenchmarkCache()
+
+	// Create a fast server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	mirrors := []string{server.URL}
+
+	// Create a channel to wait for async result
+	resultChan := make(chan AsyncBenchmarkResult, 1)
+
+	GetTheFastestMirrorAsync(1, mirrors, "/test", func(result AsyncBenchmarkResult) {
+		resultChan <- result
+	})
+
+	// Wait for result with timeout
+	select {
+	case result := <-resultChan:
+		if result.Error != nil {
+			t.Fatalf("GetTheFastestMirrorAsync() error = %v", result.Error)
+		}
+		if result.FastestMirror != server.URL {
+			t.Errorf("GetTheFastestMirrorAsync() = %q, want %q", result.FastestMirror, server.URL)
+		}
+		if result.DistType != 1 {
+			t.Errorf("GetTheFastestMirrorAsync() DistType = %d, want 1", result.DistType)
+		}
+	case <-time.After(35 * time.Second):
+		t.Fatal("GetTheFastestMirrorAsync() timed out")
+	}
+
+	// Clean up
+	ClearBenchmarkCache()
+}
+
+func TestGetTheFastestMirrorAsyncWithCache(t *testing.T) {
+	// Clear any existing cache
+	ClearBenchmarkCache()
+
+	// Pre-populate cache
+	GetBenchmarkCache().SetCachedResult(2, "http://cached.example.com", 1*time.Hour)
+
+	// Create a channel to wait for async result
+	resultChan := make(chan AsyncBenchmarkResult, 1)
+
+	// Mirrors don't matter since cache should be used
+	GetTheFastestMirrorAsync(2, []string{}, "/test", func(result AsyncBenchmarkResult) {
+		resultChan <- result
+	})
+
+	// Wait for result with timeout
+	select {
+	case result := <-resultChan:
+		if result.Error != nil {
+			t.Fatalf("GetTheFastestMirrorAsync() error = %v", result.Error)
+		}
+		if result.FastestMirror != "http://cached.example.com" {
+			t.Errorf("GetTheFastestMirrorAsync() = %q, want cached %q", result.FastestMirror, "http://cached.example.com")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("GetTheFastestMirrorAsync() timed out")
+	}
+
+	// Clean up
+	ClearBenchmarkCache()
+}
+
+func TestGetDefaultMirror(t *testing.T) {
+	// Empty list
+	result := GetDefaultMirror([]string{})
+	if result != "" {
+		t.Errorf("GetDefaultMirror([]) = %q, want empty string", result)
+	}
+
+	// Non-empty list
+	mirrors := []string{"http://first.example.com", "http://second.example.com"}
+	result = GetDefaultMirror(mirrors)
+	if result != "http://first.example.com" {
+		t.Errorf("GetDefaultMirror() = %q, want %q", result, "http://first.example.com")
+	}
+}
+
+func TestClearBenchmarkCache(t *testing.T) {
+	// Add some entries
+	GetBenchmarkCache().SetCachedResult(1, "http://mirror1.example.com", 1*time.Hour)
+	GetBenchmarkCache().SetCachedResult(2, "http://mirror2.example.com", 1*time.Hour)
+
+	// Verify entries exist
+	_, ok := GetBenchmarkCache().GetCachedResult(1)
+	if !ok {
+		t.Error("Cache should have entry for dist type 1")
+	}
+
+	// Clear cache
+	ClearBenchmarkCache()
+
+	// Verify entries are gone
+	_, ok = GetBenchmarkCache().GetCachedResult(1)
+	if ok {
+		t.Error("Cache should be empty after ClearBenchmarkCache()")
+	}
+	_, ok = GetBenchmarkCache().GetCachedResult(2)
+	if ok {
+		t.Error("Cache should be empty after ClearBenchmarkCache()")
+	}
+}
+
+func TestCachedResultIsExpired(t *testing.T) {
+	// Not expired
+	result := CachedResult{
+		CachedAt: time.Now(),
+		TTL:      1 * time.Hour,
+	}
+	if result.IsExpired() {
+		t.Error("CachedResult should not be expired")
+	}
+
+	// Expired
+	result = CachedResult{
+		CachedAt: time.Now().Add(-2 * time.Hour),
+		TTL:      1 * time.Hour,
+	}
+	if !result.IsExpired() {
+		t.Error("CachedResult should be expired")
+	}
+}

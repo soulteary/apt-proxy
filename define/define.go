@@ -48,8 +48,9 @@ type UrlWithAlias struct {
 }
 
 func GenerateAliasFromURL(url string) string {
-	pureHost := regexp.MustCompile(`^https?://|\/.*`).ReplaceAllString(url, "")
-	tldRemoved := regexp.MustCompile(`\.edu\.cn$|.cn$|\.com$|\.net$|\.net.cn$|\.org$|\.org\.cn$`).ReplaceAllString(pureHost, "")
+	// Use pre-compiled regex for better performance
+	pureHost := urlSchemeAndPathRegex.ReplaceAllString(url, "")
+	tldRemoved := tldRemovalRegex.ReplaceAllString(pureHost, "")
 	group := strings.Split(tldRemoved, ".")
 	alias := group[len(group)-1]
 
@@ -90,6 +91,13 @@ var (
 
 	// aliasTemplate is a template for constructing aliases
 	aliasTemplate = template.Must(template.New("alias").Parse("cn:{{.Alias}}"))
+
+	// Pre-compiled regular expressions for URL parsing (performance optimization)
+	// urlSchemeAndPathRegex matches http(s):// prefix and everything after /
+	urlSchemeAndPathRegex = regexp.MustCompile(`^https?://|\/.*`)
+
+	// tldRemovalRegex matches common TLD suffixes for removal
+	tldRemovalRegex = regexp.MustCompile(`\.edu\.cn$|\.cn$|\.com$|\.net$|\.net\.cn$|\.org$|\.org\.cn$`)
 )
 
 // URLTemplateData holds data for URL template execution

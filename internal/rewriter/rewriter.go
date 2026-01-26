@@ -49,7 +49,8 @@ func getRewriterConfig(mode int) (getMirror func() *url.URL, name string) {
 	}
 }
 
-// createRewriter creates a new URLRewriter for a specific distribution
+// createRewriter creates a new URLRewriter for a specific distribution.
+// It uses the cached benchmark result if available, otherwise runs a synchronous benchmark.
 func createRewriter(mode int) *URLRewriter {
 	log := logger.Default()
 	getMirror, name := getRewriterConfig(mode)
@@ -68,7 +69,8 @@ func createRewriter(mode int) *URLRewriter {
 	}
 
 	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(mode)
-	fastest, err := benchmarks.GetTheFastestMirror(mirrorURLs, benchmarkURL)
+	// Use cache-aware benchmark to avoid repeated testing
+	fastest, err := benchmarks.GetTheFastestMirrorWithCache(mode, mirrorURLs, benchmarkURL)
 	if err != nil {
 		log.Error().Err(err).Str("distro", name).Msg("error finding fastest mirror")
 		return rewriter
@@ -82,7 +84,92 @@ func createRewriter(mode int) *URLRewriter {
 	return rewriter
 }
 
-// CreateNewRewriters initializes rewriters based on mode
+// createRewriterAsync creates a new URLRewriter for a specific distribution using async benchmark.
+// It immediately returns with a default mirror and updates the mirror in the background.
+func createRewriterAsync(mode int, rewriters *URLRewriters) *URLRewriter {
+	log := logger.Default()
+	getMirror, name := getRewriterConfig(mode)
+	if getMirror == nil {
+		return nil
+	}
+
+	benchmarkURL, pattern := mirrors.GetPredefinedConfiguration(mode)
+	rewriter := &URLRewriter{pattern: pattern}
+	mirror := getMirror()
+
+	if mirror != nil {
+		log.Info().Str("distro", name).Str("mirror", mirror.String()).Msg("using specified mirror")
+		rewriter.mirror = mirror
+		return rewriter
+	}
+
+	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(mode)
+
+	// Check if we have a cached result
+	if cached, ok := benchmarks.GetBenchmarkCache().GetCachedResult(mode); ok {
+		if parsedMirror, err := url.Parse(cached); err == nil {
+			log.Info().Str("distro", name).Str("mirror", cached).Msg("using cached mirror")
+			rewriter.mirror = parsedMirror
+			return rewriter
+		}
+	}
+
+	// Use default mirror immediately for fast startup
+	defaultMirror := benchmarks.GetDefaultMirror(mirrorURLs)
+	if parsedMirror, err := url.Parse(defaultMirror); err == nil {
+		log.Info().Str("distro", name).Str("mirror", defaultMirror).Msg("using default mirror (async benchmark pending)")
+		rewriter.mirror = parsedMirror
+	}
+
+	// Run benchmark in background and update when complete
+	benchmarks.GetTheFastestMirrorAsync(mode, mirrorURLs, benchmarkURL, func(result benchmarks.AsyncBenchmarkResult) {
+		if result.Error != nil {
+			log.Error().Err(result.Error).Str("distro", name).Msg("async benchmark failed")
+			return
+		}
+
+		parsedMirror, err := url.Parse(result.FastestMirror)
+		if err != nil {
+			log.Error().Err(err).Str("distro", name).Msg("failed to parse fastest mirror URL")
+			return
+		}
+
+		// Update the rewriter with the new fastest mirror
+		rewriters.Mu.Lock()
+		defer rewriters.Mu.Unlock()
+
+		switch mode {
+		case define.TYPE_LINUX_DISTROS_UBUNTU:
+			if rewriters.Ubuntu != nil {
+				rewriters.Ubuntu.mirror = parsedMirror
+			}
+		case define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+			if rewriters.UbuntuPorts != nil {
+				rewriters.UbuntuPorts.mirror = parsedMirror
+			}
+		case define.TYPE_LINUX_DISTROS_DEBIAN:
+			if rewriters.Debian != nil {
+				rewriters.Debian.mirror = parsedMirror
+			}
+		case define.TYPE_LINUX_DISTROS_CENTOS:
+			if rewriters.Centos != nil {
+				rewriters.Centos.mirror = parsedMirror
+			}
+		case define.TYPE_LINUX_DISTROS_ALPINE:
+			if rewriters.Alpine != nil {
+				rewriters.Alpine.mirror = parsedMirror
+			}
+		}
+
+		log.Info().Str("distro", name).Str("mirror", result.FastestMirror).Msg("async benchmark completed, mirror updated")
+	})
+
+	return rewriter
+}
+
+// CreateNewRewriters initializes rewriters based on mode.
+// This uses synchronous benchmark which may block startup for up to 30 seconds.
+// For faster startup, use CreateNewRewritersAsync instead.
 func CreateNewRewriters(mode int) *URLRewriters {
 	rewriters := &URLRewriters{}
 
@@ -103,6 +190,35 @@ func CreateNewRewriters(mode int) *URLRewriters {
 		rewriters.Debian = createRewriter(define.TYPE_LINUX_DISTROS_DEBIAN)
 		rewriters.Centos = createRewriter(define.TYPE_LINUX_DISTROS_CENTOS)
 		rewriters.Alpine = createRewriter(define.TYPE_LINUX_DISTROS_ALPINE)
+	}
+
+	return rewriters
+}
+
+// CreateNewRewritersAsync initializes rewriters based on mode using async benchmark.
+// This allows the server to start immediately with default mirrors while benchmark
+// runs in the background. Once benchmark completes, mirrors are automatically updated.
+// This is the recommended method for production use to minimize startup time.
+func CreateNewRewritersAsync(mode int) *URLRewriters {
+	rewriters := &URLRewriters{}
+
+	switch mode {
+	case define.TYPE_LINUX_DISTROS_UBUNTU:
+		rewriters.Ubuntu = createRewriterAsync(mode, rewriters)
+	case define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+		rewriters.UbuntuPorts = createRewriterAsync(mode, rewriters)
+	case define.TYPE_LINUX_DISTROS_DEBIAN:
+		rewriters.Debian = createRewriterAsync(mode, rewriters)
+	case define.TYPE_LINUX_DISTROS_CENTOS:
+		rewriters.Centos = createRewriterAsync(mode, rewriters)
+	case define.TYPE_LINUX_DISTROS_ALPINE:
+		rewriters.Alpine = createRewriterAsync(mode, rewriters)
+	default:
+		rewriters.Ubuntu = createRewriterAsync(define.TYPE_LINUX_DISTROS_UBUNTU, rewriters)
+		rewriters.UbuntuPorts = createRewriterAsync(define.TYPE_LINUX_DISTROS_UBUNTU_PORTS, rewriters)
+		rewriters.Debian = createRewriterAsync(define.TYPE_LINUX_DISTROS_DEBIAN, rewriters)
+		rewriters.Centos = createRewriterAsync(define.TYPE_LINUX_DISTROS_CENTOS, rewriters)
+		rewriters.Alpine = createRewriterAsync(define.TYPE_LINUX_DISTROS_ALPINE, rewriters)
 	}
 
 	return rewriters
@@ -210,6 +326,7 @@ func MatchingRule(path string, rules []define.Rule) (*define.Rule, bool) {
 // RefreshRewriters refreshes the rewriters with updated mirror configurations.
 // This function is safe to call concurrently and will update the mirrors
 // based on the current state configuration.
+// It clears the benchmark cache to force fresh benchmark tests.
 func RefreshRewriters(rewriters *URLRewriters, mode int) {
 	if rewriters == nil {
 		return
@@ -217,6 +334,9 @@ func RefreshRewriters(rewriters *URLRewriters, mode int) {
 
 	log := logger.Default()
 	log.Info().Msg("refreshing mirror configurations...")
+
+	// Clear benchmark cache to force fresh tests
+	benchmarks.ClearBenchmarkCache()
 
 	rewriters.Mu.Lock()
 	defer rewriters.Mu.Unlock()

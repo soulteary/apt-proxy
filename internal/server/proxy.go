@@ -52,9 +52,30 @@ type responseWriter struct {
 
 // CreatePackageStructRouter initializes and returns a new PackageStruct instance
 // configured for the current proxy mode. It sets up URL rewriters and caching rules.
+// Uses synchronous benchmark which may block startup. For faster startup, use
+// CreatePackageStructRouterAsync instead.
 func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStruct {
 	mode := state.GetProxyMode()
 	rewriters = rewriter.CreateNewRewriters(mode)
+
+	return &PackageStruct{
+		Rules:    rewriter.GetRewriteRulesByMode(mode),
+		CacheDir: cacheDir,
+		log:      log,
+		Handler: &httputil.ReverseProxy{
+			Director:  func(r *http.Request) {},
+			Transport: defaultTransport,
+		},
+	}
+}
+
+// CreatePackageStructRouterAsync initializes and returns a new PackageStruct instance
+// configured for the current proxy mode using async benchmark.
+// This allows faster startup by using default mirrors immediately while
+// benchmarking runs in the background to find the fastest mirror.
+func CreatePackageStructRouterAsync(cacheDir string, log *logger.Logger) *PackageStruct {
+	mode := state.GetProxyMode()
+	rewriters = rewriter.CreateNewRewritersAsync(mode)
 
 	return &PackageStruct{
 		Rules:    rewriter.GetRewriteRulesByMode(mode),
