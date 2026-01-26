@@ -28,6 +28,17 @@ type Config struct {
 	Listen   string
 	Mirrors  MirrorConfig
 	Cache    CacheConfig
+	TLS      TLSConfig
+}
+
+// TLSConfig holds TLS/HTTPS configuration
+type TLSConfig struct {
+	// Enabled indicates whether TLS is enabled
+	Enabled bool
+	// CertFile is the path to the TLS certificate file
+	CertFile string
+	// KeyFile is the path to the TLS private key file
+	KeyFile string
 }
 
 // MirrorConfig holds mirror-specific configuration
@@ -265,9 +276,14 @@ func (s *Server) createRouter() http.Handler {
 // The server runs in a goroutine while the main goroutine waits for shutdown signals.
 // Returns an error if the server fails to start or encounters a fatal error.
 func (s *Server) Start() error {
+	protocol := "http"
+	if s.config.TLS.Enabled {
+		protocol = "https"
+	}
 	s.log.Info().
 		Str("version", s.versionInfo.String()).
 		Str("listen", s.config.Listen).
+		Str("protocol", protocol).
 		Msg("starting apt-proxy")
 
 	// Setup graceful shutdown
@@ -282,7 +298,17 @@ func (s *Server) Start() error {
 	// Start server in goroutine
 	serverErr := make(chan error, 1)
 	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		var err error
+		if s.config.TLS.Enabled {
+			s.log.Info().
+				Str("cert", s.config.TLS.CertFile).
+				Str("key", s.config.TLS.KeyFile).
+				Msg("starting HTTPS server with TLS")
+			err = s.server.ListenAndServeTLS(s.config.TLS.CertFile, s.config.TLS.KeyFile)
+		} else {
+			err = s.server.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			serverErr <- err
 		}
 	}()
@@ -369,6 +395,11 @@ func Daemon(flags *Config) {
 			MaxSize:         flags.Cache.MaxSize,
 			TTL:             flags.Cache.TTL,
 			CleanupInterval: flags.Cache.CleanupInterval,
+		},
+		TLS: TLSConfig{
+			Enabled:  flags.TLS.Enabled,
+			CertFile: flags.TLS.CertFile,
+			KeyFile:  flags.TLS.KeyFile,
 		},
 	}
 

@@ -30,6 +30,11 @@ const (
 	EnvCacheMaxSize         = "APT_PROXY_CACHE_MAX_SIZE"
 	EnvCacheTTL             = "APT_PROXY_CACHE_TTL"
 	EnvCacheCleanupInterval = "APT_PROXY_CACHE_CLEANUP_INTERVAL"
+
+	// TLS configuration environment variables
+	EnvTLSEnabled  = "APT_PROXY_TLS_ENABLED"
+	EnvTLSCertFile = "APT_PROXY_TLS_CERT"
+	EnvTLSKeyFile  = "APT_PROXY_TLS_KEY"
 )
 
 // Default configuration values
@@ -103,6 +108,11 @@ func ParseFlags() (*Config, error) {
 	flags.Int("cache-cleanup-interval", DefaultCacheCleanupIntervalMin,
 		"cache cleanup interval in minutes (0 to disable automatic cleanup)")
 
+	// TLS configuration flags
+	flags.Bool("tls", false, "enable TLS/HTTPS")
+	flags.String("tls-cert", "", "path to TLS certificate file")
+	flags.String("tls-key", "", "path to TLS private key file")
+
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
 	}
@@ -131,6 +141,11 @@ func ParseFlags() (*Config, error) {
 	cacheTTLHours := configutil.ResolveInt(flags, "cache-ttl", EnvCacheTTL, DefaultCacheTTLHours, true)
 	cacheCleanupIntervalMin := configutil.ResolveInt(flags, "cache-cleanup-interval", EnvCacheCleanupInterval, DefaultCacheCleanupIntervalMin, true)
 
+	// Resolve TLS configurations
+	tlsEnabled := configutil.ResolveBool(flags, "tls", EnvTLSEnabled, false)
+	tlsCertFile := configutil.ResolveString(flags, "tls-cert", EnvTLSCertFile, "", true)
+	tlsKeyFile := configutil.ResolveString(flags, "tls-key", EnvTLSKeyFile, "", true)
+
 	// Build configuration
 	config := Config{
 		Debug:    debug,
@@ -147,6 +162,11 @@ func ParseFlags() (*Config, error) {
 			MaxSize:         cacheMaxSizeGB * 1024 * 1024 * 1024, // Convert GB to bytes
 			TTL:             time.Duration(cacheTTLHours) * time.Hour,
 			CleanupInterval: time.Duration(cacheCleanupIntervalMin) * time.Minute,
+		},
+		TLS: TLSConfig{
+			Enabled:  tlsEnabled,
+			CertFile: tlsCertFile,
+			KeyFile:  tlsKeyFile,
 		},
 	}
 
@@ -206,6 +226,24 @@ func ValidateConfig(config *Config) error {
 
 	if config.Listen == "" {
 		return fmt.Errorf("listen address must be specified")
+	}
+
+	// Validate TLS configuration
+	if config.TLS.Enabled {
+		if config.TLS.CertFile == "" {
+			return fmt.Errorf("TLS certificate file must be specified when TLS is enabled")
+		}
+		if config.TLS.KeyFile == "" {
+			return fmt.Errorf("TLS key file must be specified when TLS is enabled")
+		}
+		// Check if certificate file exists
+		if _, err := os.Stat(config.TLS.CertFile); os.IsNotExist(err) {
+			return fmt.Errorf("TLS certificate file not found: %s", config.TLS.CertFile)
+		}
+		// Check if key file exists
+		if _, err := os.Stat(config.TLS.KeyFile); os.IsNotExist(err) {
+			return fmt.Errorf("TLS key file not found: %s", config.TLS.KeyFile)
+		}
 	}
 
 	return nil

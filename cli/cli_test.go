@@ -243,6 +243,232 @@ func TestValidateConfig(t *testing.T) {
 	}
 }
 
+func TestValidateConfigTLS(t *testing.T) {
+	// Create temporary certificate and key files for testing
+	tempDir := t.TempDir()
+	certFile := tempDir + "/cert.pem"
+	keyFile := tempDir + "/key.pem"
+
+	// Create dummy files
+	if err := os.WriteFile(certFile, []byte("dummy cert"), 0644); err != nil {
+		t.Fatalf("Failed to create temp cert file: %v", err)
+	}
+	if err := os.WriteFile(keyFile, []byte("dummy key"), 0644); err != nil {
+		t.Fatalf("Failed to create temp key file: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		config  *Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "TLS enabled without cert file",
+			config: &Config{
+				CacheDir: "/tmp/cache",
+				Listen:   "0.0.0.0:3142",
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: "",
+					KeyFile:  keyFile,
+				},
+			},
+			wantErr: true,
+			errMsg:  "TLS certificate file must be specified",
+		},
+		{
+			name: "TLS enabled without key file",
+			config: &Config{
+				CacheDir: "/tmp/cache",
+				Listen:   "0.0.0.0:3142",
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: certFile,
+					KeyFile:  "",
+				},
+			},
+			wantErr: true,
+			errMsg:  "TLS key file must be specified",
+		},
+		{
+			name: "TLS enabled with non-existent cert file",
+			config: &Config{
+				CacheDir: "/tmp/cache",
+				Listen:   "0.0.0.0:3142",
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: "/non/existent/cert.pem",
+					KeyFile:  keyFile,
+				},
+			},
+			wantErr: true,
+			errMsg:  "TLS certificate file not found",
+		},
+		{
+			name: "TLS enabled with non-existent key file",
+			config: &Config{
+				CacheDir: "/tmp/cache",
+				Listen:   "0.0.0.0:3142",
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: certFile,
+					KeyFile:  "/non/existent/key.pem",
+				},
+			},
+			wantErr: true,
+			errMsg:  "TLS key file not found",
+		},
+		{
+			name: "TLS enabled with valid files",
+			config: &Config{
+				CacheDir: "/tmp/cache",
+				Listen:   "0.0.0.0:3142",
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: certFile,
+					KeyFile:  keyFile,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "TLS disabled (no validation needed)",
+			config: &Config{
+				CacheDir: "/tmp/cache",
+				Listen:   "0.0.0.0:3142",
+				TLS: TLSConfig{
+					Enabled: false,
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateConfig(tt.config)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateConfig() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && err != nil && tt.errMsg != "" {
+				if !contains(err.Error(), tt.errMsg) {
+					t.Errorf("ValidateConfig() error = %v, want error containing %q", err, tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestParseFlagsTLS(t *testing.T) {
+	// Save original args and restore after test
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// Use testutil to manage environment variables
+	envMgr := testutil.NewEnvManager()
+	defer envMgr.Cleanup()
+
+	// Test TLS flags via CLI
+	os.Args = []string{"apt-proxy", "-tls", "-tls-cert", "/path/to/cert.pem", "-tls-key", "/path/to/key.pem"}
+
+	config, err := ParseFlags()
+	if err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+
+	if !config.TLS.Enabled {
+		t.Error("TLS.Enabled = false, want true")
+	}
+	if config.TLS.CertFile != "/path/to/cert.pem" {
+		t.Errorf("TLS.CertFile = %q, want %q", config.TLS.CertFile, "/path/to/cert.pem")
+	}
+	if config.TLS.KeyFile != "/path/to/key.pem" {
+		t.Errorf("TLS.KeyFile = %q, want %q", config.TLS.KeyFile, "/path/to/key.pem")
+	}
+}
+
+func TestParseFlagsTLSEnvVars(t *testing.T) {
+	// Save original args and restore after test
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// Use testutil to manage environment variables
+	envMgr := testutil.NewEnvManager()
+	defer envMgr.Cleanup()
+
+	// Set TLS environment variables
+	envMgr.Set(EnvTLSEnabled, "true")
+	envMgr.Set(EnvTLSCertFile, "/env/path/cert.pem")
+	envMgr.Set(EnvTLSKeyFile, "/env/path/key.pem")
+
+	// Set minimal args
+	os.Args = []string{"apt-proxy"}
+
+	config, err := ParseFlags()
+	if err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+
+	if !config.TLS.Enabled {
+		t.Error("TLS.Enabled = false, want true (from ENV)")
+	}
+	if config.TLS.CertFile != "/env/path/cert.pem" {
+		t.Errorf("TLS.CertFile = %q, want %q", config.TLS.CertFile, "/env/path/cert.pem")
+	}
+	if config.TLS.KeyFile != "/env/path/key.pem" {
+		t.Errorf("TLS.KeyFile = %q, want %q", config.TLS.KeyFile, "/env/path/key.pem")
+	}
+}
+
+func TestParseFlagsTLSDefaults(t *testing.T) {
+	// Save original args and restore after test
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// Use testutil to manage environment variables
+	envMgr := testutil.NewEnvManager()
+	defer envMgr.Cleanup()
+
+	// Ensure no TLS env vars are set
+	os.Unsetenv(EnvTLSEnabled)
+	os.Unsetenv(EnvTLSCertFile)
+	os.Unsetenv(EnvTLSKeyFile)
+
+	// Set minimal args
+	os.Args = []string{"apt-proxy"}
+
+	config, err := ParseFlags()
+	if err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+
+	// Verify TLS defaults
+	if config.TLS.Enabled {
+		t.Error("TLS.Enabled = true, want false (default)")
+	}
+	if config.TLS.CertFile != "" {
+		t.Errorf("TLS.CertFile = %q, want empty string (default)", config.TLS.CertFile)
+	}
+	if config.TLS.KeyFile != "" {
+		t.Errorf("TLS.KeyFile = %q, want empty string (default)", config.TLS.KeyFile)
+	}
+}
+
+// contains checks if substr is contained in s
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestAllowedModes(t *testing.T) {
 	// Verify allowedModes contains all expected values
 	expectedModes := []string{
