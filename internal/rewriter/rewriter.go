@@ -327,6 +327,10 @@ func MatchingRule(path string, rules []define.Rule) (*define.Rule, bool) {
 // This function is safe to call concurrently and will update the mirrors
 // based on the current state configuration.
 // It clears the benchmark cache to force fresh benchmark tests.
+//
+// IMPORTANT: This function creates new rewriters outside the lock to avoid
+// blocking request processing during potentially slow network operations
+// (benchmark tests). The lock is only held briefly during the pointer swap.
 func RefreshRewriters(rewriters *URLRewriters, mode int) {
 	if rewriters == nil {
 		return
@@ -338,27 +342,56 @@ func RefreshRewriters(rewriters *URLRewriters, mode int) {
 	// Clear benchmark cache to force fresh tests
 	benchmarks.ClearBenchmarkCache()
 
-	rewriters.Mu.Lock()
-	defer rewriters.Mu.Unlock()
+	// Create new rewriters OUTSIDE the lock to avoid blocking requests
+	// during potentially slow network operations (benchmark tests)
+	var (
+		newUbuntu      *URLRewriter
+		newUbuntuPorts *URLRewriter
+		newDebian      *URLRewriter
+		newCentos      *URLRewriter
+		newAlpine      *URLRewriter
+	)
 
 	switch mode {
 	case define.TYPE_LINUX_DISTROS_UBUNTU:
-		rewriters.Ubuntu = createRewriter(mode)
+		newUbuntu = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		rewriters.UbuntuPorts = createRewriter(mode)
+		newUbuntuPorts = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_DEBIAN:
-		rewriters.Debian = createRewriter(mode)
+		newDebian = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_CENTOS:
-		rewriters.Centos = createRewriter(mode)
+		newCentos = createRewriter(mode)
 	case define.TYPE_LINUX_DISTROS_ALPINE:
-		rewriters.Alpine = createRewriter(mode)
+		newAlpine = createRewriter(mode)
 	default:
-		rewriters.Ubuntu = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU)
-		rewriters.UbuntuPorts = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
-		rewriters.Debian = createRewriter(define.TYPE_LINUX_DISTROS_DEBIAN)
-		rewriters.Centos = createRewriter(define.TYPE_LINUX_DISTROS_CENTOS)
-		rewriters.Alpine = createRewriter(define.TYPE_LINUX_DISTROS_ALPINE)
+		newUbuntu = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU)
+		newUbuntuPorts = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
+		newDebian = createRewriter(define.TYPE_LINUX_DISTROS_DEBIAN)
+		newCentos = createRewriter(define.TYPE_LINUX_DISTROS_CENTOS)
+		newAlpine = createRewriter(define.TYPE_LINUX_DISTROS_ALPINE)
 	}
+
+	// Only hold the lock briefly during the pointer swap
+	rewriters.Mu.Lock()
+	switch mode {
+	case define.TYPE_LINUX_DISTROS_UBUNTU:
+		rewriters.Ubuntu = newUbuntu
+	case define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+		rewriters.UbuntuPorts = newUbuntuPorts
+	case define.TYPE_LINUX_DISTROS_DEBIAN:
+		rewriters.Debian = newDebian
+	case define.TYPE_LINUX_DISTROS_CENTOS:
+		rewriters.Centos = newCentos
+	case define.TYPE_LINUX_DISTROS_ALPINE:
+		rewriters.Alpine = newAlpine
+	default:
+		rewriters.Ubuntu = newUbuntu
+		rewriters.UbuntuPorts = newUbuntuPorts
+		rewriters.Debian = newDebian
+		rewriters.Centos = newCentos
+		rewriters.Alpine = newAlpine
+	}
+	rewriters.Mu.Unlock()
 
 	log.Info().Msg("mirror configurations refreshed successfully")
 }
