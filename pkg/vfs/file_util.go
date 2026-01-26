@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"runtime"
 	"time"
+
+	logger "github.com/soulteary/logger-kit"
 )
 
 var (
@@ -38,7 +39,7 @@ func NewWFile(f *File, read bool, write bool) (WFile, error) {
 func closeFile(f *file) {
 	err := f.Close()
 	if err != nil {
-		log.Println(err)
+		logger.Error().Err(err).Msg("error closing file")
 	}
 }
 

@@ -1,20 +1,28 @@
 package httpcache
 
-import "log"
-
-const (
-	ansiRed   = "\x1b[31;1m"
-	ansiReset = "\x1b[0m"
+import (
+	logger "github.com/soulteary/logger-kit"
 )
 
+// DebugLogging controls whether debug messages are logged
 var DebugLogging = false
+
+// cacheLogger is the logger instance used by httpcache package
+var cacheLogger = logger.Default()
+
+// SetLogger sets the logger instance for the httpcache package
+func SetLogger(log *logger.Logger) {
+	if log != nil {
+		cacheLogger = log
+	}
+}
 
 func debugf(format string, args ...interface{}) {
 	if DebugLogging {
-		log.Printf(format, args...)
+		cacheLogger.Debug().Msgf(format, args...)
 	}
 }
 
 func errorf(format string, args ...interface{}) {
-	log.Printf(ansiRed+"✗ "+format+ansiReset, args)
+	cacheLogger.Error().Msgf(format, args...)
 }

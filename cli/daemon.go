@@ -122,6 +122,9 @@ func (s *Server) initialize() error {
 	// Initialize metrics registry
 	s.metricsRegistry = metrics.NewRegistry("apt_proxy")
 
+	// Initialize cache metrics
+	httpcache.NewCacheMetrics(s.metricsRegistry)
+
 	// Initialize health check aggregator
 	s.initHealthChecks()
 
@@ -137,6 +140,8 @@ func (s *Server) initialize() error {
 		s.log.Debug().Msg("debug mode enabled")
 		httpcache.DebugLogging = true
 	}
+	// Set httpcache logger to use the same logger instance
+	httpcache.SetLogger(s.log)
 	s.responseLogger = httplog.NewResponseLogger(cachedHandler, s.log)
 	s.responseLogger.DumpRequests = s.config.Debug
 	s.responseLogger.DumpResponses = s.config.Debug
@@ -218,6 +223,7 @@ func (s *Server) createRouter() http.Handler {
 }
 
 // Start begins serving HTTP requests and handles graceful shutdown on SIGINT or SIGTERM.
+// It also handles SIGHUP for configuration hot reload.
 // The server runs in a goroutine while the main goroutine waits for shutdown signals.
 // Returns an error if the server fails to start or encounters a fatal error.
 func (s *Server) Start() error {
@@ -230,6 +236,11 @@ func (s *Server) Start() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Setup SIGHUP for configuration reload
+	sighupChan := make(chan os.Signal, 1)
+	signal.Notify(sighupChan, syscall.SIGHUP)
+	defer signal.Stop(sighupChan)
+
 	// Start server in goroutine
 	serverErr := make(chan error, 1)
 	go func() {
@@ -239,14 +250,30 @@ func (s *Server) Start() error {
 	}()
 
 	s.log.Info().Msg("server started successfully")
+	s.log.Info().Msg("send SIGHUP to reload mirror configurations")
 
-	// Wait for shutdown signal or server error
-	select {
-	case err := <-serverErr:
-		return fmt.Errorf("server error: %w", err)
-	case <-ctx.Done():
-		return s.shutdown()
+	// Wait for shutdown signal, reload signal, or server error
+	for {
+		select {
+		case err := <-serverErr:
+			return fmt.Errorf("server error: %w", err)
+		case <-sighupChan:
+			s.reload()
+		case <-ctx.Done():
+			return s.shutdown()
+		}
 	}
+}
+
+// reload handles configuration hot reload triggered by SIGHUP signal.
+// It refreshes mirror configurations without restarting the server.
+func (s *Server) reload() {
+	s.log.Info().Msg("received SIGHUP, reloading configuration...")
+
+	// Refresh mirror configurations
+	server.RefreshMirrors()
+
+	s.log.Info().Msg("configuration reload complete")
 }
 
 // shutdown performs a graceful server shutdown with a 5-second timeout.

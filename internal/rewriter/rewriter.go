@@ -1,12 +1,13 @@
 package rewriter
 
 import (
-	"log"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
+
+	logger "github.com/soulteary/logger-kit"
 
 	"github.com/soulteary/apt-proxy/define"
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
@@ -50,6 +51,7 @@ func getRewriterConfig(mode int) (getMirror func() *url.URL, name string) {
 
 // createRewriter creates a new URLRewriter for a specific distribution
 func createRewriter(mode int) *URLRewriter {
+	log := logger.Default()
 	getMirror, name := getRewriterConfig(mode)
 	if getMirror == nil {
 		return nil
@@ -60,7 +62,7 @@ func createRewriter(mode int) *URLRewriter {
 	mirror := getMirror()
 
 	if mirror != nil {
-		log.Printf("using specified [%s] mirror [%s]", name, mirror)
+		log.Info().Str("distro", name).Str("mirror", mirror.String()).Msg("using specified mirror")
 		rewriter.mirror = mirror
 		return rewriter
 	}
@@ -68,12 +70,12 @@ func createRewriter(mode int) *URLRewriter {
 	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(mode)
 	fastest, err := benchmarks.GetTheFastestMirror(mirrorURLs, benchmarkURL)
 	if err != nil {
-		log.Printf("Error finding fastest [%s] mirror: %v", name, err)
+		log.Error().Err(err).Str("distro", name).Msg("error finding fastest mirror")
 		return rewriter
 	}
 
 	if mirror, err := url.Parse(fastest); err == nil {
-		log.Printf("using fastest [%s] mirror [%s]", name, fastest)
+		log.Info().Str("distro", name).Str("mirror", fastest).Msg("using fastest mirror")
 		rewriter.mirror = mirror
 	}
 
@@ -203,4 +205,40 @@ func MatchingRule(path string, rules []define.Rule) (*define.Rule, bool) {
 		}
 	}
 	return nil, false
+}
+
+// RefreshRewriters refreshes the rewriters with updated mirror configurations.
+// This function is safe to call concurrently and will update the mirrors
+// based on the current state configuration.
+func RefreshRewriters(rewriters *URLRewriters, mode int) {
+	if rewriters == nil {
+		return
+	}
+
+	log := logger.Default()
+	log.Info().Msg("refreshing mirror configurations...")
+
+	rewriters.Mu.Lock()
+	defer rewriters.Mu.Unlock()
+
+	switch mode {
+	case define.TYPE_LINUX_DISTROS_UBUNTU:
+		rewriters.Ubuntu = createRewriter(mode)
+	case define.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+		rewriters.UbuntuPorts = createRewriter(mode)
+	case define.TYPE_LINUX_DISTROS_DEBIAN:
+		rewriters.Debian = createRewriter(mode)
+	case define.TYPE_LINUX_DISTROS_CENTOS:
+		rewriters.Centos = createRewriter(mode)
+	case define.TYPE_LINUX_DISTROS_ALPINE:
+		rewriters.Alpine = createRewriter(mode)
+	default:
+		rewriters.Ubuntu = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU)
+		rewriters.UbuntuPorts = createRewriter(define.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
+		rewriters.Debian = createRewriter(define.TYPE_LINUX_DISTROS_DEBIAN)
+		rewriters.Centos = createRewriter(define.TYPE_LINUX_DISTROS_CENTOS)
+		rewriters.Alpine = createRewriter(define.TYPE_LINUX_DISTROS_ALPINE)
+	}
+
+	log.Info().Msg("mirror configurations refreshed successfully")
 }

@@ -158,3 +158,10 @@ func (rw *responseWriter) shouldSetCacheControl(status int) bool {
 		rw.rule.CacheControl != "" &&
 		(status == http.StatusOK || status == http.StatusNotFound)
 }
+
+// RefreshMirrors refreshes the mirror configurations for all distributions.
+// This is typically called in response to a SIGHUP signal for hot reload.
+func RefreshMirrors() {
+	mode := state.GetProxyMode()
+	rewriter.RefreshRewriters(rewriters, mode)
+}

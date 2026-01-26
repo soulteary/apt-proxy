@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
+
+	logger "github.com/soulteary/logger-kit"
 )
 
 const (
@@ -87,6 +88,7 @@ func singleBenchmark(ctx context.Context, client *http.Client, url string) (time
 
 // GetTheFastestMirror finds the fastest responding mirror from the provided list
 func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
+	log := logger.Default()
 	ctx, cancel := context.WithTimeout(context.Background(), BenchmarkDetectTimeout)
 	defer cancel()
 
@@ -97,7 +99,7 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	// Create error channel to collect errors
 	errs := make(chan error, len(mirrors))
 
-	log.Printf("Starting benchmark for %d mirrors", len(mirrors))
+	log.Info().Int("count", len(mirrors)).Msg("starting benchmark for mirrors")
 
 	// Launch benchmarks in parallel
 	for _, url := range mirrors {
@@ -142,7 +144,7 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	}
 
 	sort.Sort(collectedResults)
-	log.Printf("Completed benchmark. Found %d valid results", len(collectedResults))
+	log.Info().Int("valid_results", len(collectedResults)).Msg("completed benchmark")
 
 	return collectedResults[0].URL, nil
 }

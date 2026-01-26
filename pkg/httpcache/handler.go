@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -48,6 +47,7 @@ type Handler struct {
 	upstream  http.Handler
 	validator *Validator
 	cache     Cache
+	metrics   *CacheMetrics
 }
 
 func NewHandler(cache Cache, upstream http.Handler) *Handler {
@@ -56,7 +56,13 @@ func NewHandler(cache Cache, upstream http.Handler) *Handler {
 		cache:     cache,
 		validator: &Validator{upstream},
 		Shared:    false,
+		metrics:   DefaultMetrics,
 	}
+}
+
+// SetMetrics sets the metrics instance for the handler
+func (h *Handler) SetMetrics(m *CacheMetrics) {
+	h.metrics = m
 }
 
 func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
@@ -70,6 +76,9 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if !cReq.isCacheable() {
 		debugf("request not cacheable")
 		rw.Header().Set(CacheHeader, "SKIP")
+		if h.metrics != nil {
+			h.metrics.RecordCacheSkip()
+		}
 		h.pipeUpstream(rw, cReq)
 		return
 	}
@@ -93,6 +102,9 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		debugf("%s %s not in %s cache", r.Method, r.URL.String(), cacheType)
+		if h.metrics != nil {
+			h.metrics.RecordCacheMiss(r.Method)
+		}
 		h.passUpstream(rw, cReq)
 		return
 	} else {
@@ -119,6 +131,9 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	debugf("serving from cache")
 	res.Header().Set(CacheHeader, "HIT")
+	if h.metrics != nil {
+		h.metrics.RecordCacheHit(r.Method)
+	}
 	h.serveResource(res, rw, cReq)
 
 	if err := res.Close(); err != nil {
@@ -193,7 +208,7 @@ func (h *Handler) needsValidation(res *Resource, r *cacheRequest) bool {
 			debugf("resource is stale, but client sent max-stale")
 			return false
 		} else if maxStale, _ := r.CacheControl.Duration("max-stale"); maxStale >= (freshness * -1) {
-			log.Printf("resource is stale, but within allowed max-stale period of %s", maxStale)
+			debugf("resource is stale, but within allowed max-stale period of %s", maxStale)
 			return false
 		}
 	}
@@ -283,8 +298,14 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 		rw.Header().Set(CacheHeader, "SKIP")
 		return
 	}
-	debugf("full upstream response took %s", Clock().Sub(t).String())
+	upstreamDuration := Clock().Sub(t)
+	debugf("full upstream response took %s", upstreamDuration.String())
 	res.ReadSeekCloser = &byteReadSeekCloser{bytes.NewReader(b)}
+
+	// Record upstream duration metric
+	if h.metrics != nil {
+		h.metrics.RecordUpstreamDuration(r.Method, rw.StatusCode, upstreamDuration.Seconds())
+	}
 
 	if age, err := correctedAge(res.Header(), t, Clock()); err == nil {
 		res.Header().Set("Age", strconv.Itoa(int(math.Ceil(age.Seconds()))))
@@ -441,6 +462,13 @@ func (h *Handler) storeResource(res *Resource, r *cacheRequest) {
 
 		if err := h.cache.Store(res, keys...); err != nil {
 			errorf("storing resources %#v failed with error: %s", keys, err.Error())
+			if h.metrics != nil {
+				h.metrics.RecordStoreOperation(false)
+			}
+		} else {
+			if h.metrics != nil {
+				h.metrics.RecordStoreOperation(true)
+			}
 		}
 
 		debugf("stored resources %+v in %s", keys, Clock().Sub(t))

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"log"
 	"net/http"
 	"net/textproto"
 	"os"
@@ -169,7 +168,7 @@ func (c *cache) Retrieve(key string) (*Resource, error) {
 	res := NewResource(h.StatusCode, f, h.Header)
 	if staleTime, exists := c.stale[key]; exists {
 		if !res.DateAfter(staleTime) {
-			log.Printf("stale marker of %s found", staleTime)
+			debugf("stale marker of %s found", staleTime)
 			res.MarkStale()
 		}
 	}
@@ -177,7 +176,7 @@ func (c *cache) Retrieve(key string) (*Resource, error) {
 }
 
 func (c *cache) Invalidate(keys ...string) {
-	log.Printf("invalidating %q", keys)
+	debugf("invalidating %q", keys)
 	for _, key := range keys {
 		c.stale[key] = Clock()
 	}
