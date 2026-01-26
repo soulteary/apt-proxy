@@ -1,4 +1,7 @@
-package define
+// Package distro provides distribution-specific definitions and caching rules
+// for apt-proxy. This package contains constants, types, and configurations
+// for supported Linux distributions (Ubuntu, Debian, CentOS, Alpine).
+package distro
 
 import (
 	"bytes"
@@ -8,6 +11,7 @@ import (
 	"text/template"
 )
 
+// Distribution name constants
 const (
 	LINUX_ALL_DISTROS          string = "all"
 	LINUX_DISTROS_UBUNTU       string = "ubuntu"
@@ -17,6 +21,7 @@ const (
 	LINUX_DISTROS_ALPINE       string = "alpine"
 )
 
+// Distribution type constants
 const (
 	TYPE_LINUX_ALL_DISTROS          int = 0
 	TYPE_LINUX_DISTROS_UBUNTU       int = 1
@@ -26,6 +31,7 @@ const (
 	TYPE_LINUX_DISTROS_ALPINE       int = 5
 )
 
+// Rule defines a caching rule for package files
 type Rule struct {
 	OS           int
 	Pattern      *regexp.Regexp
@@ -38,6 +44,7 @@ func (r *Rule) String() string {
 		r.Pattern.String(), r.CacheControl, r.Rewrite)
 }
 
+// UrlWithAlias represents a mirror URL with its alias and metadata
 type UrlWithAlias struct {
 	URL       string
 	Alias     string
@@ -47,23 +54,22 @@ type UrlWithAlias struct {
 	Bandwidth int64
 }
 
+// GenerateAliasFromURL generates an alias from a URL
 func GenerateAliasFromURL(url string) string {
-	// Use pre-compiled regex for better performance
 	pureHost := urlSchemeAndPathRegex.ReplaceAllString(url, "")
 	tldRemoved := tldRemovalRegex.ReplaceAllString(pureHost, "")
 	group := strings.Split(tldRemoved, ".")
 	alias := group[len(group)-1]
 
-	// Use templates for alias construction
 	var buf bytes.Buffer
 	data := AliasTemplateData{Alias: alias}
 	if err := aliasTemplate.Execute(&buf, data); err != nil {
-		// Fallback to concatenation if template fails
 		return "cn:" + alias
 	}
 	return buf.String()
 }
 
+// GenerateBuildInMirorItem creates a UrlWithAlias from a URL
 func GenerateBuildInMirorItem(url string, official bool) UrlWithAlias {
 	var mirror UrlWithAlias
 	mirror.Official = official
@@ -77,27 +83,17 @@ func GenerateBuildInMirorItem(url string, official bool) UrlWithAlias {
 		mirror.Https = true
 	}
 	mirror.URL = url
-	// TODO
 	mirror.Bandwidth = 0
 	return mirror
 }
 
 var (
-	// httpURLTemplate is a template for constructing HTTP URLs
-	httpURLTemplate = template.Must(template.New("httpURL").Parse("http://{{.URL}}"))
-
-	// httpsURLTemplate is a template for constructing HTTPS URLs
+	httpURLTemplate  = template.Must(template.New("httpURL").Parse("http://{{.URL}}"))
 	httpsURLTemplate = template.Must(template.New("httpsURL").Parse("https://{{.URL}}"))
+	aliasTemplate    = template.Must(template.New("alias").Parse("cn:{{.Alias}}"))
 
-	// aliasTemplate is a template for constructing aliases
-	aliasTemplate = template.Must(template.New("alias").Parse("cn:{{.Alias}}"))
-
-	// Pre-compiled regular expressions for URL parsing (performance optimization)
-	// urlSchemeAndPathRegex matches http(s):// prefix and everything after /
 	urlSchemeAndPathRegex = regexp.MustCompile(`^https?://|\/.*`)
-
-	// tldRemovalRegex matches common TLD suffixes for removal
-	tldRemovalRegex = regexp.MustCompile(`\.edu\.cn$|\.cn$|\.com$|\.net$|\.net\.cn$|\.org$|\.org\.cn$`)
+	tldRemovalRegex       = regexp.MustCompile(`\.edu\.cn$|\.cn$|\.com$|\.net$|\.net\.cn$|\.org$|\.org\.cn$`)
 )
 
 // URLTemplateData holds data for URL template execution
@@ -110,7 +106,6 @@ type AliasTemplateData struct {
 	Alias string
 }
 
-// buildHTTPURL constructs an HTTP URL using templates
 func buildHTTPURL(url string) (string, error) {
 	var buf bytes.Buffer
 	data := URLTemplateData{URL: url}
@@ -120,7 +115,6 @@ func buildHTTPURL(url string) (string, error) {
 	return buf.String(), nil
 }
 
-// buildHTTPSURL constructs an HTTPS URL using templates
 func buildHTTPSURL(url string) (string, error) {
 	var buf bytes.Buffer
 	data := URLTemplateData{URL: url}
@@ -130,12 +124,12 @@ func buildHTTPSURL(url string) (string, error) {
 	return buf.String(), nil
 }
 
+// GenerateBuildInList generates a list of mirror URLs with aliases
 func GenerateBuildInList(officialList []string, customList []string) (mirrors []UrlWithAlias) {
 	for _, url := range officialList {
 		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			httpURL, err := buildHTTPURL(url)
 			if err != nil {
-				// Fallback to concatenation if template fails
 				httpURL = "http://" + url
 			}
 			mirror := GenerateBuildInMirorItem(httpURL, true)
@@ -143,7 +137,6 @@ func GenerateBuildInList(officialList []string, customList []string) (mirrors []
 
 			httpsURL, err := buildHTTPSURL(url)
 			if err != nil {
-				// Fallback to concatenation if template fails
 				httpsURL = "https://" + url
 			}
 			mirror = GenerateBuildInMirorItem(httpsURL, true)
@@ -158,7 +151,6 @@ func GenerateBuildInList(officialList []string, customList []string) (mirrors []
 		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			httpURL, err := buildHTTPURL(url)
 			if err != nil {
-				// Fallback to concatenation if template fails
 				httpURL = "http://" + url
 			}
 			mirror := GenerateBuildInMirorItem(httpURL, false)
@@ -166,7 +158,6 @@ func GenerateBuildInList(officialList []string, customList []string) (mirrors []
 
 			httpsURL, err := buildHTTPSURL(url)
 			if err != nil {
-				// Fallback to concatenation if template fails
 				httpsURL = "https://" + url
 			}
 			mirror = GenerateBuildInMirorItem(httpsURL, false)

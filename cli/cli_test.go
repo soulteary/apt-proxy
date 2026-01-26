@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/soulteary/apt-proxy/define"
+	"github.com/soulteary/apt-proxy/distro"
 	"github.com/soulteary/cli-kit/testutil"
 )
 
@@ -14,13 +14,13 @@ func TestModeToInt(t *testing.T) {
 		mode     string
 		expected int
 	}{
-		{"ubuntu", define.LINUX_DISTROS_UBUNTU, define.TYPE_LINUX_DISTROS_UBUNTU},
-		{"ubuntu-ports", define.LINUX_DISTROS_UBUNTU_PORTS, define.TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-		{"debian", define.LINUX_DISTROS_DEBIAN, define.TYPE_LINUX_DISTROS_DEBIAN},
-		{"centos", define.LINUX_DISTROS_CENTOS, define.TYPE_LINUX_DISTROS_CENTOS},
-		{"alpine", define.LINUX_DISTROS_ALPINE, define.TYPE_LINUX_DISTROS_ALPINE},
-		{"all", define.LINUX_ALL_DISTROS, define.TYPE_LINUX_ALL_DISTROS},
-		{"unknown defaults to all", "unknown", define.TYPE_LINUX_ALL_DISTROS},
+		{"ubuntu", distro.LINUX_DISTROS_UBUNTU, distro.TYPE_LINUX_DISTROS_UBUNTU},
+		{"ubuntu-ports", distro.LINUX_DISTROS_UBUNTU_PORTS, distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS},
+		{"debian", distro.LINUX_DISTROS_DEBIAN, distro.TYPE_LINUX_DISTROS_DEBIAN},
+		{"centos", distro.LINUX_DISTROS_CENTOS, distro.TYPE_LINUX_DISTROS_CENTOS},
+		{"alpine", distro.LINUX_DISTROS_ALPINE, distro.TYPE_LINUX_DISTROS_ALPINE},
+		{"all", distro.LINUX_ALL_DISTROS, distro.TYPE_LINUX_ALL_DISTROS},
+		{"unknown defaults to all", "unknown", distro.TYPE_LINUX_ALL_DISTROS},
 	}
 
 	for _, tt := range tests {
@@ -62,8 +62,8 @@ func TestParseFlagsWithEnvVars(t *testing.T) {
 	if config.Listen != "127.0.0.1:8080" {
 		t.Errorf("Listen = %q, want %q", config.Listen, "127.0.0.1:8080")
 	}
-	if config.Mode != define.TYPE_LINUX_DISTROS_DEBIAN {
-		t.Errorf("Mode = %d, want %d", config.Mode, define.TYPE_LINUX_DISTROS_DEBIAN)
+	if config.Mode != distro.TYPE_LINUX_DISTROS_DEBIAN {
+		t.Errorf("Mode = %d, want %d", config.Mode, distro.TYPE_LINUX_DISTROS_DEBIAN)
 	}
 	if config.CacheDir != "/tmp/aptcache" {
 		t.Errorf("CacheDir = %q, want %q", config.CacheDir, "/tmp/aptcache")
@@ -102,8 +102,8 @@ func TestParseFlagsCLIPriority(t *testing.T) {
 	if config.Listen != "192.168.1.1:9090" {
 		t.Errorf("Listen = %q, want %q (CLI should override ENV)", config.Listen, "192.168.1.1:9090")
 	}
-	if config.Mode != define.TYPE_LINUX_DISTROS_UBUNTU {
-		t.Errorf("Mode = %d, want %d (CLI should override ENV)", config.Mode, define.TYPE_LINUX_DISTROS_UBUNTU)
+	if config.Mode != distro.TYPE_LINUX_DISTROS_UBUNTU {
+		t.Errorf("Mode = %d, want %d (CLI should override ENV)", config.Mode, distro.TYPE_LINUX_DISTROS_UBUNTU)
 	}
 }
 
@@ -135,8 +135,8 @@ func TestParseFlagsDefaults(t *testing.T) {
 	if config.Listen != "0.0.0.0:3142" {
 		t.Errorf("Listen = %q, want %q (default)", config.Listen, "0.0.0.0:3142")
 	}
-	if config.Mode != define.TYPE_LINUX_ALL_DISTROS {
-		t.Errorf("Mode = %d, want %d (default)", config.Mode, define.TYPE_LINUX_ALL_DISTROS)
+	if config.Mode != distro.TYPE_LINUX_ALL_DISTROS {
+		t.Errorf("Mode = %d, want %d (default)", config.Mode, distro.TYPE_LINUX_ALL_DISTROS)
 	}
 	if config.CacheDir != DefaultCacheDir {
 		t.Errorf("CacheDir = %q, want %q (default)", config.CacheDir, DefaultCacheDir)
@@ -167,8 +167,8 @@ func TestParseFlagsInvalidModeFallback(t *testing.T) {
 	}
 
 	// Invalid mode should fall back to default (all)
-	if config.Mode != define.TYPE_LINUX_ALL_DISTROS {
-		t.Errorf("Mode = %d, want %d (should fallback to default 'all')", config.Mode, define.TYPE_LINUX_ALL_DISTROS)
+	if config.Mode != distro.TYPE_LINUX_ALL_DISTROS {
+		t.Errorf("Mode = %d, want %d (should fallback to default 'all')", config.Mode, distro.TYPE_LINUX_ALL_DISTROS)
 	}
 }
 
@@ -191,8 +191,8 @@ func TestParseFlagsInvalidModeEnvFallback(t *testing.T) {
 	}
 
 	// Invalid CLI mode should fall back to valid ENV mode
-	if config.Mode != define.TYPE_LINUX_DISTROS_DEBIAN {
-		t.Errorf("Mode = %d, want %d (should fallback to ENV 'debian')", config.Mode, define.TYPE_LINUX_DISTROS_DEBIAN)
+	if config.Mode != distro.TYPE_LINUX_DISTROS_DEBIAN {
+		t.Errorf("Mode = %d, want %d (should fallback to ENV 'debian')", config.Mode, distro.TYPE_LINUX_DISTROS_DEBIAN)
 	}
 }
 
@@ -472,12 +472,12 @@ func containsHelper(s, substr string) bool {
 func TestAllowedModes(t *testing.T) {
 	// Verify allowedModes contains all expected values
 	expectedModes := []string{
-		define.LINUX_ALL_DISTROS,
-		define.LINUX_DISTROS_UBUNTU,
-		define.LINUX_DISTROS_UBUNTU_PORTS,
-		define.LINUX_DISTROS_DEBIAN,
-		define.LINUX_DISTROS_CENTOS,
-		define.LINUX_DISTROS_ALPINE,
+		distro.LINUX_ALL_DISTROS,
+		distro.LINUX_DISTROS_UBUNTU,
+		distro.LINUX_DISTROS_UBUNTU_PORTS,
+		distro.LINUX_DISTROS_DEBIAN,
+		distro.LINUX_DISTROS_CENTOS,
+		distro.LINUX_DISTROS_ALPINE,
 	}
 
 	if len(allowedModes) != len(expectedModes) {

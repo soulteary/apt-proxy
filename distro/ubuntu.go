@@ -1,4 +1,4 @@
-package define
+package distro
 
 import (
 	"regexp"
@@ -20,14 +20,12 @@ var UBUNTU_OFFICIAL_MIRRORS = []string{
 	"mirror.bjtu.edu.cn/ubuntu/",
 	"mirrors.cqu.edu.cn/ubuntu/",
 	"http://mirrors.skyshe.cn/ubuntu/",
-	// duplicate "mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/",
 	"mirrors.yun-idc.com/ubuntu/",
 	"http://mirror.dlut.edu.cn/ubuntu/",
 	"mirrors.xjtu.edu.cn/ubuntu/",
 	"mirrors.huaweicloud.com/repository/ubuntu/",
 	"mirrors.bupt.edu.cn/ubuntu/",
 	"mirrors.hit.edu.cn/ubuntu/",
-	// duplicate "repo.huaweicloud.com/ubuntu/",
 	"http://mirrors.sohu.com/ubuntu/",
 	"mirror.nju.edu.cn/ubuntu/",
 	"mirrors.bfsu.edu.cn/ubuntu/",
@@ -59,6 +57,5 @@ var UBUNTU_DEFAULT_CACHE_RULES = []Rule{
 	{Pattern: regexp.MustCompile(`Sources\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
 	{Pattern: regexp.MustCompile(`Release(\.gpg)?$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
 	{Pattern: regexp.MustCompile(`Translation-(en|fr)\.(gz|bz2|bzip2|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	// Add file file hash
 	{Pattern: regexp.MustCompile(`\/by-hash\/`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
 }

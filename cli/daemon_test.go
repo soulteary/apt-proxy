@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soulteary/apt-proxy/define"
+	"github.com/soulteary/apt-proxy/distro"
+	"github.com/soulteary/apt-proxy/internal/api"
+	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/state"
 )
 
@@ -44,7 +46,7 @@ func TestNewServer(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		cfg     *Config
+		cfg     *config.Config
 		wantErr bool
 	}{
 		{
@@ -54,20 +56,20 @@ func TestNewServer(t *testing.T) {
 		},
 		{
 			name: "valid config",
-			cfg: &Config{
+			cfg: &config.Config{
 				Debug:    false,
 				CacheDir: tmpDir,
-				Mode:     define.TYPE_LINUX_ALL_DISTROS,
+				Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 				Listen:   "127.0.0.1:0",
 			},
 			wantErr: false,
 		},
 		{
 			name: "debug mode enabled",
-			cfg: &Config{
+			cfg: &config.Config{
 				Debug:    true,
 				CacheDir: tmpDir,
-				Mode:     define.TYPE_LINUX_DISTROS_UBUNTU,
+				Mode:     distro.TYPE_LINUX_DISTROS_UBUNTU,
 				Listen:   "127.0.0.1:0",
 			},
 			wantErr: false,
@@ -101,10 +103,10 @@ func TestServerInitialize(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -146,10 +148,10 @@ func TestServerCreateRouter(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -175,10 +177,10 @@ func TestServerStartAndShutdown(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0", // Use port 0 to get a random available port
 	}
 
@@ -237,10 +239,10 @@ func TestCacheDirCreation(t *testing.T) {
 	// Use a subdirectory that doesn't exist yet
 	cacheDir := filepath.Join(tmpDir, "cache", "subdir")
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: cacheDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -271,10 +273,10 @@ func TestHealthEndpoints(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -349,12 +351,12 @@ func TestMirrorConfig(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
-		Mirrors: MirrorConfig{
+		Mirrors: config.MirrorConfig{
 			Ubuntu:      "https://mirrors.example.com/ubuntu/",
 			UbuntuPorts: "https://mirrors.example.com/ubuntu-ports/",
 			Debian:      "https://mirrors.example.com/debian/",
@@ -385,10 +387,10 @@ func TestServerReload(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -423,10 +425,10 @@ func TestCacheStatsAPI(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -514,10 +516,10 @@ func TestCachePurgeAPI(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -601,10 +603,10 @@ func TestCacheCleanupAPI(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -690,10 +692,10 @@ func TestMirrorsRefreshAPI(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -796,9 +798,9 @@ func TestFormatBytes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			got := formatBytes(tt.bytes)
+			got := api.FormatBytes(tt.bytes)
 			if got != tt.want {
-				t.Errorf("formatBytes(%d) = %q, want %q", tt.bytes, got, tt.want)
+				t.Errorf("FormatBytes(%d) = %q, want %q", tt.bytes, got, tt.want)
 			}
 		})
 	}
@@ -820,9 +822,9 @@ func TestCalculateHitRate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
-			got := calculateHitRate(tt.hits, tt.misses)
+			got := api.CalculateHitRate(tt.hits, tt.misses)
 			if got != tt.want {
-				t.Errorf("calculateHitRate(%d, %d) = %f, want %f", tt.hits, tt.misses, got, tt.want)
+				t.Errorf("CalculateHitRate(%d, %d) = %f, want %f", tt.hits, tt.misses, got, tt.want)
 			}
 		})
 	}

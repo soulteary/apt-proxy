@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,63 +14,19 @@ import (
 	middleware "github.com/soulteary/middleware-kit"
 	version "github.com/soulteary/version-kit"
 
-	"github.com/soulteary/apt-proxy/internal/server"
+	"github.com/soulteary/apt-proxy/internal/api"
+	"github.com/soulteary/apt-proxy/internal/config"
+	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
 	"github.com/soulteary/apt-proxy/pkg/httplog"
-)
-
-// Config holds all application configuration
-type Config struct {
-	Debug    bool
-	CacheDir string
-	Mode     int
-	Listen   string
-	Mirrors  MirrorConfig
-	Cache    CacheConfig
-	TLS      TLSConfig
-}
-
-// TLSConfig holds TLS/HTTPS configuration
-type TLSConfig struct {
-	// Enabled indicates whether TLS is enabled
-	Enabled bool
-	// CertFile is the path to the TLS certificate file
-	CertFile string
-	// KeyFile is the path to the TLS private key file
-	KeyFile string
-}
-
-// MirrorConfig holds mirror-specific configuration
-type MirrorConfig struct {
-	Ubuntu      string
-	UbuntuPorts string
-	Debian      string
-	CentOS      string
-	Alpine      string
-}
-
-// CacheConfig holds cache-specific configuration
-type CacheConfig struct {
-	// MaxSize is the maximum cache size in bytes (default: 10GB)
-	MaxSize int64
-	// TTL is the time-to-live for cached items (default: 7 days)
-	TTL time.Duration
-	// CleanupInterval is the interval between cleanup runs (default: 1 hour)
-	CleanupInterval time.Duration
-}
-
-// Environment variable names for logging configuration
-const (
-	EnvLogLevel  = "LOG_LEVEL"
-	EnvLogFormat = "LOG_FORMAT"
 )
 
 // Server represents the main application server that handles HTTP requests,
 // manages caching, and coordinates all server components.
 type Server struct {
-	config           *Config                 // Application configuration
+	config           *config.Config          // Application configuration
 	cache            httpcache.ExtendedCache // HTTP cache implementation with management capabilities
-	proxy            *server.PackageStruct   // Main proxy router
+	proxy            *proxy.PackageStruct    // Main proxy router
 	responseLogger   *httplog.ResponseLogger // Request/response logger
 	router           http.Handler            // HTTP router with orthodox routing
 	server           *http.Server            // HTTP server instance
@@ -80,14 +34,16 @@ type Server struct {
 	healthAggregator *health.Aggregator      // Health check aggregator
 	metricsRegistry  *metrics.Registry       // Prometheus metrics registry
 	versionInfo      *version.Info           // Version information
+	cacheHandler     *api.CacheHandler       // Cache API handler
+	mirrorsHandler   *api.MirrorsHandler     // Mirrors API handler
 }
 
 // NewServer creates and initializes a new Server instance with the provided
-// configuration. It sets up caching, proxy routing, logging, and HTTP server.
+// configuration. It sets up caching, proxy routing, logging, and HTTP proxy.
 // Returns an error if initialization fails.
-func NewServer(cfg *Config) (*Server, error) {
+func NewServer(cfg *config.Config) (*Server, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("configuration cannot be nil")
+		return nil, errNilConfig
 	}
 
 	s := &Server{
@@ -98,7 +54,7 @@ func NewServer(cfg *Config) (*Server, error) {
 	s.initLogger()
 
 	if err := s.initialize(); err != nil {
-		return nil, fmt.Errorf("failed to initialize server: %w", err)
+		return nil, wrapError("failed to initialize server", err)
 	}
 
 	return s, nil
@@ -107,13 +63,13 @@ func NewServer(cfg *Config) (*Server, error) {
 // initLogger initializes the structured logger with configuration from environment
 func (s *Server) initLogger() {
 	// Determine log level from environment or debug flag
-	level := logger.ParseLevelFromEnv(EnvLogLevel, logger.InfoLevel)
+	level := logger.ParseLevelFromEnv(config.EnvLogLevel, logger.InfoLevel)
 	if s.config.Debug {
 		level = logger.DebugLevel
 	}
 
 	// Determine log format from environment
-	formatStr := os.Getenv(EnvLogFormat)
+	formatStr := os.Getenv(config.EnvLogFormat)
 	format := logger.ParseFormat(formatStr)
 
 	// Create logger with configuration
@@ -139,7 +95,7 @@ func (s *Server) initialize() error {
 	cacheConfig := s.buildCacheConfig()
 	cache, err := httpcache.NewDiskCacheWithConfig(s.config.CacheDir, cacheConfig)
 	if err != nil {
-		return fmt.Errorf("failed to initialize cache: %w", err)
+		return wrapError("failed to initialize cache", err)
 	}
 	s.cache = cache
 
@@ -153,7 +109,7 @@ func (s *Server) initialize() error {
 	s.initHealthChecks()
 
 	// Initialize proxy
-	s.proxy = server.CreatePackageStructRouter(s.config.CacheDir, s.log)
+	s.proxy = proxy.CreatePackageStructRouter(s.config.CacheDir, s.log)
 
 	// Wrap proxy with cache
 	cachedHandler := httpcache.NewHandler(s.cache, s.proxy.Handler)
@@ -170,6 +126,10 @@ func (s *Server) initialize() error {
 	s.responseLogger.DumpRequests = s.config.Debug
 	s.responseLogger.DumpResponses = s.config.Debug
 	s.responseLogger.DumpErrors = s.config.Debug
+
+	// Initialize API handlers
+	s.cacheHandler = api.NewCacheHandler(s.cache, s.log)
+	s.mirrorsHandler = api.NewMirrorsHandler(s.log)
 
 	// Create router with orthodox routing (home, ping, health, version, metrics handlers)
 	s.router = s.createRouter()
@@ -189,11 +149,11 @@ func (s *Server) initialize() error {
 
 // initHealthChecks initializes the health check aggregator
 func (s *Server) initHealthChecks() {
-	config := health.DefaultConfig().
+	cfg := health.DefaultConfig().
 		WithServiceName("apt-proxy").
 		WithTimeout(2 * time.Second)
 
-	s.healthAggregator = health.NewAggregator(config)
+	s.healthAggregator = health.NewAggregator(cfg)
 
 	// Add cache directory check
 	s.healthAggregator.AddChecker(health.NewCustomChecker("cache", func(ctx context.Context) error {
@@ -204,20 +164,20 @@ func (s *Server) initHealthChecks() {
 
 // buildCacheConfig creates a cache configuration from the application config
 func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
-	config := httpcache.DefaultCacheConfig()
+	cacheConfig := httpcache.DefaultCacheConfig()
 
 	// Apply custom settings if provided
 	if s.config.Cache.MaxSize > 0 {
-		config.WithMaxSize(s.config.Cache.MaxSize)
+		cacheConfig.WithMaxSize(s.config.Cache.MaxSize)
 	}
 	if s.config.Cache.TTL > 0 {
-		config.WithTTL(s.config.Cache.TTL)
+		cacheConfig.WithTTL(s.config.Cache.TTL)
 	}
 	if s.config.Cache.CleanupInterval > 0 {
-		config.WithCleanupInterval(s.config.Cache.CleanupInterval)
+		cacheConfig.WithCleanupInterval(s.config.Cache.CleanupInterval)
 	}
 
-	return config
+	return cacheConfig
 }
 
 // createRouter creates the main HTTP router with all endpoints
@@ -239,12 +199,12 @@ func (s *Server) createRouter() http.Handler {
 	mux.Handle("/metrics", metrics.HandlerFor(s.metricsRegistry))
 
 	// Register cache management API endpoints
-	mux.HandleFunc("/api/cache/stats", s.handleCacheStats)
-	mux.HandleFunc("/api/cache/purge", s.handleCachePurge)
-	mux.HandleFunc("/api/cache/cleanup", s.handleCacheCleanup)
+	mux.HandleFunc("/api/cache/stats", s.cacheHandler.HandleCacheStats)
+	mux.HandleFunc("/api/cache/purge", s.cacheHandler.HandleCachePurge)
+	mux.HandleFunc("/api/cache/cleanup", s.cacheHandler.HandleCacheCleanup)
 
 	// Register mirror management API endpoints
-	mux.HandleFunc("/api/mirrors/refresh", s.handleMirrorsRefresh)
+	mux.HandleFunc("/api/mirrors/refresh", s.mirrorsHandler.HandleMirrorsRefresh)
 
 	// Register ping endpoint handler
 	mux.HandleFunc("/_/ping/", func(rw http.ResponseWriter, r *http.Request) {
@@ -260,7 +220,7 @@ func (s *Server) createRouter() http.Handler {
 			s.responseLogger.ServeHTTP(rw, r)
 			return
 		}
-		server.HandleHomePage(rw, r, s.config.CacheDir)
+		proxy.HandleHomePage(rw, r, s.config.CacheDir)
 	})
 
 	// Apply security headers middleware
@@ -321,7 +281,7 @@ func (s *Server) Start() error {
 	for {
 		select {
 		case err := <-serverErr:
-			return fmt.Errorf("server error: %w", err)
+			return wrapError("server error", err)
 		case <-sighupChan:
 			s.reload()
 		case <-ctx.Done():
@@ -331,27 +291,27 @@ func (s *Server) Start() error {
 }
 
 // reload handles configuration hot reload triggered by SIGHUP signal.
-// It refreshes mirror configurations without restarting the server.
+// It refreshes mirror configurations without restarting the proxy.
 func (s *Server) reload() {
 	s.log.Info().Msg("received SIGHUP, reloading configuration...")
 
 	// Refresh mirror configurations
-	server.RefreshMirrors()
+	proxy.RefreshMirrors()
 
 	s.log.Info().Msg("configuration reload complete")
 }
 
 // shutdown performs a graceful server shutdown with a 5-second timeout.
-// It allows in-flight requests to complete before closing the server.
+// It allows in-flight requests to complete before closing the proxy.
 // Returns an error if shutdown fails or times out.
 func (s *Server) shutdown() error {
-	s.log.Info().Msg("shutting down server...")
+	s.log.Info().Msg("shutting down proxy...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := s.server.Shutdown(ctx); err != nil {
-		return fmt.Errorf("failed to shutdown server gracefully: %w", err)
+		return wrapError("failed to shutdown server gracefully", err)
 	}
 
 	// Close cache to stop cleanup goroutines
@@ -368,7 +328,7 @@ func (s *Server) shutdown() error {
 // Daemon is the main entry point for starting the application daemon.
 // It validates the configuration, creates and starts the server, and handles
 // any startup errors. This function blocks until the server shuts down.
-func Daemon(flags *Config) {
+func Daemon(flags *config.Config) {
 	// Use default logger for initial validation errors
 	log := logger.Default()
 
@@ -376,28 +336,28 @@ func Daemon(flags *Config) {
 		log.Fatal().Msg("configuration cannot be nil")
 	}
 
-	if err := ValidateConfig(flags); err != nil {
+	if err := config.ValidateConfig(flags); err != nil {
 		log.Fatal().Err(err).Msg("invalid configuration")
 	}
 
-	cfg := &Config{
+	cfg := &config.Config{
 		Debug:    flags.Debug,
 		CacheDir: flags.CacheDir,
 		Mode:     flags.Mode,
 		Listen:   flags.Listen,
-		Mirrors: MirrorConfig{
+		Mirrors: config.MirrorConfig{
 			Ubuntu:      flags.Mirrors.Ubuntu,
 			UbuntuPorts: flags.Mirrors.UbuntuPorts,
 			Debian:      flags.Mirrors.Debian,
 			CentOS:      flags.Mirrors.CentOS,
 			Alpine:      flags.Mirrors.Alpine,
 		},
-		Cache: CacheConfig{
+		Cache: config.CacheConfig{
 			MaxSize:         flags.Cache.MaxSize,
 			TTL:             flags.Cache.TTL,
 			CleanupInterval: flags.Cache.CleanupInterval,
 		},
-		TLS: TLSConfig{
+		TLS: config.TLSConfig{
 			Enabled:  flags.TLS.Enabled,
 			CertFile: flags.TLS.CertFile,
 			KeyFile:  flags.TLS.KeyFile,
@@ -414,205 +374,30 @@ func Daemon(flags *Config) {
 	}
 }
 
-// Cache management API handlers
+// Error handling helpers
 
-// API response types for JSON serialization
-type cacheStatsResponse struct {
-	TotalSizeBytes int64   `json:"total_size_bytes"`
-	TotalSizeHuman string  `json:"total_size_human"`
-	ItemCount      int     `json:"item_count"`
-	StaleCount     int     `json:"stale_count"`
-	HitCount       int64   `json:"hit_count"`
-	MissCount      int64   `json:"miss_count"`
-	HitRate        float64 `json:"hit_rate"`
+var errNilConfig = newError("configuration cannot be nil")
+
+func newError(msg string) error {
+	return &configError{msg: msg}
 }
 
-type cachePurgeResponse struct {
-	Success      bool  `json:"success"`
-	ItemsRemoved int   `json:"items_removed"`
-	BytesFreed   int64 `json:"bytes_freed"`
+func wrapError(msg string, err error) error {
+	return &configError{msg: msg, err: err}
 }
 
-type cacheCleanupResponse struct {
-	Success             bool  `json:"success"`
-	ItemsRemoved        int   `json:"items_removed"`
-	BytesFreed          int64 `json:"bytes_freed"`
-	StaleEntriesRemoved int   `json:"stale_entries_removed"`
-	DurationMs          int64 `json:"duration_ms"`
+type configError struct {
+	msg string
+	err error
 }
 
-type mirrorsRefreshResponse struct {
-	Success    bool   `json:"success"`
-	Message    string `json:"message"`
-	DurationMs int64  `json:"duration_ms"`
+func (e *configError) Error() string {
+	if e.err != nil {
+		return e.msg + ": " + e.err.Error()
+	}
+	return e.msg
 }
 
-type errorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message,omitempty"`
-}
-
-// writeJSON writes a JSON response with proper encoding
-func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(data)
-}
-
-// writeJSONError writes a JSON error response
-func writeJSONError(w http.ResponseWriter, statusCode int, errMsg string) {
-	writeJSON(w, statusCode, errorResponse{Error: errMsg})
-}
-
-// handleCacheStats returns cache statistics as JSON
-func (s *Server) handleCacheStats(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
-	stats := s.cache.Stats()
-
-	// Update Prometheus metrics
-	if httpcache.DefaultMetrics != nil {
-		httpcache.DefaultMetrics.UpdateCacheStats(stats)
-	}
-
-	resp := cacheStatsResponse{
-		TotalSizeBytes: stats.TotalSize,
-		TotalSizeHuman: formatBytes(stats.TotalSize),
-		ItemCount:      stats.ItemCount,
-		StaleCount:     stats.StaleCount,
-		HitCount:       stats.HitCount,
-		MissCount:      stats.MissCount,
-		HitRate:        calculateHitRate(stats.HitCount, stats.MissCount),
-	}
-
-	if err := writeJSON(w, http.StatusOK, resp); err != nil {
-		s.log.Error().Err(err).Msg("failed to write cache stats response")
-	}
-}
-
-// handleCachePurge clears all cached items
-func (s *Server) handleCachePurge(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
-	// Get stats before purge
-	statsBefore := s.cache.Stats()
-
-	if err := s.cache.Purge(); err != nil {
-		s.log.Error().Err(err).Msg("failed to purge cache")
-		writeJSONError(w, http.StatusInternalServerError, "Failed to purge cache")
-		return
-	}
-
-	s.log.Info().
-		Int("items_removed", statsBefore.ItemCount).
-		Int64("bytes_freed", statsBefore.TotalSize).
-		Msg("cache purged")
-
-	resp := cachePurgeResponse{
-		Success:      true,
-		ItemsRemoved: statsBefore.ItemCount,
-		BytesFreed:   statsBefore.TotalSize,
-	}
-
-	if err := writeJSON(w, http.StatusOK, resp); err != nil {
-		s.log.Error().Err(err).Msg("failed to write cache purge response")
-	}
-}
-
-// handleCacheCleanup triggers a manual cleanup cycle
-func (s *Server) handleCacheCleanup(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
-	result := s.cache.Cleanup()
-
-	s.log.Info().
-		Int("items_removed", result.RemovedItems).
-		Int64("bytes_freed", result.RemovedBytes).
-		Int("stale_entries_removed", result.RemovedStaleEntries).
-		Dur("duration", result.Duration).
-		Msg("manual cache cleanup completed")
-
-	resp := cacheCleanupResponse{
-		Success:             true,
-		ItemsRemoved:        result.RemovedItems,
-		BytesFreed:          result.RemovedBytes,
-		StaleEntriesRemoved: result.RemovedStaleEntries,
-		DurationMs:          result.Duration.Milliseconds(),
-	}
-
-	if err := writeJSON(w, http.StatusOK, resp); err != nil {
-		s.log.Error().Err(err).Msg("failed to write cache cleanup response")
-	}
-}
-
-// handleMirrorsRefresh triggers a mirror benchmark refresh
-func (s *Server) handleMirrorsRefresh(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
-	start := time.Now()
-
-	// Refresh mirrors using the server reload mechanism
-	server.RefreshMirrors()
-
-	duration := time.Since(start)
-
-	s.log.Info().
-		Dur("duration", duration).
-		Msg("mirrors refresh completed")
-
-	resp := mirrorsRefreshResponse{
-		Success:    true,
-		Message:    "Mirror configurations refreshed",
-		DurationMs: duration.Milliseconds(),
-	}
-
-	if err := writeJSON(w, http.StatusOK, resp); err != nil {
-		s.log.Error().Err(err).Msg("failed to write mirrors refresh response")
-	}
-}
-
-// calculateHitRate calculates the cache hit rate
-func calculateHitRate(hits, misses int64) float64 {
-	total := hits + misses
-	if total == 0 {
-		return 0
-	}
-	return float64(hits) / float64(total)
-}
-
-// formatBytes formats bytes into a human-readable string
-func formatBytes(bytes int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-		TB = GB * 1024
-	)
-
-	switch {
-	case bytes >= TB:
-		return fmt.Sprintf("%.2f TB", float64(bytes)/TB)
-	case bytes >= GB:
-		return fmt.Sprintf("%.2f GB", float64(bytes)/GB)
-	case bytes >= MB:
-		return fmt.Sprintf("%.2f MB", float64(bytes)/MB)
-	case bytes >= KB:
-		return fmt.Sprintf("%.2f KB", float64(bytes)/KB)
-	default:
-		return fmt.Sprintf("%d B", bytes)
-	}
+func (e *configError) Unwrap() error {
+	return e.err
 }

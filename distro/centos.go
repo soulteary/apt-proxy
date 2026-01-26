@@ -1,4 +1,4 @@
-package define
+package distro
 
 import "regexp"
 

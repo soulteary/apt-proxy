@@ -1,4 +1,4 @@
-package define
+package distro
 
 import "regexp"
 
@@ -12,11 +12,8 @@ var ALPINE_OFFICIAL_MIRRORS = []string{
 	"mirrors.tuna.tsinghua.edu.cn/alpine/",
 	"mirrors.ustc.edu.cn/alpine/",
 	"mirrors.nju.edu.cn/alpine/",
-	// offline "mirror.lzu.edu.cn/alpine/",
 	"mirrors.sjtug.sjtu.edu.cn/alpine/",
 	"mirrors.aliyun.com/alpine/",
-	// not vaild "mirrors.bfsu.edu.cn/alpine",
-	// offline "mirrors.neusoft.edu.cn/alpine/",
 }
 
 var ALPINE_CUSTOM_MIRRORS = []string{}

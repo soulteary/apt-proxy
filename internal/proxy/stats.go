@@ -1,4 +1,4 @@
-package server
+package proxy
 
 import (
 	"net/http"
@@ -47,8 +47,6 @@ func RenderInternalUrls(url string, cacheDir string) (string, int) {
 		cacheSize, err := system.DirSize(cacheDir)
 		if err == nil {
 			cacheSizeLabel = system.ByteCountDecimal(cacheSize)
-			// } else {
-			// return "Get Cache Size Failed", http.StatusBadGateway
 		}
 
 		filesNumberLabel := LABEL_NO_VALID_VALUE
@@ -57,19 +55,13 @@ func RenderInternalUrls(url string, cacheDir string) (string, int) {
 			files, err := os.ReadDir(cacheMetaDir)
 			if err == nil {
 				filesNumberLabel = strconv.Itoa(len(files))
-				// } else {
-				// return "Get Cache Meta Dir Failed", http.StatusBadGateway
 			}
-			// } else {
-			// return "Get Cache Meta Failed", http.StatusBadGateway
 		}
 
 		diskAvailableLabel := LABEL_NO_VALID_VALUE
 		available, err := system.DiskAvailable()
 		if err == nil {
 			diskAvailableLabel = system.ByteCountDecimal(available)
-			// } else {
-			// return "Get Disk Available Failed", http.StatusBadGateway
 		}
 
 		memoryUsageLabel := LABEL_NO_VALID_VALUE

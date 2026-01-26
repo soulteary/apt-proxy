@@ -1,4 +1,4 @@
-package define
+package distro
 
 import (
 	"regexp"
@@ -20,14 +20,12 @@ var UBUNTU_PORTS_OFFICIAL_MIRRORS = []string{
 	"mirror.bjtu.edu.cn/ubuntu-ports/",
 	"mirrors.cqu.edu.cn/ubuntu-ports/",
 	"http://mirrors.skyshe.cn/ubuntu-ports/",
-	// duplicate "mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/",
 	"mirrors.yun-idc.com/ubuntu-ports/",
 	"http://mirror.dlut.edu.cn/ubuntu-ports/",
 	"mirrors.xjtu.edu.cn/ubuntu-ports/",
 	"mirrors.huaweicloud.com/repository/ubuntu-ports/",
 	"mirrors.bupt.edu.cn/ubuntu-ports/",
 	"mirrors.hit.edu.cn/ubuntu-ports/",
-	// duplicate "repo.huaweicloud.com/ubuntu-ports/",
 	"http://mirrors.sohu.com/ubuntu-ports/",
 	"mirror.nju.edu.cn/ubuntu-ports/",
 	"mirrors.bfsu.edu.cn/ubuntu-ports/",
@@ -59,6 +57,5 @@ var UBUNTU_PORTS_DEFAULT_CACHE_RULES = []Rule{
 	{Pattern: regexp.MustCompile(`Sources\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
 	{Pattern: regexp.MustCompile(`Release(\.gpg)?$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
 	{Pattern: regexp.MustCompile(`Translation-(en|fr)\.(gz|bz2|bzip2|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	// Add file file hash
 	{Pattern: regexp.MustCompile(`\/by-hash\/`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
 }

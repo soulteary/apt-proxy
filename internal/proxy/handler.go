@@ -1,4 +1,4 @@
-package server
+package proxy
 
 import (
 	"io"
@@ -9,21 +9,20 @@ import (
 
 	logger "github.com/soulteary/logger-kit"
 
-	define "github.com/soulteary/apt-proxy/define"
-	rewriter "github.com/soulteary/apt-proxy/internal/rewriter"
+	"github.com/soulteary/apt-proxy/distro"
 	state "github.com/soulteary/apt-proxy/state"
 )
 
-var hostPatternMap = map[*regexp.Regexp][]define.Rule{
-	define.UBUNTU_HOST_PATTERN:       define.UBUNTU_DEFAULT_CACHE_RULES,
-	define.UBUNTU_PORTS_HOST_PATTERN: define.UBUNTU_PORTS_DEFAULT_CACHE_RULES,
-	define.DEBIAN_HOST_PATTERN:       define.DEBIAN_DEFAULT_CACHE_RULES,
-	define.CENTOS_HOST_PATTERN:       define.CENTOS_DEFAULT_CACHE_RULES,
-	define.ALPINE_HOST_PATTERN:       define.ALPINE_DEFAULT_CACHE_RULES,
+var hostPatternMap = map[*regexp.Regexp][]distro.Rule{
+	distro.UBUNTU_HOST_PATTERN:       distro.UBUNTU_DEFAULT_CACHE_RULES,
+	distro.UBUNTU_PORTS_HOST_PATTERN: distro.UBUNTU_PORTS_DEFAULT_CACHE_RULES,
+	distro.DEBIAN_HOST_PATTERN:       distro.DEBIAN_DEFAULT_CACHE_RULES,
+	distro.CENTOS_HOST_PATTERN:       distro.CENTOS_DEFAULT_CACHE_RULES,
+	distro.ALPINE_HOST_PATTERN:       distro.ALPINE_DEFAULT_CACHE_RULES,
 }
 
 var (
-	rewriters        *rewriter.URLRewriters
+	rewriters        *URLRewriters
 	defaultTransport = &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ResponseHeaderTimeout: 45 * time.Second,
@@ -38,7 +37,7 @@ var (
 // distribution-specific handlers and applies caching rules.
 type PackageStruct struct {
 	Handler  http.Handler   // The underlying HTTP handler (typically a reverse proxy)
-	Rules    []define.Rule  // Caching rules for different package types
+	Rules    []distro.Rule  // Caching rules for different package types
 	CacheDir string         // Cache directory path for statistics
 	log      *logger.Logger // Structured logger
 }
@@ -47,7 +46,7 @@ type PackageStruct struct {
 // based on the matched caching rule.
 type responseWriter struct {
 	http.ResponseWriter
-	rule *define.Rule // The matched caching rule for this request
+	rule *distro.Rule // The matched caching rule for this request
 }
 
 // CreatePackageStructRouter initializes and returns a new PackageStruct instance
@@ -56,10 +55,10 @@ type responseWriter struct {
 // CreatePackageStructRouterAsync instead.
 func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStruct {
 	mode := state.GetProxyMode()
-	rewriters = rewriter.CreateNewRewriters(mode)
+	rewriters = CreateNewRewriters(mode)
 
 	return &PackageStruct{
-		Rules:    rewriter.GetRewriteRulesByMode(mode),
+		Rules:    GetRewriteRulesByMode(mode),
 		CacheDir: cacheDir,
 		log:      log,
 		Handler: &httputil.ReverseProxy{
@@ -75,10 +74,10 @@ func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStru
 // benchmarking runs in the background to find the fastest mirror.
 func CreatePackageStructRouterAsync(cacheDir string, log *logger.Logger) *PackageStruct {
 	mode := state.GetProxyMode()
-	rewriters = rewriter.CreateNewRewritersAsync(mode)
+	rewriters = CreateNewRewritersAsync(mode)
 
 	return &PackageStruct{
-		Rules:    rewriter.GetRewriteRulesByMode(mode),
+		Rules:    GetRewriteRulesByMode(mode),
 		CacheDir: cacheDir,
 		log:      log,
 		Handler: &httputil.ReverseProxy{
@@ -117,7 +116,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 // handleExternalURLs processes requests for external package repositories.
 // It matches the request path against known distribution patterns and returns
 // the appropriate caching rule if a match is found.
-func (ap *PackageStruct) handleExternalURLs(r *http.Request) *define.Rule {
+func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	path := r.URL.Path
 	for pattern, rules := range hostPatternMap {
 		if pattern.MatchString(path) {
@@ -130,8 +129,8 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *define.Rule {
 // processMatchingRule processes a request that matches a distribution pattern.
 // It finds the specific caching rule, removes client cache control headers,
 // and rewrites the URL if necessary.
-func (ap *PackageStruct) processMatchingRule(r *http.Request, rules []define.Rule) *define.Rule {
-	rule, match := rewriter.MatchingRule(r.URL.Path, rules)
+func (ap *PackageStruct) processMatchingRule(r *http.Request, rules []distro.Rule) *distro.Rule {
+	rule, match := MatchingRule(r.URL.Path, rules)
 	if !match {
 		return nil
 	}
@@ -146,13 +145,13 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rules []define.Rul
 // rewriteRequest rewrites the request URL to point to the configured mirror
 // for the distribution. This enables transparent proxying to different mirrors
 // while maintaining the original request path structure.
-func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *define.Rule) {
+func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *distro.Rule) {
 	if r.URL == nil {
 		ap.log.Error().Msg("request URL is nil, cannot rewrite")
 		return
 	}
 	before := r.URL.String()
-	rewriter.RewriteRequestByMode(r, rewriters, rule.OS)
+	RewriteRequestByMode(r, rewriters, rule.OS)
 
 	if r.URL != nil {
 		r.Host = r.URL.Host
@@ -184,5 +183,5 @@ func (rw *responseWriter) shouldSetCacheControl(status int) bool {
 // This is typically called in response to a SIGHUP signal for hot reload.
 func RefreshMirrors() {
 	mode := state.GetProxyMode()
-	rewriter.RefreshRewriters(rewriters, mode)
+	RefreshRewriters(rewriters, mode)
 }
