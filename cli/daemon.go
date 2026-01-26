@@ -27,6 +27,7 @@ type Config struct {
 	Mode     int
 	Listen   string
 	Mirrors  MirrorConfig
+	Cache    CacheConfig
 }
 
 // MirrorConfig holds mirror-specific configuration
@@ -36,6 +37,16 @@ type MirrorConfig struct {
 	Debian      string
 	CentOS      string
 	Alpine      string
+}
+
+// CacheConfig holds cache-specific configuration
+type CacheConfig struct {
+	// MaxSize is the maximum cache size in bytes (default: 10GB)
+	MaxSize int64
+	// TTL is the time-to-live for cached items (default: 7 days)
+	TTL time.Duration
+	// CleanupInterval is the interval between cleanup runs (default: 1 hour)
+	CleanupInterval time.Duration
 }
 
 // Environment variable names for logging configuration
@@ -48,7 +59,7 @@ const (
 // manages caching, and coordinates all server components.
 type Server struct {
 	config           *Config                 // Application configuration
-	cache            httpcache.Cache         // HTTP cache implementation
+	cache            httpcache.ExtendedCache // HTTP cache implementation with management capabilities
 	proxy            *server.PackageStruct   // Main proxy router
 	responseLogger   *httplog.ResponseLogger // Request/response logger
 	router           http.Handler            // HTTP router with orthodox routing
@@ -112,8 +123,9 @@ func (s *Server) initialize() error {
 	// Initialize version info
 	s.versionInfo = version.Default()
 
-	// Initialize cache
-	cache, err := httpcache.NewDiskCache(s.config.CacheDir)
+	// Initialize cache with configuration
+	cacheConfig := s.buildCacheConfig()
+	cache, err := httpcache.NewDiskCacheWithConfig(s.config.CacheDir, cacheConfig)
 	if err != nil {
 		return fmt.Errorf("failed to initialize cache: %w", err)
 	}
@@ -178,6 +190,24 @@ func (s *Server) initHealthChecks() {
 	}).WithTimeout(1 * time.Second))
 }
 
+// buildCacheConfig creates a cache configuration from the application config
+func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
+	config := httpcache.DefaultCacheConfig()
+
+	// Apply custom settings if provided
+	if s.config.Cache.MaxSize > 0 {
+		config.WithMaxSize(s.config.Cache.MaxSize)
+	}
+	if s.config.Cache.TTL > 0 {
+		config.WithTTL(s.config.Cache.TTL)
+	}
+	if s.config.Cache.CleanupInterval > 0 {
+		config.WithCleanupInterval(s.config.Cache.CleanupInterval)
+	}
+
+	return config
+}
+
 // createRouter creates the main HTTP router with all endpoints
 func (s *Server) createRouter() http.Handler {
 	mux := http.NewServeMux()
@@ -195,6 +225,11 @@ func (s *Server) createRouter() http.Handler {
 
 	// Register metrics endpoint
 	mux.Handle("/metrics", metrics.HandlerFor(s.metricsRegistry))
+
+	// Register cache management API endpoints
+	mux.HandleFunc("/api/cache/stats", s.handleCacheStats)
+	mux.HandleFunc("/api/cache/purge", s.handleCachePurge)
+	mux.HandleFunc("/api/cache/cleanup", s.handleCacheCleanup)
 
 	// Register ping endpoint handler
 	mux.HandleFunc("/_/ping/", func(rw http.ResponseWriter, r *http.Request) {
@@ -289,6 +324,13 @@ func (s *Server) shutdown() error {
 		return fmt.Errorf("failed to shutdown server gracefully: %w", err)
 	}
 
+	// Close cache to stop cleanup goroutines
+	if s.cache != nil {
+		if err := s.cache.Close(); err != nil {
+			s.log.Warn().Err(err).Msg("failed to close cache")
+		}
+	}
+
 	s.log.Info().Msg("server shutdown complete")
 	return nil
 }
@@ -320,6 +362,11 @@ func Daemon(flags *Config) {
 			CentOS:      flags.Mirrors.CentOS,
 			Alpine:      flags.Mirrors.Alpine,
 		},
+		Cache: CacheConfig{
+			MaxSize:         flags.Cache.MaxSize,
+			TTL:             flags.Cache.TTL,
+			CleanupInterval: flags.Cache.CleanupInterval,
+		},
 	}
 
 	srv, err := NewServer(cfg)
@@ -329,5 +376,139 @@ func Daemon(flags *Config) {
 
 	if err := srv.Start(); err != nil {
 		log.Fatal().Err(err).Msg("server error")
+	}
+}
+
+// Cache management API handlers
+
+// handleCacheStats returns cache statistics as JSON
+func (s *Server) handleCacheStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	stats := s.cache.Stats()
+
+	// Update Prometheus metrics
+	if httpcache.DefaultMetrics != nil {
+		httpcache.DefaultMetrics.UpdateCacheStats(stats)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{
+  "total_size_bytes": %d,
+  "total_size_human": "%s",
+  "item_count": %d,
+  "stale_count": %d,
+  "hit_count": %d,
+  "miss_count": %d,
+  "hit_rate": %.4f
+}`,
+		stats.TotalSize,
+		formatBytes(stats.TotalSize),
+		stats.ItemCount,
+		stats.StaleCount,
+		stats.HitCount,
+		stats.MissCount,
+		calculateHitRate(stats.HitCount, stats.MissCount),
+	)
+}
+
+// handleCachePurge clears all cached items
+func (s *Server) handleCachePurge(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get stats before purge
+	statsBefore := s.cache.Stats()
+
+	if err := s.cache.Purge(); err != nil {
+		s.log.Error().Err(err).Msg("failed to purge cache")
+		http.Error(w, "Failed to purge cache", http.StatusInternalServerError)
+		return
+	}
+
+	s.log.Info().
+		Int("items_removed", statsBefore.ItemCount).
+		Int64("bytes_freed", statsBefore.TotalSize).
+		Msg("cache purged")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{
+  "success": true,
+  "items_removed": %d,
+  "bytes_freed": %d
+}`,
+		statsBefore.ItemCount,
+		statsBefore.TotalSize,
+	)
+}
+
+// handleCacheCleanup triggers a manual cleanup cycle
+func (s *Server) handleCacheCleanup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	result := s.cache.Cleanup()
+
+	s.log.Info().
+		Int("items_removed", result.RemovedItems).
+		Int64("bytes_freed", result.RemovedBytes).
+		Int("stale_entries_removed", result.RemovedStaleEntries).
+		Dur("duration", result.Duration).
+		Msg("manual cache cleanup completed")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{
+  "success": true,
+  "items_removed": %d,
+  "bytes_freed": %d,
+  "stale_entries_removed": %d,
+  "duration_ms": %d
+}`,
+		result.RemovedItems,
+		result.RemovedBytes,
+		result.RemovedStaleEntries,
+		result.Duration.Milliseconds(),
+	)
+}
+
+// calculateHitRate calculates the cache hit rate
+func calculateHitRate(hits, misses int64) float64 {
+	total := hits + misses
+	if total == 0 {
+		return 0
+	}
+	return float64(hits) / float64(total)
+}
+
+// formatBytes formats bytes into a human-readable string
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+		TB = GB * 1024
+	)
+
+	switch {
+	case bytes >= TB:
+		return fmt.Sprintf("%.2f TB", float64(bytes)/TB)
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/GB)
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%d B", bytes)
 	}
 }

@@ -4,9 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/soulteary/apt-proxy/define"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
+	"github.com/soulteary/apt-proxy/pkg/httpcache"
 	"github.com/soulteary/apt-proxy/state"
 	"github.com/soulteary/cli-kit/configutil"
 )
@@ -23,6 +25,11 @@ const (
 	EnvDebian      = "APT_PROXY_DEBIAN"
 	EnvCentOS      = "APT_PROXY_CENTOS"
 	EnvAlpine      = "APT_PROXY_ALPINE"
+
+	// Cache configuration environment variables
+	EnvCacheMaxSize         = "APT_PROXY_CACHE_MAX_SIZE"
+	EnvCacheTTL             = "APT_PROXY_CACHE_TTL"
+	EnvCacheCleanupInterval = "APT_PROXY_CACHE_CLEANUP_INTERVAL"
 )
 
 // Default configuration values
@@ -30,6 +37,11 @@ const (
 	DefaultHost     = "0.0.0.0"
 	DefaultPort     = "3142"
 	DefaultCacheDir = "./.aptcache"
+
+	// Default cache configuration values (as strings for flag parsing)
+	DefaultCacheMaxSizeGB          = 10  // 10 GB
+	DefaultCacheTTLHours           = 168 // 7 days
+	DefaultCacheCleanupIntervalMin = 60  // 1 hour
 )
 
 var (
@@ -83,6 +95,14 @@ func ParseFlags() (*Config, error) {
 	flags.String("centos", "", "the centos mirror for fetching packages")
 	flags.String("alpine", "", "the alpine mirror for fetching packages")
 
+	// Cache configuration flags
+	flags.Int64("cache-max-size", DefaultCacheMaxSizeGB,
+		"maximum cache size in GB (0 to disable size limit)")
+	flags.Int("cache-ttl", DefaultCacheTTLHours,
+		"cache TTL in hours (0 to disable TTL-based eviction)")
+	flags.Int("cache-cleanup-interval", DefaultCacheCleanupIntervalMin,
+		"cache cleanup interval in minutes (0 to disable automatic cleanup)")
+
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
 	}
@@ -106,6 +126,11 @@ func ParseFlags() (*Config, error) {
 	centos := configutil.ResolveString(flags, "centos", EnvCentOS, "", true)
 	alpine := configutil.ResolveString(flags, "alpine", EnvAlpine, "", true)
 
+	// Resolve cache configurations
+	cacheMaxSizeGB := configutil.ResolveInt64(flags, "cache-max-size", EnvCacheMaxSize, DefaultCacheMaxSizeGB, true)
+	cacheTTLHours := configutil.ResolveInt(flags, "cache-ttl", EnvCacheTTL, DefaultCacheTTLHours, true)
+	cacheCleanupIntervalMin := configutil.ResolveInt(flags, "cache-cleanup-interval", EnvCacheCleanupInterval, DefaultCacheCleanupIntervalMin, true)
+
 	// Build configuration
 	config := Config{
 		Debug:    debug,
@@ -118,6 +143,22 @@ func ParseFlags() (*Config, error) {
 			CentOS:      centos,
 			Alpine:      alpine,
 		},
+		Cache: CacheConfig{
+			MaxSize:         cacheMaxSizeGB * 1024 * 1024 * 1024, // Convert GB to bytes
+			TTL:             time.Duration(cacheTTLHours) * time.Hour,
+			CleanupInterval: time.Duration(cacheCleanupIntervalMin) * time.Minute,
+		},
+	}
+
+	// Use defaults from httpcache if values are 0 (meaning use default)
+	if config.Cache.MaxSize == 0 {
+		config.Cache.MaxSize = httpcache.DefaultMaxCacheSize
+	}
+	if config.Cache.TTL == 0 {
+		config.Cache.TTL = httpcache.DefaultCacheTTL
+	}
+	if config.Cache.CleanupInterval == 0 {
+		config.Cache.CleanupInterval = httpcache.DefaultCleanupInterval
 	}
 
 	// Set listen address using templates

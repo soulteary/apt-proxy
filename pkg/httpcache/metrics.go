@@ -22,6 +22,12 @@ type CacheMetrics struct {
 	// CacheSizeBytes tracks the current cache size in bytes (gauge)
 	CacheSizeBytes prometheus.Gauge
 
+	// CacheItemCount tracks the current number of cached items (gauge)
+	CacheItemCount prometheus.Gauge
+
+	// CacheStaleCount tracks the current number of stale map entries (gauge)
+	CacheStaleCount prometheus.Gauge
+
 	// UpstreamErrors tracks the number of upstream errors
 	UpstreamErrors *prometheus.CounterVec
 
@@ -30,6 +36,12 @@ type CacheMetrics struct {
 
 	// CacheRetrieveOperations tracks cache retrieve operations
 	CacheRetrieveOperations *prometheus.CounterVec
+
+	// CacheEvictions tracks the number of cache evictions
+	CacheEvictions *prometheus.CounterVec
+
+	// CacheCleanupDuration tracks the duration of cleanup operations
+	CacheCleanupDuration prometheus.Histogram
 }
 
 // DefaultMetrics is the default metrics instance (nil until initialized)
@@ -64,6 +76,14 @@ func NewCacheMetrics(registry *metrics.Registry) *CacheMetrics {
 			Help("Current cache size in bytes").
 			Build(),
 
+		CacheItemCount: cacheRegistry.Gauge("item_count").
+			Help("Current number of cached items").
+			Build(),
+
+		CacheStaleCount: cacheRegistry.Gauge("stale_count").
+			Help("Current number of stale map entries").
+			Build(),
+
 		UpstreamErrors: cacheRegistry.Counter("upstream_errors_total").
 			Help("Total number of upstream errors").
 			Labels("error_type").
@@ -78,6 +98,16 @@ func NewCacheMetrics(registry *metrics.Registry) *CacheMetrics {
 			Help("Total number of cache retrieve operations").
 			Labels("result").
 			BuildVec(),
+
+		CacheEvictions: cacheRegistry.Counter("evictions_total").
+			Help("Total number of cache evictions").
+			Labels("reason").
+			BuildVec(),
+
+		CacheCleanupDuration: cacheRegistry.Histogram("cleanup_duration_seconds").
+			Help("Duration of cache cleanup operations in seconds").
+			Buckets([]float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10}).
+			Build(),
 	}
 
 	DefaultMetrics = m
@@ -150,4 +180,42 @@ func (m *CacheMetrics) SetCacheSize(sizeBytes int64) {
 	if m != nil && m.CacheSizeBytes != nil {
 		m.CacheSizeBytes.Set(float64(sizeBytes))
 	}
+}
+
+// SetCacheItemCount sets the current number of cached items
+func (m *CacheMetrics) SetCacheItemCount(count int) {
+	if m != nil && m.CacheItemCount != nil {
+		m.CacheItemCount.Set(float64(count))
+	}
+}
+
+// SetCacheStaleCount sets the current number of stale map entries
+func (m *CacheMetrics) SetCacheStaleCount(count int) {
+	if m != nil && m.CacheStaleCount != nil {
+		m.CacheStaleCount.Set(float64(count))
+	}
+}
+
+// RecordCacheEviction records a cache eviction
+func (m *CacheMetrics) RecordCacheEviction(reason string) {
+	if m != nil && m.CacheEvictions != nil {
+		m.CacheEvictions.WithLabelValues(reason).Inc()
+	}
+}
+
+// RecordCleanupDuration records the duration of a cleanup operation
+func (m *CacheMetrics) RecordCleanupDuration(durationSeconds float64) {
+	if m != nil && m.CacheCleanupDuration != nil {
+		m.CacheCleanupDuration.Observe(durationSeconds)
+	}
+}
+
+// UpdateCacheStats updates all cache gauge metrics from stats
+func (m *CacheMetrics) UpdateCacheStats(stats CacheStats) {
+	if m == nil {
+		return
+	}
+	m.SetCacheSize(stats.TotalSize)
+	m.SetCacheItemCount(stats.ItemCount)
+	m.SetCacheStaleCount(stats.StaleCount)
 }
