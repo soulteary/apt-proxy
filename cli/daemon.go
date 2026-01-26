@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -415,10 +416,60 @@ func Daemon(flags *Config) {
 
 // Cache management API handlers
 
+// API response types for JSON serialization
+type cacheStatsResponse struct {
+	TotalSizeBytes int64   `json:"total_size_bytes"`
+	TotalSizeHuman string  `json:"total_size_human"`
+	ItemCount      int     `json:"item_count"`
+	StaleCount     int     `json:"stale_count"`
+	HitCount       int64   `json:"hit_count"`
+	MissCount      int64   `json:"miss_count"`
+	HitRate        float64 `json:"hit_rate"`
+}
+
+type cachePurgeResponse struct {
+	Success      bool  `json:"success"`
+	ItemsRemoved int   `json:"items_removed"`
+	BytesFreed   int64 `json:"bytes_freed"`
+}
+
+type cacheCleanupResponse struct {
+	Success             bool  `json:"success"`
+	ItemsRemoved        int   `json:"items_removed"`
+	BytesFreed          int64 `json:"bytes_freed"`
+	StaleEntriesRemoved int   `json:"stale_entries_removed"`
+	DurationMs          int64 `json:"duration_ms"`
+}
+
+type mirrorsRefreshResponse struct {
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
+type errorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message,omitempty"`
+}
+
+// writeJSON writes a JSON response with proper encoding
+func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(data)
+}
+
+// writeJSONError writes a JSON error response
+func writeJSONError(w http.ResponseWriter, statusCode int, errMsg string) {
+	writeJSON(w, statusCode, errorResponse{Error: errMsg})
+}
+
 // handleCacheStats returns cache statistics as JSON
 func (s *Server) handleCacheStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
@@ -429,31 +480,25 @@ func (s *Server) handleCacheStats(w http.ResponseWriter, r *http.Request) {
 		httpcache.DefaultMetrics.UpdateCacheStats(stats)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{
-  "total_size_bytes": %d,
-  "total_size_human": "%s",
-  "item_count": %d,
-  "stale_count": %d,
-  "hit_count": %d,
-  "miss_count": %d,
-  "hit_rate": %.4f
-}`,
-		stats.TotalSize,
-		formatBytes(stats.TotalSize),
-		stats.ItemCount,
-		stats.StaleCount,
-		stats.HitCount,
-		stats.MissCount,
-		calculateHitRate(stats.HitCount, stats.MissCount),
-	)
+	resp := cacheStatsResponse{
+		TotalSizeBytes: stats.TotalSize,
+		TotalSizeHuman: formatBytes(stats.TotalSize),
+		ItemCount:      stats.ItemCount,
+		StaleCount:     stats.StaleCount,
+		HitCount:       stats.HitCount,
+		MissCount:      stats.MissCount,
+		HitRate:        calculateHitRate(stats.HitCount, stats.MissCount),
+	}
+
+	if err := writeJSON(w, http.StatusOK, resp); err != nil {
+		s.log.Error().Err(err).Msg("failed to write cache stats response")
+	}
 }
 
 // handleCachePurge clears all cached items
 func (s *Server) handleCachePurge(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
@@ -462,7 +507,7 @@ func (s *Server) handleCachePurge(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.cache.Purge(); err != nil {
 		s.log.Error().Err(err).Msg("failed to purge cache")
-		http.Error(w, "Failed to purge cache", http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Failed to purge cache")
 		return
 	}
 
@@ -471,22 +516,21 @@ func (s *Server) handleCachePurge(w http.ResponseWriter, r *http.Request) {
 		Int64("bytes_freed", statsBefore.TotalSize).
 		Msg("cache purged")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{
-  "success": true,
-  "items_removed": %d,
-  "bytes_freed": %d
-}`,
-		statsBefore.ItemCount,
-		statsBefore.TotalSize,
-	)
+	resp := cachePurgeResponse{
+		Success:      true,
+		ItemsRemoved: statsBefore.ItemCount,
+		BytesFreed:   statsBefore.TotalSize,
+	}
+
+	if err := writeJSON(w, http.StatusOK, resp); err != nil {
+		s.log.Error().Err(err).Msg("failed to write cache purge response")
+	}
 }
 
 // handleCacheCleanup triggers a manual cleanup cycle
 func (s *Server) handleCacheCleanup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
@@ -499,26 +543,23 @@ func (s *Server) handleCacheCleanup(w http.ResponseWriter, r *http.Request) {
 		Dur("duration", result.Duration).
 		Msg("manual cache cleanup completed")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{
-  "success": true,
-  "items_removed": %d,
-  "bytes_freed": %d,
-  "stale_entries_removed": %d,
-  "duration_ms": %d
-}`,
-		result.RemovedItems,
-		result.RemovedBytes,
-		result.RemovedStaleEntries,
-		result.Duration.Milliseconds(),
-	)
+	resp := cacheCleanupResponse{
+		Success:             true,
+		ItemsRemoved:        result.RemovedItems,
+		BytesFreed:          result.RemovedBytes,
+		StaleEntriesRemoved: result.RemovedStaleEntries,
+		DurationMs:          result.Duration.Milliseconds(),
+	}
+
+	if err := writeJSON(w, http.StatusOK, resp); err != nil {
+		s.log.Error().Err(err).Msg("failed to write cache cleanup response")
+	}
 }
 
 // handleMirrorsRefresh triggers a mirror benchmark refresh
 func (s *Server) handleMirrorsRefresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
@@ -533,15 +574,15 @@ func (s *Server) handleMirrorsRefresh(w http.ResponseWriter, r *http.Request) {
 		Dur("duration", duration).
 		Msg("mirrors refresh completed")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{
-  "success": true,
-  "message": "Mirror configurations refreshed",
-  "duration_ms": %d
-}`,
-		duration.Milliseconds(),
-	)
+	resp := mirrorsRefreshResponse{
+		Success:    true,
+		Message:    "Mirror configurations refreshed",
+		DurationMs: duration.Milliseconds(),
+	}
+
+	if err := writeJSON(w, http.StatusOK, resp); err != nil {
+		s.log.Error().Err(err).Msg("failed to write mirrors refresh response")
+	}
 }
 
 // calculateHitRate calculates the cache hit rate
