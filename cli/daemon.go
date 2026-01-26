@@ -231,6 +231,9 @@ func (s *Server) createRouter() http.Handler {
 	mux.HandleFunc("/api/cache/purge", s.handleCachePurge)
 	mux.HandleFunc("/api/cache/cleanup", s.handleCacheCleanup)
 
+	// Register mirror management API endpoints
+	mux.HandleFunc("/api/mirrors/refresh", s.handleMirrorsRefresh)
+
 	// Register ping endpoint handler
 	mux.HandleFunc("/_/ping/", func(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusOK)
@@ -478,6 +481,35 @@ func (s *Server) handleCacheCleanup(w http.ResponseWriter, r *http.Request) {
 		result.RemovedBytes,
 		result.RemovedStaleEntries,
 		result.Duration.Milliseconds(),
+	)
+}
+
+// handleMirrorsRefresh triggers a mirror benchmark refresh
+func (s *Server) handleMirrorsRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	start := time.Now()
+
+	// Refresh mirrors using the server reload mechanism
+	server.RefreshMirrors()
+
+	duration := time.Since(start)
+
+	s.log.Info().
+		Dur("duration", duration).
+		Msg("mirrors refresh completed")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{
+  "success": true,
+  "message": "Mirror configurations refreshed",
+  "duration_ms": %d
+}`,
+		duration.Milliseconds(),
 	)
 }
 

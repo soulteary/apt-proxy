@@ -408,3 +408,422 @@ func TestServerReload(t *testing.T) {
 		t.Error("Server proxy is nil after reload")
 	}
 }
+
+// Admin API Tests
+
+func TestCacheStatsAPI(t *testing.T) {
+	// Setup mock mirrors to avoid network requests
+	setupTestMirrors()
+	defer cleanupTestMirrors()
+
+	// Create a temporary cache directory
+	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &Config{
+		Debug:    false,
+		CacheDir: tmpDir,
+		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Listen:   "127.0.0.1:0",
+	}
+
+	srv, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		method     string
+		wantStatus int
+	}{
+		{
+			name:       "GET returns stats",
+			method:     http.MethodGet,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "POST not allowed",
+			method:     http.MethodPost,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "PUT not allowed",
+			method:     http.MethodPut,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "DELETE not allowed",
+			method:     http.MethodDelete,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, "/api/cache/stats", nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			rr := &responseRecorder{
+				headers:    make(http.Header),
+				statusCode: http.StatusOK,
+			}
+
+			srv.router.ServeHTTP(rr, req)
+
+			if rr.statusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rr.statusCode, tt.wantStatus)
+			}
+
+			// For successful GET, verify JSON response contains expected fields
+			if tt.method == http.MethodGet && rr.statusCode == http.StatusOK {
+				body := string(rr.body)
+				expectedFields := []string{
+					"total_size_bytes",
+					"total_size_human",
+					"item_count",
+					"stale_count",
+					"hit_count",
+					"miss_count",
+					"hit_rate",
+				}
+				for _, field := range expectedFields {
+					if !containsField(body, field) {
+						t.Errorf("response missing field %q", field)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCachePurgeAPI(t *testing.T) {
+	// Setup mock mirrors to avoid network requests
+	setupTestMirrors()
+	defer cleanupTestMirrors()
+
+	// Create a temporary cache directory
+	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &Config{
+		Debug:    false,
+		CacheDir: tmpDir,
+		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Listen:   "127.0.0.1:0",
+	}
+
+	srv, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		method     string
+		wantStatus int
+	}{
+		{
+			name:       "POST purges cache",
+			method:     http.MethodPost,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "GET not allowed",
+			method:     http.MethodGet,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "PUT not allowed",
+			method:     http.MethodPut,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "DELETE not allowed",
+			method:     http.MethodDelete,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, "/api/cache/purge", nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			rr := &responseRecorder{
+				headers:    make(http.Header),
+				statusCode: http.StatusOK,
+			}
+
+			srv.router.ServeHTTP(rr, req)
+
+			if rr.statusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rr.statusCode, tt.wantStatus)
+			}
+
+			// For successful POST, verify JSON response contains expected fields
+			if tt.method == http.MethodPost && rr.statusCode == http.StatusOK {
+				body := string(rr.body)
+				expectedFields := []string{
+					"success",
+					"items_removed",
+					"bytes_freed",
+				}
+				for _, field := range expectedFields {
+					if !containsField(body, field) {
+						t.Errorf("response missing field %q", field)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCacheCleanupAPI(t *testing.T) {
+	// Setup mock mirrors to avoid network requests
+	setupTestMirrors()
+	defer cleanupTestMirrors()
+
+	// Create a temporary cache directory
+	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &Config{
+		Debug:    false,
+		CacheDir: tmpDir,
+		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Listen:   "127.0.0.1:0",
+	}
+
+	srv, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		method     string
+		wantStatus int
+	}{
+		{
+			name:       "POST triggers cleanup",
+			method:     http.MethodPost,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "GET not allowed",
+			method:     http.MethodGet,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "PUT not allowed",
+			method:     http.MethodPut,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "DELETE not allowed",
+			method:     http.MethodDelete,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, "/api/cache/cleanup", nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			rr := &responseRecorder{
+				headers:    make(http.Header),
+				statusCode: http.StatusOK,
+			}
+
+			srv.router.ServeHTTP(rr, req)
+
+			if rr.statusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rr.statusCode, tt.wantStatus)
+			}
+
+			// For successful POST, verify JSON response contains expected fields
+			if tt.method == http.MethodPost && rr.statusCode == http.StatusOK {
+				body := string(rr.body)
+				expectedFields := []string{
+					"success",
+					"items_removed",
+					"bytes_freed",
+					"stale_entries_removed",
+					"duration_ms",
+				}
+				for _, field := range expectedFields {
+					if !containsField(body, field) {
+						t.Errorf("response missing field %q", field)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestMirrorsRefreshAPI(t *testing.T) {
+	// Setup mock mirrors to avoid network requests
+	setupTestMirrors()
+	defer cleanupTestMirrors()
+
+	// Create a temporary cache directory
+	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &Config{
+		Debug:    false,
+		CacheDir: tmpDir,
+		Mode:     define.TYPE_LINUX_ALL_DISTROS,
+		Listen:   "127.0.0.1:0",
+	}
+
+	srv, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		method     string
+		wantStatus int
+	}{
+		{
+			name:       "POST refreshes mirrors",
+			method:     http.MethodPost,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "GET not allowed",
+			method:     http.MethodGet,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "PUT not allowed",
+			method:     http.MethodPut,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "DELETE not allowed",
+			method:     http.MethodDelete,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, "/api/mirrors/refresh", nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			rr := &responseRecorder{
+				headers:    make(http.Header),
+				statusCode: http.StatusOK,
+			}
+
+			srv.router.ServeHTTP(rr, req)
+
+			if rr.statusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rr.statusCode, tt.wantStatus)
+			}
+
+			// For successful POST, verify JSON response contains expected fields
+			if tt.method == http.MethodPost && rr.statusCode == http.StatusOK {
+				body := string(rr.body)
+				expectedFields := []string{
+					"success",
+					"message",
+					"duration_ms",
+				}
+				for _, field := range expectedFields {
+					if !containsField(body, field) {
+						t.Errorf("response missing field %q", field)
+					}
+				}
+			}
+		})
+	}
+}
+
+// Helper function to check if a JSON field exists in a response
+func containsField(body, field string) bool {
+	return len(body) > 0 && (len(field) == 0 || (len(body) > len(field) && containsString(body, "\""+field+"\"")))
+}
+
+func containsString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestFormatBytes(t *testing.T) {
+	tests := []struct {
+		bytes int64
+		want  string
+	}{
+		{0, "0 B"},
+		{512, "512 B"},
+		{1024, "1.00 KB"},
+		{1536, "1.50 KB"},
+		{1048576, "1.00 MB"},
+		{1073741824, "1.00 GB"},
+		{1099511627776, "1.00 TB"},
+		{2199023255552, "2.00 TB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got := formatBytes(tt.bytes)
+			if got != tt.want {
+				t.Errorf("formatBytes(%d) = %q, want %q", tt.bytes, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateHitRate(t *testing.T) {
+	tests := []struct {
+		hits   int64
+		misses int64
+		want   float64
+	}{
+		{0, 0, 0},
+		{100, 0, 1},
+		{0, 100, 0},
+		{50, 50, 0.5},
+		{75, 25, 0.75},
+		{1, 3, 0.25},
+	}
+
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			got := calculateHitRate(tt.hits, tt.misses)
+			if got != tt.want {
+				t.Errorf("calculateHitRate(%d, %d) = %f, want %f", tt.hits, tt.misses, got, tt.want)
+			}
+		})
+	}
+}
