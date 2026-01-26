@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"os"
 	"strings"
 	"time"
+
+	logger "github.com/soulteary/logger-kit"
 )
 
 const (
@@ -53,12 +54,13 @@ func (l *responseWriter) Size() int {
 	return l.size
 }
 
-func NewResponseLogger(delegate http.Handler) *ResponseLogger {
-	return &ResponseLogger{Handler: delegate}
+func NewResponseLogger(delegate http.Handler, log *logger.Logger) *ResponseLogger {
+	return &ResponseLogger{Handler: delegate, logger: log}
 }
 
 type ResponseLogger struct {
 	http.Handler
+	logger                                  *logger.Logger
 	DumpRequests, DumpErrors, DumpResponses bool
 }
 
@@ -89,13 +91,12 @@ func (l *ResponseLogger) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (l *ResponseLogger) writeLog(req *http.Request, respWr *responseWriter) {
 	cacheStatus := respWr.Header().Get(CacheHeader)
+	cacheLabel := "SKIP"
 
 	if strings.HasPrefix(cacheStatus, "HIT") {
-		cacheStatus = "\x1b[32;1mHIT\x1b[0m"
+		cacheLabel = "HIT"
 	} else if strings.HasPrefix(cacheStatus, "MISS") {
-		cacheStatus = "\x1b[31;1mMISS\x1b[0m"
-	} else {
-		cacheStatus = "\x1b[33;1mSKIP\x1b[0m"
+		cacheLabel = "MISS"
 	}
 
 	clientIP := req.RemoteAddr
@@ -103,17 +104,45 @@ func (l *ResponseLogger) writeLog(req *http.Request, respWr *responseWriter) {
 		clientIP = clientIP[:colon]
 	}
 
-	log.Printf(
-		"%s \"%s %s %s\" (%s) %d %s %s",
-		clientIP,
-		req.Method,
-		req.URL.String(),
-		req.Proto,
-		http.StatusText(respWr.status),
-		respWr.size,
-		cacheStatus,
-		time.Since(respWr.t).String(),
-	)
+	latency := time.Since(respWr.t)
+
+	// Choose log level based on status code
+	var event *logger.Logger
+	if respWr.status >= 500 {
+		event = l.logger
+		event.Error().
+			Str("ip", clientIP).
+			Str("method", req.Method).
+			Str("path", req.URL.String()).
+			Str("proto", req.Proto).
+			Int("status", respWr.status).
+			Int("size", respWr.size).
+			Str("cache", cacheLabel).
+			Dur("latency", latency).
+			Msg("HTTP request")
+	} else if respWr.status >= 400 {
+		l.logger.Warn().
+			Str("ip", clientIP).
+			Str("method", req.Method).
+			Str("path", req.URL.String()).
+			Str("proto", req.Proto).
+			Int("status", respWr.status).
+			Int("size", respWr.size).
+			Str("cache", cacheLabel).
+			Dur("latency", latency).
+			Msg("HTTP request")
+	} else {
+		l.logger.Info().
+			Str("ip", clientIP).
+			Str("method", req.Method).
+			Str("path", req.URL.String()).
+			Str("proto", req.Proto).
+			Int("status", respWr.status).
+			Int("size", respWr.size).
+			Str("cache", cacheLabel).
+			Dur("latency", latency).
+			Msg("HTTP request")
+	}
 }
 
 func isError(code int) bool {

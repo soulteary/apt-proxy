@@ -2,11 +2,12 @@ package server
 
 import (
 	"io"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
 	"time"
+
+	logger "github.com/soulteary/logger-kit"
 
 	define "github.com/soulteary/apt-proxy/define"
 	rewriter "github.com/soulteary/apt-proxy/internal/rewriter"
@@ -36,9 +37,10 @@ var (
 // PackageStruct is the main HTTP handler that routes requests to appropriate
 // distribution-specific handlers and applies caching rules.
 type PackageStruct struct {
-	Handler  http.Handler  // The underlying HTTP handler (typically a reverse proxy)
-	Rules    []define.Rule // Caching rules for different package types
-	CacheDir string        // Cache directory path for statistics
+	Handler  http.Handler   // The underlying HTTP handler (typically a reverse proxy)
+	Rules    []define.Rule  // Caching rules for different package types
+	CacheDir string         // Cache directory path for statistics
+	log      *logger.Logger // Structured logger
 }
 
 // responseWriter wraps http.ResponseWriter to inject cache control headers
@@ -50,13 +52,14 @@ type responseWriter struct {
 
 // CreatePackageStructRouter initializes and returns a new PackageStruct instance
 // configured for the current proxy mode. It sets up URL rewriters and caching rules.
-func CreatePackageStructRouter(cacheDir string) *PackageStruct {
+func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStruct {
 	mode := state.GetProxyMode()
 	rewriters = rewriter.CreateNewRewriters(mode)
 
 	return &PackageStruct{
 		Rules:    rewriter.GetRewriteRulesByMode(mode),
 		CacheDir: cacheDir,
+		log:      log,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
 			Transport: defaultTransport,
@@ -64,46 +67,13 @@ func CreatePackageStructRouter(cacheDir string) *PackageStruct {
 	}
 }
 
-// CreateRouter creates an http.Handler with orthodox routing using http.ServeMux.
-// It registers home and ping handlers, and uses the provided handler for package requests.
-func CreateRouter(handler http.Handler, cacheDir string) http.Handler {
-	// Use http.ServeMux for orthodox routing
-	mux := http.NewServeMux()
-
-	// Register ping endpoint handler first (most specific route)
-	mux.HandleFunc("/_/ping/", func(rw http.ResponseWriter, r *http.Request) {
-		handlePing(rw, r)
-	})
-
-	// Register home page handler for exact "/" path
-	mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
-		// Only handle exact "/" path, delegate everything else to package proxy
-		if r.URL.Path != "/" {
-			handler.ServeHTTP(rw, r)
-			return
-		}
-		handleHomePage(rw, r, cacheDir)
-	})
-
-	return mux
-}
-
-// handleHomePage serves the home page with statistics
-func handleHomePage(rw http.ResponseWriter, r *http.Request, cacheDir string) {
+// HandleHomePage serves the home page with statistics
+func HandleHomePage(rw http.ResponseWriter, r *http.Request, cacheDir string) {
 	tpl, status := RenderInternalUrls("/", cacheDir)
 	rw.WriteHeader(status)
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := io.WriteString(rw, tpl); err != nil {
-		log.Printf("Error rendering home page: %v", err)
-	}
-}
-
-// handlePing serves the ping endpoint
-func handlePing(rw http.ResponseWriter, r *http.Request) {
-	rw.WriteHeader(http.StatusOK)
-	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	if _, err := io.WriteString(rw, "pong"); err != nil {
-		log.Printf("Error writing ping response: %v", err)
+		logger.Error().Err(err).Msg("Error rendering home page")
 	}
 }
 
@@ -157,7 +127,7 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rules []define.Rul
 // while maintaining the original request path structure.
 func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *define.Rule) {
 	if r.URL == nil {
-		log.Printf("Error: request URL is nil, cannot rewrite")
+		ap.log.Error().Msg("request URL is nil, cannot rewrite")
 		return
 	}
 	before := r.URL.String()
@@ -165,7 +135,10 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *define.Rule) {
 
 	if r.URL != nil {
 		r.Host = r.URL.Host
-		log.Printf("Rewrote %q to %q", before, r.URL.String())
+		ap.log.Debug().
+			Str("from", before).
+			Str("to", r.URL.String()).
+			Msg("rewrote request URL")
 	}
 }
 

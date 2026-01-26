@@ -3,11 +3,17 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	health "github.com/soulteary/health-kit"
+	logger "github.com/soulteary/logger-kit"
+	metrics "github.com/soulteary/metrics-kit"
+	middleware "github.com/soulteary/middleware-kit"
+	version "github.com/soulteary/version-kit"
 
 	"github.com/soulteary/apt-proxy/internal/server"
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
@@ -17,7 +23,6 @@ import (
 // Config holds all application configuration
 type Config struct {
 	Debug    bool
-	Version  string
 	CacheDir string
 	Mode     int
 	Listen   string
@@ -33,15 +38,25 @@ type MirrorConfig struct {
 	Alpine      string
 }
 
+// Environment variable names for logging configuration
+const (
+	EnvLogLevel  = "LOG_LEVEL"
+	EnvLogFormat = "LOG_FORMAT"
+)
+
 // Server represents the main application server that handles HTTP requests,
 // manages caching, and coordinates all server components.
 type Server struct {
-	config *Config                 // Application configuration
-	cache  httpcache.Cache         // HTTP cache implementation
-	proxy  *server.PackageStruct   // Main proxy router
-	logger *httplog.ResponseLogger // Request/response logger
-	router http.Handler            // HTTP router with orthodox routing
-	server *http.Server            // HTTP server instance
+	config           *Config                 // Application configuration
+	cache            httpcache.Cache         // HTTP cache implementation
+	proxy            *server.PackageStruct   // Main proxy router
+	responseLogger   *httplog.ResponseLogger // Request/response logger
+	router           http.Handler            // HTTP router with orthodox routing
+	server           *http.Server            // HTTP server instance
+	log              *logger.Logger          // Structured logger
+	healthAggregator *health.Aggregator      // Health check aggregator
+	metricsRegistry  *metrics.Registry       // Prometheus metrics registry
+	versionInfo      *version.Info           // Version information
 }
 
 // NewServer creates and initializes a new Server instance with the provided
@@ -56,6 +71,9 @@ func NewServer(cfg *Config) (*Server, error) {
 		config: cfg,
 	}
 
+	// Initialize structured logger first
+	s.initLogger()
+
 	if err := s.initialize(); err != nil {
 		return nil, fmt.Errorf("failed to initialize server: %w", err)
 	}
@@ -63,10 +81,37 @@ func NewServer(cfg *Config) (*Server, error) {
 	return s, nil
 }
 
+// initLogger initializes the structured logger with configuration from environment
+func (s *Server) initLogger() {
+	// Determine log level from environment or debug flag
+	level := logger.ParseLevelFromEnv(EnvLogLevel, logger.InfoLevel)
+	if s.config.Debug {
+		level = logger.DebugLevel
+	}
+
+	// Determine log format from environment
+	formatStr := os.Getenv(EnvLogFormat)
+	format := logger.ParseFormat(formatStr)
+
+	// Create logger with configuration
+	s.log = logger.New(logger.Config{
+		Level:       level,
+		Output:      os.Stdout,
+		Format:      format,
+		ServiceName: "apt-proxy",
+	})
+
+	// Set as default logger
+	logger.SetDefault(s.log)
+}
+
 // initialize sets up all server components including cache, proxy router,
 // logging, and HTTP server configuration. This method is called automatically
 // by NewServer and should not be called directly.
 func (s *Server) initialize() error {
+	// Initialize version info
+	s.versionInfo = version.Default()
+
 	// Initialize cache
 	cache, err := httpcache.NewDiskCache(s.config.CacheDir)
 	if err != nil {
@@ -74,25 +119,31 @@ func (s *Server) initialize() error {
 	}
 	s.cache = cache
 
+	// Initialize metrics registry
+	s.metricsRegistry = metrics.NewRegistry("apt_proxy")
+
+	// Initialize health check aggregator
+	s.initHealthChecks()
+
 	// Initialize proxy
-	s.proxy = server.CreatePackageStructRouter(s.config.CacheDir)
+	s.proxy = server.CreatePackageStructRouter(s.config.CacheDir, s.log)
 
 	// Wrap proxy with cache
 	cachedHandler := httpcache.NewHandler(s.cache, s.proxy.Handler)
 	s.proxy.Handler = cachedHandler
 
-	// Initialize logger
+	// Initialize response logger
 	if s.config.Debug {
-		log.Printf("debug mode enabled")
+		s.log.Debug().Msg("debug mode enabled")
 		httpcache.DebugLogging = true
 	}
-	s.logger = httplog.NewResponseLogger(cachedHandler)
-	s.logger.DumpRequests = s.config.Debug
-	s.logger.DumpResponses = s.config.Debug
-	s.logger.DumpErrors = s.config.Debug
+	s.responseLogger = httplog.NewResponseLogger(cachedHandler, s.log)
+	s.responseLogger.DumpRequests = s.config.Debug
+	s.responseLogger.DumpResponses = s.config.Debug
+	s.responseLogger.DumpErrors = s.config.Debug
 
-	// Create router with orthodox routing (home and ping handlers)
-	s.router = server.CreateRouter(s.logger, s.config.CacheDir)
+	// Create router with orthodox routing (home, ping, health, version, metrics handlers)
+	s.router = s.createRouter()
 
 	// Initialize HTTP server
 	s.server = &http.Server{
@@ -107,12 +158,73 @@ func (s *Server) initialize() error {
 	return nil
 }
 
+// initHealthChecks initializes the health check aggregator
+func (s *Server) initHealthChecks() {
+	config := health.DefaultConfig().
+		WithServiceName("apt-proxy").
+		WithTimeout(2 * time.Second)
+
+	s.healthAggregator = health.NewAggregator(config)
+
+	// Add cache directory check
+	s.healthAggregator.AddChecker(health.NewCustomChecker("cache", func(ctx context.Context) error {
+		_, err := os.Stat(s.config.CacheDir)
+		return err
+	}).WithTimeout(1 * time.Second))
+}
+
+// createRouter creates the main HTTP router with all endpoints
+func (s *Server) createRouter() http.Handler {
+	mux := http.NewServeMux()
+
+	// Register health check endpoints
+	mux.HandleFunc("/healthz", health.Handler(s.healthAggregator))
+	mux.HandleFunc("/livez", health.LivenessHandler("apt-proxy"))
+	mux.HandleFunc("/readyz", health.ReadinessHandler(s.healthAggregator))
+
+	// Register version endpoint
+	mux.HandleFunc("/version", version.Handler(version.HandlerConfig{
+		Info:   s.versionInfo,
+		Pretty: true,
+	}))
+
+	// Register metrics endpoint
+	mux.Handle("/metrics", metrics.HandlerFor(s.metricsRegistry))
+
+	// Register ping endpoint handler
+	mux.HandleFunc("/_/ping/", func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		rw.Write([]byte("pong"))
+	})
+
+	// Register home page handler for exact "/" path
+	mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
+		// Only handle exact "/" path, delegate everything else to package proxy
+		if r.URL.Path != "/" {
+			s.responseLogger.ServeHTTP(rw, r)
+			return
+		}
+		server.HandleHomePage(rw, r, s.config.CacheDir)
+	})
+
+	// Apply security headers middleware
+	handler := middleware.SecurityHeadersStd(middleware.DefaultSecurityHeadersConfig())(mux)
+
+	// Apply version headers middleware
+	handler = version.Middleware(s.versionInfo, "X-")(handler)
+
+	return handler
+}
+
 // Start begins serving HTTP requests and handles graceful shutdown on SIGINT or SIGTERM.
 // The server runs in a goroutine while the main goroutine waits for shutdown signals.
 // Returns an error if the server fails to start or encounters a fatal error.
 func (s *Server) Start() error {
-	log.Printf("starting apt-proxy %s", s.config.Version)
-	log.Printf("listening on %s", s.config.Listen)
+	s.log.Info().
+		Str("version", s.versionInfo.String()).
+		Str("listen", s.config.Listen).
+		Msg("starting apt-proxy")
 
 	// Setup graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -126,7 +238,7 @@ func (s *Server) Start() error {
 		}
 	}()
 
-	log.Println("server started successfully 🚀")
+	s.log.Info().Msg("server started successfully")
 
 	// Wait for shutdown signal or server error
 	select {
@@ -141,7 +253,7 @@ func (s *Server) Start() error {
 // It allows in-flight requests to complete before closing the server.
 // Returns an error if shutdown fails or times out.
 func (s *Server) shutdown() error {
-	log.Println("shutting down server...")
+	s.log.Info().Msg("shutting down server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -150,7 +262,7 @@ func (s *Server) shutdown() error {
 		return fmt.Errorf("failed to shutdown server gracefully: %w", err)
 	}
 
-	log.Println("server shutdown complete")
+	s.log.Info().Msg("server shutdown complete")
 	return nil
 }
 
@@ -158,17 +270,19 @@ func (s *Server) shutdown() error {
 // It validates the configuration, creates and starts the server, and handles
 // any startup errors. This function blocks until the server shuts down.
 func Daemon(flags *Config) {
+	// Use default logger for initial validation errors
+	log := logger.Default()
+
 	if flags == nil {
-		log.Fatalf("configuration cannot be nil")
+		log.Fatal().Msg("configuration cannot be nil")
 	}
 
 	if err := ValidateConfig(flags); err != nil {
-		log.Fatalf("invalid configuration: %v", err)
+		log.Fatal().Err(err).Msg("invalid configuration")
 	}
 
 	cfg := &Config{
 		Debug:    flags.Debug,
-		Version:  flags.Version,
 		CacheDir: flags.CacheDir,
 		Mode:     flags.Mode,
 		Listen:   flags.Listen,
@@ -181,12 +295,12 @@ func Daemon(flags *Config) {
 		},
 	}
 
-	server, err := NewServer(cfg)
+	srv, err := NewServer(cfg)
 	if err != nil {
-		log.Fatalf("failed to create server: %v", err)
+		log.Fatal().Err(err).Msg("failed to create server")
 	}
 
-	if err := server.Start(); err != nil {
-		log.Fatalf("server error: %v", err)
+	if err := srv.Start(); err != nil {
+		log.Fatal().Err(err).Msg("server error")
 	}
 }

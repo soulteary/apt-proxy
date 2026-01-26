@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	logger "github.com/soulteary/logger-kit"
+
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
 	"github.com/soulteary/apt-proxy/pkg/httplog"
 )
@@ -33,7 +35,8 @@ func testSetup() (*client, *upstreamServer) {
 	var handler http.Handler = cacheHandler
 
 	if testing.Verbose() {
-		rlogger := httplog.NewResponseLogger(cacheHandler)
+		testLogger := logger.NewDefault()
+		rlogger := httplog.NewResponseLogger(cacheHandler, testLogger)
 		rlogger.DumpRequests = true
 		rlogger.DumpResponses = true
 		handler = rlogger

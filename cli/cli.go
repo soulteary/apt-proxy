@@ -33,9 +33,6 @@ const (
 )
 
 var (
-	// Version is set during build time
-	Version string
-
 	// allowedModes defines the valid mode values for proxy operation
 	allowedModes = []string{
 		define.LINUX_ALL_DISTROS,
@@ -112,7 +109,6 @@ func ParseFlags() (*Config, error) {
 	// Build configuration
 	config := Config{
 		Debug:    debug,
-		Version:  Version,
 		CacheDir: cacheDir,
 		Mode:     modeToInt(modeName),
 		Mirrors: MirrorConfig{
