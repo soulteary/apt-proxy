@@ -12,6 +12,7 @@ import (
 	logger "github.com/soulteary/logger-kit"
 	metrics "github.com/soulteary/metrics-kit"
 	middleware "github.com/soulteary/middleware-kit"
+	tracing "github.com/soulteary/tracing-kit"
 	version "github.com/soulteary/version-kit"
 
 	"github.com/soulteary/apt-proxy/internal/api"
@@ -59,6 +60,10 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, wrapServerError("failed to initialize server", err)
 	}
 
+	// Initialize tracing (optional, only if OTLP endpoint is configured)
+	// Must be called after initialize() because versionInfo is initialized there
+	s.initTracing()
+
 	return s, nil
 }
 
@@ -84,6 +89,33 @@ func (s *Server) initLogger() {
 
 	// Set as default logger
 	logger.SetDefault(s.log)
+}
+
+// initTracing initializes OpenTelemetry tracing if OTLP endpoint is configured
+func (s *Server) initTracing() {
+	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if otlpEndpoint == "" {
+		s.log.Debug().Msg("tracing disabled: OTEL_EXPORTER_OTLP_ENDPOINT not set")
+		return
+	}
+
+	serviceVersion := s.versionInfo.String()
+	if serviceVersion == "" {
+		serviceVersion = "unknown"
+	}
+
+	tp, err := tracing.InitTracer("apt-proxy", serviceVersion, otlpEndpoint)
+	if err != nil {
+		s.log.Warn().Err(err).Msg("failed to initialize tracing, continuing without tracing")
+		return
+	}
+
+	if tp != nil {
+		s.log.Info().
+			Str("endpoint", otlpEndpoint).
+			Str("version", serviceVersion).
+			Msg("tracing initialized successfully")
+	}
 }
 
 // initialize sets up all server components including cache, proxy router,
@@ -329,6 +361,11 @@ func (s *Server) shutdown() error {
 		if err := s.cache.Close(); err != nil {
 			s.log.Warn().Err(err).Msg("failed to close cache")
 		}
+	}
+
+	// Shutdown tracing
+	if err := tracing.Shutdown(ctx); err != nil {
+		s.log.Warn().Err(err).Msg("failed to shutdown tracing")
 	}
 
 	s.log.Info().Msg("server shutdown complete")

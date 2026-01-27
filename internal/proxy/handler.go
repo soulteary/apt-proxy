@@ -8,6 +8,7 @@ import (
 	"time"
 
 	logger "github.com/soulteary/logger-kit"
+	tracing "github.com/soulteary/tracing-kit"
 
 	"github.com/soulteary/apt-proxy/distro"
 	state "github.com/soulteary/apt-proxy/state"
@@ -31,6 +32,8 @@ var (
 		IdleConnTimeout:       90 * time.Second,
 		DisableCompression:    false,
 	}
+	// retryableTransport wraps defaultTransport with retry logic and tracing
+	retryableTransport = NewRetryableTransport(defaultTransport)
 )
 
 // PackageStruct is the main HTTP handler that routes requests to appropriate
@@ -63,7 +66,7 @@ func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStru
 		log:      log,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
-			Transport: defaultTransport,
+			Transport: retryableTransport,
 		},
 	}
 }
@@ -82,7 +85,7 @@ func CreatePackageStructRouterAsync(cacheDir string, log *logger.Logger) *Packag
 		log:      log,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
-			Transport: defaultTransport,
+			Transport: retryableTransport,
 		},
 	}
 }
@@ -101,14 +104,46 @@ func HandleHomePage(rw http.ResponseWriter, r *http.Request, cacheDir string) {
 // matches them against caching rules, and routes them to the appropriate handler.
 // If a matching rule is found, the request is processed with cache control headers.
 func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Start tracing span for the request
+	spanCtx, span := tracing.StartSpan(ctx, "proxy.request")
+	defer span.End()
+
+	// Set span attributes
+	tracing.SetSpanAttributesFromMap(span, map[string]interface{}{
+		"http.method":      r.Method,
+		"http.url":         r.URL.String(),
+		"http.path":        r.URL.Path,
+		"http.scheme":      r.URL.Scheme,
+		"http.host":        r.Host,
+		"http.user_agent":  r.UserAgent(),
+		"http.remote_addr": r.RemoteAddr,
+	})
+
+	// Update request context with span context
+	r = r.WithContext(spanCtx)
+
 	rule := ap.handleExternalURLs(r)
 	if rule != nil {
+		// Set distribution rule attribute
+		distroName := getDistributionName(rule.OS)
+		if distroName != "" {
+			tracing.SetSpanAttributes(span, map[string]string{
+				"proxy.distribution": distroName,
+			})
+		}
+
 		if ap.Handler != nil {
 			ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
 		} else {
+			tracing.RecordError(span, http.ErrAbortHandler)
 			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
 		}
 	} else {
+		tracing.SetSpanAttributes(span, map[string]string{
+			"http.status_code": "404",
+		})
 		http.NotFound(rw, r)
 	}
 }
@@ -184,4 +219,22 @@ func (rw *responseWriter) shouldSetCacheControl(status int) bool {
 func RefreshMirrors() {
 	mode := state.GetProxyMode()
 	RefreshRewriters(rewriters, mode)
+}
+
+// getDistributionName converts distribution type int to string name
+func getDistributionName(distType int) string {
+	switch distType {
+	case distro.TYPE_LINUX_DISTROS_UBUNTU:
+		return distro.LINUX_DISTROS_UBUNTU
+	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+		return distro.LINUX_DISTROS_UBUNTU_PORTS
+	case distro.TYPE_LINUX_DISTROS_DEBIAN:
+		return distro.LINUX_DISTROS_DEBIAN
+	case distro.TYPE_LINUX_DISTROS_CENTOS:
+		return distro.LINUX_DISTROS_CENTOS
+	case distro.TYPE_LINUX_DISTROS_ALPINE:
+		return distro.LINUX_DISTROS_ALPINE
+	default:
+		return ""
+	}
 }
