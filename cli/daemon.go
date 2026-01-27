@@ -16,6 +16,7 @@ import (
 
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
+	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
 	"github.com/soulteary/apt-proxy/pkg/httplog"
@@ -36,6 +37,7 @@ type Server struct {
 	versionInfo      *version.Info           // Version information
 	cacheHandler     *api.CacheHandler       // Cache API handler
 	mirrorsHandler   *api.MirrorsHandler     // Mirrors API handler
+	authMiddleware   *api.AuthMiddleware     // API authentication middleware
 }
 
 // NewServer creates and initializes a new Server instance with the provided
@@ -54,7 +56,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	s.initLogger()
 
 	if err := s.initialize(); err != nil {
-		return nil, wrapError("failed to initialize server", err)
+		return nil, wrapServerError("failed to initialize server", err)
 	}
 
 	return s, nil
@@ -95,7 +97,7 @@ func (s *Server) initialize() error {
 	cacheConfig := s.buildCacheConfig()
 	cache, err := httpcache.NewDiskCacheWithConfig(s.config.CacheDir, cacheConfig)
 	if err != nil {
-		return wrapError("failed to initialize cache", err)
+		return wrapCacheError("failed to initialize cache", err)
 	}
 	s.cache = cache
 
@@ -108,8 +110,10 @@ func (s *Server) initialize() error {
 	// Initialize health check aggregator
 	s.initHealthChecks()
 
-	// Initialize proxy
-	s.proxy = proxy.CreatePackageStructRouter(s.config.CacheDir, s.log)
+	// Initialize proxy with async benchmark for faster startup
+	// This uses default mirrors immediately and updates to the fastest mirror
+	// in the background after benchmarking completes
+	s.proxy = proxy.CreatePackageStructRouterAsync(s.config.CacheDir, s.log)
 
 	// Wrap proxy with cache
 	cachedHandler := httpcache.NewHandler(s.cache, s.proxy.Handler)
@@ -130,6 +134,12 @@ func (s *Server) initialize() error {
 	// Initialize API handlers
 	s.cacheHandler = api.NewCacheHandler(s.cache, s.log)
 	s.mirrorsHandler = api.NewMirrorsHandler(s.log)
+
+	// Initialize API authentication middleware
+	s.authMiddleware = api.NewAuthMiddleware(api.AuthConfig{
+		APIKey: s.config.Security.APIKey,
+		Logger: s.log,
+	})
 
 	// Create router with orthodox routing (home, ping, health, version, metrics handlers)
 	s.router = s.createRouter()
@@ -198,13 +208,13 @@ func (s *Server) createRouter() http.Handler {
 	// Register metrics endpoint
 	mux.Handle("/metrics", metrics.HandlerFor(s.metricsRegistry))
 
-	// Register cache management API endpoints
-	mux.HandleFunc("/api/cache/stats", s.cacheHandler.HandleCacheStats)
-	mux.HandleFunc("/api/cache/purge", s.cacheHandler.HandleCachePurge)
-	mux.HandleFunc("/api/cache/cleanup", s.cacheHandler.HandleCacheCleanup)
+	// Register cache management API endpoints (protected by API key if configured)
+	mux.HandleFunc("/api/cache/stats", s.authMiddleware.WrapFunc(s.cacheHandler.HandleCacheStats))
+	mux.HandleFunc("/api/cache/purge", s.authMiddleware.WrapFunc(s.cacheHandler.HandleCachePurge))
+	mux.HandleFunc("/api/cache/cleanup", s.authMiddleware.WrapFunc(s.cacheHandler.HandleCacheCleanup))
 
-	// Register mirror management API endpoints
-	mux.HandleFunc("/api/mirrors/refresh", s.mirrorsHandler.HandleMirrorsRefresh)
+	// Register mirror management API endpoints (protected by API key if configured)
+	mux.HandleFunc("/api/mirrors/refresh", s.authMiddleware.WrapFunc(s.mirrorsHandler.HandleMirrorsRefresh))
 
 	// Register ping endpoint handler
 	mux.HandleFunc("/_/ping/", func(rw http.ResponseWriter, r *http.Request) {
@@ -362,6 +372,10 @@ func Daemon(flags *config.Config) {
 			CertFile: flags.TLS.CertFile,
 			KeyFile:  flags.TLS.KeyFile,
 		},
+		Security: config.SecurityConfig{
+			APIKey:        flags.Security.APIKey,
+			EnableAPIAuth: flags.Security.EnableAPIAuth,
+		},
 	}
 
 	srv, err := NewServer(cfg)
@@ -374,30 +388,18 @@ func Daemon(flags *config.Config) {
 	}
 }
 
-// Error handling helpers
+// Error handling helpers using the unified error system
 
-var errNilConfig = newError("configuration cannot be nil")
-
-func newError(msg string) error {
-	return &configError{msg: msg}
-}
+var errNilConfig = apperrors.New(apperrors.ErrConfigInvalid, "configuration cannot be nil")
 
 func wrapError(msg string, err error) error {
-	return &configError{msg: msg, err: err}
+	return apperrors.Wrap(apperrors.ErrInternal, msg, err)
 }
 
-type configError struct {
-	msg string
-	err error
+func wrapServerError(msg string, err error) error {
+	return apperrors.Wrap(apperrors.ErrServerInit, msg, err)
 }
 
-func (e *configError) Error() string {
-	if e.err != nil {
-		return e.msg + ": " + e.err.Error()
-	}
-	return e.msg
-}
-
-func (e *configError) Unwrap() error {
-	return e.err
+func wrapCacheError(msg string, err error) error {
+	return apperrors.Wrap(apperrors.ErrCacheInit, msg, err)
 }

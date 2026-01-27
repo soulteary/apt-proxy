@@ -247,6 +247,8 @@ http_proxy=http://host.docker.internal:3142 \
 | `-tls` | 启用 TLS/HTTPS | `false` |
 | `-tls-cert` | TLS 证书文件路径 | |
 | `-tls-key` | TLS 私钥文件路径 | |
+| `-api-key` | 受保护端点的 API 密钥 | |
+| `-config` | YAML 配置文件路径 | |
 | `-debug` | 启用详细调试日志 | `false` |
 
 **自定义配置示例：**
@@ -262,6 +264,47 @@ http_proxy=http://host.docker.internal:3142 \
   --debug
 ```
 
+### YAML 配置文件
+
+APT Proxy 支持 YAML 配置文件，适用于更复杂的配置场景。创建名为 `apt-proxy.yaml` 的文件：
+
+```yaml
+server:
+  host: 0.0.0.0
+  port: 3142
+  debug: false
+
+cache:
+  dir: /var/cache/apt-proxy
+  max_size_gb: 20
+  ttl_hours: 168
+  cleanup_interval_min: 60
+
+mirrors:
+  ubuntu: cn:tsinghua
+  debian: cn:ustc
+
+tls:
+  enabled: false
+  cert_file: /etc/ssl/certs/apt-proxy.crt
+  key_file: /etc/ssl/private/apt-proxy.key
+
+security:
+  api_key: ${APT_PROXY_API_KEY}  # 支持环境变量展开
+  enable_api_auth: true
+
+mode: all
+```
+
+**配置优先级：** CLI 参数 > 环境变量 > 配置文件 > 默认值
+
+**配置文件搜索路径（按顺序）：**
+1. 通过 `-config` 参数或 `APT_PROXY_CONFIG_FILE` 环境变量指定的路径
+2. `./apt-proxy.yaml`（当前目录）
+3. `/etc/apt-proxy/apt-proxy.yaml`（系统配置）
+4. `~/.config/apt-proxy/apt-proxy.yaml`（用户配置）
+5. `~/.apt-proxy.yaml`（用户配置）
+
 ## API 端点
 
 APT Proxy 提供 REST API 端点用于监控和管理：
@@ -276,7 +319,7 @@ APT Proxy 提供 REST API 端点用于监控和管理：
 | `GET /version` | 版本信息 |
 | `GET /metrics` | Prometheus 指标 |
 
-### 缓存管理
+### 缓存管理（受保护）
 
 | 端点 | 方法 | 描述 |
 |------|------|------|
@@ -284,16 +327,30 @@ APT Proxy 提供 REST API 端点用于监控和管理：
 | `/api/cache/purge` | POST | 清除所有缓存 |
 | `/api/cache/cleanup` | POST | 移除过期缓存条目 |
 
-### 镜像管理
+### 镜像管理（受保护）
 
 | 端点 | 方法 | 描述 |
 |------|------|------|
 | `/api/mirrors/refresh` | POST | 刷新镜像配置 |
 
-**示例：获取缓存统计**
+### API 认证
+
+配置 API 密钥后，所有管理端点都需要认证。可通过以下方式提供 API 密钥：
+
+1. **X-API-Key Header**（推荐）：
+   ```bash
+   curl -H "X-API-Key: your-api-key" http://localhost:3142/api/cache/stats
+   ```
+
+2. **Authorization Bearer Token**：
+   ```bash
+   curl -H "Authorization: Bearer your-api-key" http://localhost:3142/api/cache/stats
+   ```
+
+**示例：获取缓存统计（带认证）**
 
 ```bash
-curl http://localhost:3142/api/cache/stats
+curl -H "X-API-Key: your-api-key" http://localhost:3142/api/cache/stats
 ```
 
 响应：
@@ -325,6 +382,37 @@ kill -HUP $(pgrep apt-proxy)
 curl -X POST http://localhost:3142/api/mirrors/refresh
 ```
 
+## 架构
+
+```mermaid
+flowchart LR
+    Client[APT 客户端] --> Proxy[apt-proxy]
+    Proxy --> Cache[(本地缓存)]
+    Proxy --> Mirror1[镜像源 1]
+    Proxy --> Mirror2[镜像源 2]
+    
+    subgraph aptproxy [apt-proxy 内部]
+        Handler[Handler] --> Rewriter[URL 重写器]
+        Rewriter --> Benchmark[镜像测速]
+        Handler --> HTTPCache[HTTP 缓存]
+        Auth[认证中间件] --> Handler
+    end
+    
+    subgraph monitoring [可观测性]
+        Metrics[Prometheus /metrics]
+        Health[健康检查]
+        API[管理 API]
+    end
+```
+
+### 请求流程
+
+1. **客户端请求**：APT 客户端发送包请求到 apt-proxy
+2. **缓存检查**：Handler 检查包是否存在于本地缓存
+3. **缓存命中**：如果已缓存且未过期，立即从缓存返回
+4. **缓存未命中**：将 URL 重写到最快镜像，从上游获取
+5. **存储并响应**：缓存响应并返回给客户端
+
 ## 项目结构
 
 ```
@@ -341,12 +429,16 @@ apt-proxy/
 │   └── alpine.go            # Alpine 配置
 ├── internal/                 # 内部包
 │   ├── api/                 # REST API 处理器
+│   │   ├── auth.go         # API 认证中间件
 │   │   ├── cache.go        # 缓存管理端点
 │   │   ├── mirrors.go      # 镜像管理端点
 │   │   └── response.go     # 响应工具
 │   ├── config/              # 配置管理
 │   │   ├── config.go       # 配置结构
 │   │   ├── defaults.go     # 默认值
+│   │   └── loader.go       # 配置加载（CLI、ENV、YAML）
+│   ├── errors/              # 统一错误处理
+│   │   └── errors.go       # 错误码和类型
 │   │   └── loader.go       # 配置加载
 │   ├── proxy/               # 核心代理功能
 │   │   ├── handler.go      # HTTP 请求处理

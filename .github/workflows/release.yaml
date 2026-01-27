@@ -47,6 +47,24 @@ jobs:
           go test -v -coverprofile=coverage.out -covermode=atomic ./...
           go tool cover -func=coverage.out
 
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${COVERAGE}%"
+          if [ -z "$COVERAGE" ]; then
+            echo "Failed to extract coverage percentage"
+            exit 1
+          fi
+          # Check if coverage is below threshold (80%)
+          THRESHOLD=80
+          if [ $(echo "$COVERAGE < $THRESHOLD" | bc -l) -eq 1 ]; then
+            echo "Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+            # Warning only, don't fail the build for now
+            echo "::warning::Coverage is below ${THRESHOLD}%"
+          else
+            echo "Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"
+          fi
+
       # Login against a Docker registry except on PR
       # https://github.com/docker/login-action
       - name: Login to Docker Hub

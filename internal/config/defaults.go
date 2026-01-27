@@ -22,6 +22,13 @@ const (
 	EnvTLSEnabled  = "APT_PROXY_TLS_ENABLED"
 	EnvTLSCertFile = "APT_PROXY_TLS_CERT"
 	EnvTLSKeyFile  = "APT_PROXY_TLS_KEY"
+
+	// Security configuration environment variables
+	EnvAPIKey        = "APT_PROXY_API_KEY"
+	EnvEnableAPIAuth = "APT_PROXY_ENABLE_API_AUTH"
+
+	// Configuration file environment variable
+	EnvConfigFile = "APT_PROXY_CONFIG_FILE"
 )
 
 // Default configuration values
@@ -34,6 +41,12 @@ const (
 	DefaultCacheMaxSizeGB          = 10  // 10 GB
 	DefaultCacheTTLHours           = 168 // 7 days
 	DefaultCacheCleanupIntervalMin = 60  // 1 hour
+
+	// Default configuration file paths (searched in order)
+	DefaultConfigFileName = "apt-proxy.yaml"
+
+	// Default async benchmark setting
+	DefaultAsyncBenchmark = true // Enable async mirror benchmark by default for faster startup
 )
 
 // Environment variable names for logging configuration

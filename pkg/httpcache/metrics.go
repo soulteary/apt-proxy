@@ -42,6 +42,32 @@ type CacheMetrics struct {
 
 	// CacheCleanupDuration tracks the duration of cleanup operations
 	CacheCleanupDuration prometheus.Histogram
+
+	// --- Enhanced metrics for apt-proxy specific operations ---
+
+	// RequestsByDistro tracks total requests by distribution and status
+	RequestsByDistro *prometheus.CounterVec
+
+	// MirrorSwitches tracks mirror switch events
+	MirrorSwitches *prometheus.CounterVec
+
+	// RequestLatency tracks request latency distribution by distribution and cache status
+	RequestLatency *prometheus.HistogramVec
+
+	// ActiveConnections tracks the number of active connections
+	ActiveConnections prometheus.Gauge
+
+	// BytesTransferred tracks total bytes transferred
+	BytesTransferred *prometheus.CounterVec
+
+	// MirrorBenchmarkDuration tracks mirror benchmark operation duration
+	MirrorBenchmarkDuration *prometheus.HistogramVec
+
+	// PackageDownloads tracks package download counts by distribution
+	PackageDownloads *prometheus.CounterVec
+
+	// AuthFailures tracks authentication failures
+	AuthFailures *prometheus.CounterVec
 }
 
 // DefaultMetrics is the default metrics instance (nil until initialized)
@@ -108,6 +134,48 @@ func NewCacheMetrics(registry *metrics.Registry) *CacheMetrics {
 			Help("Duration of cache cleanup operations in seconds").
 			Buckets([]float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10}).
 			Build(),
+
+		// Enhanced metrics for apt-proxy specific operations
+		RequestsByDistro: cacheRegistry.Counter("requests_by_distro_total").
+			Help("Total requests by distribution").
+			Labels("distro", "status").
+			BuildVec(),
+
+		MirrorSwitches: cacheRegistry.Counter("mirror_switches_total").
+			Help("Mirror switch events").
+			Labels("distro", "from", "to").
+			BuildVec(),
+
+		RequestLatency: cacheRegistry.Histogram("request_duration_seconds").
+			Help("Request latency distribution").
+			Labels("distro", "cache_hit").
+			Buckets([]float64{0.1, 0.5, 1, 2, 5, 10, 30, 60}).
+			BuildVec(),
+
+		ActiveConnections: cacheRegistry.Gauge("active_connections").
+			Help("Current number of active connections").
+			Build(),
+
+		BytesTransferred: cacheRegistry.Counter("bytes_transferred_total").
+			Help("Total bytes transferred").
+			Labels("direction", "distro").
+			BuildVec(),
+
+		MirrorBenchmarkDuration: cacheRegistry.Histogram("mirror_benchmark_duration_seconds").
+			Help("Duration of mirror benchmark operations").
+			Labels("distro", "result").
+			Buckets([]float64{1, 5, 10, 30, 60, 120, 180}).
+			BuildVec(),
+
+		PackageDownloads: cacheRegistry.Counter("package_downloads_total").
+			Help("Total package downloads by distribution").
+			Labels("distro", "package_type").
+			BuildVec(),
+
+		AuthFailures: cacheRegistry.Counter("auth_failures_total").
+			Help("Authentication failure counts").
+			Labels("reason").
+			BuildVec(),
 	}
 
 	DefaultMetrics = m
@@ -218,4 +286,73 @@ func (m *CacheMetrics) UpdateCacheStats(stats CacheStats) {
 	m.SetCacheSize(stats.TotalSize)
 	m.SetCacheItemCount(stats.ItemCount)
 	m.SetCacheStaleCount(stats.StaleCount)
+}
+
+// --- Enhanced metrics recording methods ---
+
+// RecordRequestByDistro records a request for a specific distribution
+func (m *CacheMetrics) RecordRequestByDistro(distro, status string) {
+	if m != nil && m.RequestsByDistro != nil {
+		m.RequestsByDistro.WithLabelValues(distro, status).Inc()
+	}
+}
+
+// RecordMirrorSwitch records a mirror switch event
+func (m *CacheMetrics) RecordMirrorSwitch(distro, fromMirror, toMirror string) {
+	if m != nil && m.MirrorSwitches != nil {
+		m.MirrorSwitches.WithLabelValues(distro, fromMirror, toMirror).Inc()
+	}
+}
+
+// RecordRequestLatency records the latency of a request
+func (m *CacheMetrics) RecordRequestLatency(distro string, cacheHit bool, durationSeconds float64) {
+	if m != nil && m.RequestLatency != nil {
+		cacheHitStr := "miss"
+		if cacheHit {
+			cacheHitStr = "hit"
+		}
+		m.RequestLatency.WithLabelValues(distro, cacheHitStr).Observe(durationSeconds)
+	}
+}
+
+// IncrementActiveConnections increments the active connection counter
+func (m *CacheMetrics) IncrementActiveConnections() {
+	if m != nil && m.ActiveConnections != nil {
+		m.ActiveConnections.Inc()
+	}
+}
+
+// DecrementActiveConnections decrements the active connection counter
+func (m *CacheMetrics) DecrementActiveConnections() {
+	if m != nil && m.ActiveConnections != nil {
+		m.ActiveConnections.Dec()
+	}
+}
+
+// RecordBytesTransferred records bytes transferred
+func (m *CacheMetrics) RecordBytesTransferred(direction, distro string, bytes int64) {
+	if m != nil && m.BytesTransferred != nil {
+		m.BytesTransferred.WithLabelValues(direction, distro).Add(float64(bytes))
+	}
+}
+
+// RecordMirrorBenchmarkDuration records the duration of a mirror benchmark
+func (m *CacheMetrics) RecordMirrorBenchmarkDuration(distro, result string, durationSeconds float64) {
+	if m != nil && m.MirrorBenchmarkDuration != nil {
+		m.MirrorBenchmarkDuration.WithLabelValues(distro, result).Observe(durationSeconds)
+	}
+}
+
+// RecordPackageDownload records a package download
+func (m *CacheMetrics) RecordPackageDownload(distro, packageType string) {
+	if m != nil && m.PackageDownloads != nil {
+		m.PackageDownloads.WithLabelValues(distro, packageType).Inc()
+	}
+}
+
+// RecordAuthFailure records an authentication failure
+func (m *CacheMetrics) RecordAuthFailure(reason string) {
+	if m != nil && m.AuthFailures != nil {
+		m.AuthFailures.WithLabelValues(reason).Inc()
+	}
 }

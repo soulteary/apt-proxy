@@ -247,6 +247,8 @@ View all available options:
 | `-tls` | Enable TLS/HTTPS | `false` |
 | `-tls-cert` | Path to TLS certificate file | |
 | `-tls-key` | Path to TLS private key file | |
+| `-api-key` | API key for protected endpoints | |
+| `-config` | Path to YAML configuration file | |
 | `-debug` | Enable verbose debug logging | `false` |
 
 **Example with Custom Configuration:**
@@ -262,6 +264,47 @@ View all available options:
   --debug
 ```
 
+### YAML Configuration File
+
+APT Proxy supports YAML configuration files for more complex setups. Create a file named `apt-proxy.yaml`:
+
+```yaml
+server:
+  host: 0.0.0.0
+  port: 3142
+  debug: false
+
+cache:
+  dir: /var/cache/apt-proxy
+  max_size_gb: 20
+  ttl_hours: 168
+  cleanup_interval_min: 60
+
+mirrors:
+  ubuntu: cn:tsinghua
+  debian: cn:ustc
+
+tls:
+  enabled: false
+  cert_file: /etc/ssl/certs/apt-proxy.crt
+  key_file: /etc/ssl/private/apt-proxy.key
+
+security:
+  api_key: ${APT_PROXY_API_KEY}  # Supports environment variable expansion
+  enable_api_auth: true
+
+mode: all
+```
+
+**Configuration Priority:** CLI flags > Environment variables > Config file > Default values
+
+**Config file search paths (in order):**
+1. Path specified via `-config` flag or `APT_PROXY_CONFIG_FILE` environment variable
+2. `./apt-proxy.yaml` (current directory)
+3. `/etc/apt-proxy/apt-proxy.yaml`
+4. `~/.config/apt-proxy/apt-proxy.yaml`
+5. `~/.apt-proxy.yaml`
+
 ## API Endpoints
 
 APT Proxy provides REST API endpoints for monitoring and management:
@@ -276,7 +319,7 @@ APT Proxy provides REST API endpoints for monitoring and management:
 | `GET /version` | Version information |
 | `GET /metrics` | Prometheus metrics |
 
-### Cache Management
+### Cache Management (Protected)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -284,16 +327,30 @@ APT Proxy provides REST API endpoints for monitoring and management:
 | `/api/cache/purge` | POST | Purge all cached items |
 | `/api/cache/cleanup` | POST | Remove stale cache entries |
 
-### Mirror Management
+### Mirror Management (Protected)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/mirrors/refresh` | POST | Refresh mirror configurations |
 
-**Example: Get Cache Statistics**
+### API Authentication
+
+When an API key is configured, all management endpoints require authentication. Provide the API key using one of these methods:
+
+1. **X-API-Key Header** (recommended):
+   ```bash
+   curl -H "X-API-Key: your-api-key" http://localhost:3142/api/cache/stats
+   ```
+
+2. **Authorization Bearer Token**:
+   ```bash
+   curl -H "Authorization: Bearer your-api-key" http://localhost:3142/api/cache/stats
+   ```
+
+**Example: Get Cache Statistics (with authentication)**
 
 ```bash
-curl http://localhost:3142/api/cache/stats
+curl -H "X-API-Key: your-api-key" http://localhost:3142/api/cache/stats
 ```
 
 Response:
@@ -325,6 +382,37 @@ Or use the API:
 curl -X POST http://localhost:3142/api/mirrors/refresh
 ```
 
+## Architecture
+
+```mermaid
+flowchart LR
+    Client[APT Client] --> Proxy[apt-proxy]
+    Proxy --> Cache[(Local Cache)]
+    Proxy --> Mirror1[Mirror 1]
+    Proxy --> Mirror2[Mirror 2]
+    
+    subgraph aptproxy [apt-proxy internals]
+        Handler[Handler] --> Rewriter[URL Rewriter]
+        Rewriter --> Benchmark[Mirror Benchmark]
+        Handler --> HTTPCache[HTTP Cache]
+        Auth[Auth Middleware] --> Handler
+    end
+    
+    subgraph monitoring [Observability]
+        Metrics[Prometheus /metrics]
+        Health[Health Checks]
+        API[Management API]
+    end
+```
+
+### Request Flow
+
+1. **Client Request**: APT client sends package request to apt-proxy
+2. **Cache Check**: Handler checks if package exists in local cache
+3. **Cache Hit**: If cached and fresh, return immediately from cache
+4. **Cache Miss**: Rewrite URL to fastest mirror, fetch from upstream
+5. **Store & Respond**: Cache response and return to client
+
 ## Project Structure
 
 ```
@@ -341,27 +429,32 @@ apt-proxy/
 │   └── alpine.go            # Alpine configuration
 ├── internal/                 # Internal packages
 │   ├── api/                 # REST API handlers
+│   │   ├── auth.go         # API authentication middleware
 │   │   ├── cache.go        # Cache management endpoints
 │   │   ├── mirrors.go      # Mirror management endpoints
 │   │   └── response.go     # Response utilities
 │   ├── config/              # Configuration management
 │   │   ├── config.go       # Configuration structures
 │   │   ├── defaults.go     # Default values
-│   │   └── loader.go       # Configuration loading
+│   │   └── loader.go       # Configuration loading (CLI, ENV, YAML)
+│   ├── errors/              # Unified error handling
+│   │   └── errors.go       # Error codes and types
 │   ├── proxy/               # Core proxy functionality
 │   │   ├── handler.go      # HTTP request handling
 │   │   ├── rewriter.go     # URL rewriting
 │   │   ├── page.go         # Home page rendering
 │   │   └── stats.go        # Statistics
 │   ├── mirrors/             # Mirror management
-│   └── benchmarks/          # Mirror benchmarking
+│   └── benchmarks/          # Mirror benchmarking (sync & async)
 ├── pkg/                      # Reusable packages
-│   ├── httpcache/           # HTTP caching layer
+│   ├── httpcache/           # HTTP caching layer with metrics
 │   ├── httplog/             # Request/response logging
 │   ├── stream.v1/           # Stream processing
 │   ├── system/              # System utilities
 │   └── vfs/                 # Virtual filesystem
 ├── state/                    # Application state management
+├── tests/                    # Integration tests
+│   └── integration/         # End-to-end tests
 └── docker/, example/         # Deployment configurations
 ```
 
