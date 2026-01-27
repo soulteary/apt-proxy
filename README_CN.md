@@ -2,7 +2,6 @@
 
 [![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![goreportcard](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/soulteary/apt-proxy) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
 
-
 <p style="text-align: center;">
   <a href="README.md" target="_blank">ENGLISH</a> | <a href="README_CN.md">中文文档</a>
 </p>
@@ -13,9 +12,20 @@
 
 <img src="example/assets/preview.png" width="600"/>
 
-APT Proxy 是一个轻量级的缓存工具，用于 APT、YUM 和 APK 包（支持 Ubuntu、Debian、CentOS 和 Alpine Linux）。它可以无缝地与传统系统安装和 Docker 环境配合使用。
+## 概述
 
-你也可以将它作为古老的 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 安全可靠的替代品。
+APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
+
+### 核心特性
+
+- **多发行版支持**：支持 APT（Ubuntu/Debian）、YUM（CentOS）和 APK（Alpine Linux）
+- **轻量级**：二进制文件仅 2MB 左右，资源占用极低
+- **智能镜像选择**：自动测试并选择最快的镜像源
+- **Docker 友好**：无缝集成 Docker 容器和构建流程
+- **即插即用**：兼容 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 配置
+- **零配置**：开箱即用，默认配置即可满足大多数场景
+- **可观测性**：内置健康检查、Prometheus 指标和结构化日志
+- **缓存管理**：REST API 支持缓存统计、清理和维护
 
 ## 支持的平台
 
@@ -25,181 +35,417 @@ APT Proxy 是一个轻量级的缓存工具，用于 APT、YUM 和 APK 包（支
 
 ## 快速开始
 
-直接运行二进制文件：
+### 安装
+
+从 [releases 页面](https://github.com/soulteary/apt-proxy/releases) 下载适合你平台的最新版本，或使用 Docker：
+
+```bash
+docker pull soulteary/apt-proxy
+```
+
+### 运行 APT Proxy
+
+直接运行二进制文件，无需配置：
 
 ```bash
 ./apt-proxy
-
-2022/06/12 16:15:40 running apt-proxy
-2022/06/12 16:15:41 Start benchmarking mirrors
-2022/06/12 16:15:41 Finished benchmarking mirrors
-2022/06/12 16:15:41 using fastest mirror https://mirrors.company.ltd/ubuntu/
-2022/06/12 16:15:41 proxy listening on 0.0.0.0:3142
 ```
 
-当你看到类似上面的日志时，一个带有缓存功能的 APT 代理服务就启动完毕了。
+你会看到类似以下的输出：
 
-## Ubuntu / Debian 支持
-
-要在 `apt-get` 命令中使用代理，请在命令前添加代理设置：
-
-```bash
-# 使用 apt-proxy 更新包列表
-http_proxy=http://your-domain-or-ip-address:3142 apt-get -o pkgProblemResolver=true -o Acquire::http=true update 
-# 使用 apt-proxy 安装包
-http_proxy=http://your-domain-or-ip-address:3142 apt-get -o pkgProblemResolver=true -o Acquire::http=true install vim -y
+```
+2024/01/15 10:30:00 INF starting apt-proxy version=1.0.0 listen=0.0.0.0:3142 protocol=http
+2024/01/15 10:30:01 INF Starting benchmark for mirrors
+2024/01/15 10:30:01 INF Finished benchmarking mirrors
+2024/01/15 10:30:01 INF using fastest mirror mirror=https://mirrors.company.ltd/ubuntu/
+2024/01/15 10:30:01 INF server started successfully
 ```
 
-由于包被本地缓存，后续的包操作将会显著加快。
+代理已经启动并准备好缓存软件包了。默认监听 `0.0.0.0:3142`，并自动选择最快的镜像源。
 
-## CentOS 支持
+## 使用示例
 
-对于 CentOS 7：
+### Ubuntu / Debian
+
+通过设置 `http_proxy` 环境变量来配置系统使用代理：
 
 ```bash
-cat /etc/yum.repos.d/CentOS-Base.repo | sed -e s/mirrorlist.*$// | sed -e s/#baseurl/baseurl/ | sed -e s#http://mirror.centos.org#http://your-domain-or-ip-address:3142# | tee /etc/yum.repos.d/CentOS-Base.repo
+# 更新软件包列表（首次运行会下载并缓存）
+http_proxy=http://your-domain-or-ip-address:3142 \
+  apt-get -o pkgProblemResolver=true -o Acquire::http=true update
+
+# 安装软件包（后续安装将使用缓存的软件包）
+http_proxy=http://your-domain-or-ip-address:3142 \
+  apt-get -o pkgProblemResolver=true -o Acquire::http=true install vim -y
 ```
 
-对于 CentOS 8：
+**提示**：为了方便，你可以在 shell 中导出代理设置：
 
 ```bash
-sed -i -e"s#mirror.centos.org#http://your-domain-or-ip-address:3142#g" /etc/yum.repos.d/CentOS-*
-sed -i -e"s/#baseurl/baseurl/" /etc/yum.repos.d/CentOS-*
-sed -i -e"s#\$releasever/#8-stream/#" /etc/yum.repos.d/CentOS-*
+export http_proxy=http://your-domain-or-ip-address:3142
+apt-get update
+apt-get install vim -y
 ```
 
-运行 `yum update` 验证配置。
+首次下载后，所有后续的包操作都会显著加快，因为软件包从本地缓存提供。
 
-## Alpine Linux 支持
+### CentOS
 
-APT Proxy 也可以加速 Alpine Linux 的包下载：
+APT Proxy 支持 YUM 仓库。配置你的 CentOS 系统使用代理：
+
+**CentOS 7：**
 
 ```bash
-cat /etc/apk/repositories | sed -e s#https://.*.alpinelinux.org#http://your-domain-or-ip-address:3142# | tee /etc/apk/repositories
+# 配置仓库使用代理
+cat /etc/yum.repos.d/CentOS-Base.repo | \
+  sed -e s/mirrorlist.*$// \
+      -e s/#baseurl/baseurl/ \
+      -e s#http://mirror.centos.org#http://your-domain-or-ip-address:3142# | \
+  tee /etc/yum.repos.d/CentOS-Base.repo
+
+# 验证配置
+yum update
 ```
 
-运行 `apk update` 验证配置。
-
-## 镜像配置
-
-你可以通过两种方式指定镜像：
-
-使用完整 URL：
+**CentOS 8：**
 
 ```bash
-# 同时缓存 Ubuntu 和 Debian 包
-./apt-proxy --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
-# 仅缓存 Ubuntu 包
+# 更新所有 CentOS 仓库使用代理
+sed -i -e "s#mirror.centos.org#http://your-domain-or-ip-address:3142#g" \
+       -e "s/#baseurl/baseurl/" \
+       -e "s#\$releasever/#8-stream/#" \
+       /etc/yum.repos.d/CentOS-*
+
+# 验证配置
+yum update
+```
+
+### Alpine Linux
+
+配置 Alpine 的 APK 包管理器使用代理：
+
+```bash
+# 更新仓库使用代理
+cat /etc/apk/repositories | \
+  sed -e s#https://.*.alpinelinux.org#http://your-domain-or-ip-address:3142# | \
+  tee /etc/apk/repositories
+
+# 验证配置
+apk update
+```
+
+## 高级配置
+
+### 自定义镜像选择
+
+默认情况下，APT Proxy 会自动测试可用镜像并选择最快的一个。但如果需要，你可以指定自定义镜像。
+
+**使用完整 URL：**
+
+```bash
+# 同时缓存多个发行版
+./apt-proxy \
+  --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ \
+  --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
+
+# 仅缓存 Ubuntu 软件包（减少内存占用）
 ./apt-proxy --mode=ubuntu --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
-# 仅缓存 Debian 包
+
+# 仅缓存 Debian 软件包
 ./apt-proxy --mode=debian --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
 ```
 
-使用快捷方式：
+**使用镜像快捷方式：**
+
+为了方便，你可以使用预定义的快捷方式代替完整 URL：
 
 ```bash
-go run apt-proxy.go --ubuntu=cn:tsinghua --debian=cn:163
-2022/06/15 10:55:26 running apt-proxy
-2022/06/15 10:55:26 using specify debian mirror https://mirrors.163.com/debian/
-2022/06/15 10:55:26 using specify ubuntu mirror https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
-2022/06/15 10:55:26 proxy listening on 0.0.0.0:3142
+./apt-proxy --ubuntu=cn:tsinghua --debian=cn:163
 ```
 
-可用的快捷方式：
+**可用的快捷方式：**
 
-- cn:tsinghua
-- cn:ustc
-- cn:163
-- cn:aliyun
-- cn:huaweicloud
-- cn:tencent 等等...
+- `cn:tsinghua` - 清华大学镜像
+- `cn:ustc` - 中科大镜像
+- `cn:163` - 网易镜像
+- `cn:aliyun` - 阿里云镜像
+- `cn:huaweicloud` - 华为云镜像
+- `cn:tencent` - 腾讯云镜像
+
+输出示例：
+
+```
+2024/01/15 10:55:26 INF starting apt-proxy version=1.0.0
+2024/01/15 10:55:26 INF using specified debian mirror mirror=https://mirrors.163.com/debian/
+2024/01/15 10:55:26 INF using specified ubuntu mirror mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
+2024/01/15 10:55:26 INF proxy listening on 0.0.0.0:3142
+2024/01/15 10:55:26 INF server started successfully
+```
 
 ## Docker 集成
 
-要加速 Docker 容器中的包安装：
+### 在 Docker 中运行 APT Proxy
+
+将 APT Proxy 部署为 Docker 容器：
+
+```bash
+docker run -d \
+  --name=apt-proxy \
+  -p 3142:3142 \
+  -v apt-proxy-cache:/app/.aptcache \
+  soulteary/apt-proxy
+```
+
+`-v apt-proxy-cache:/app/.aptcache` 选项可以在容器重启后保留缓存。
+
+### 在 Docker 构建中使用 APT Proxy
+
+加速 Docker 容器中的软件包安装：
 
 ```bash
 # 启动容器（Ubuntu 或 Debian）
 docker run --rm -it ubuntu
-# 或
-docker run --rm -it debian
 
-# 使用代理安装包
-http_proxy=http://host.docker.internal:3142 apt-get -o Debug::pkgProblemResolver=true -o Debug::Acquire::http=true update && \
-http_proxy=http://host.docker.internal:3142 apt-get -o Debug::pkgProblemResolver=true -o Debug::Acquire::http=true install vim -y
+# 在容器内使用代理
+http_proxy=http://host.docker.internal:3142 \
+  apt-get -o Debug::pkgProblemResolver=true -o Acquire::http=true update
+
+http_proxy=http://host.docker.internal:3142 \
+  apt-get -o Debug::pkgProblemResolver=true -o Acquire::http=true install vim -y
 ```
 
-## Docker 部署
+**注意**：`host.docker.internal` 在 Docker Desktop 上有效。对于 Linux，请使用主机的 IP 地址或适当配置 Docker 网络。
 
-<img src="example/assets/dockerhub.png" width="600"/>
+### Docker Compose 示例
 
-使用单个命令部署：
-
-```bash
-docker run -d --name=apt-proxy -p 3142:3142 soulteary/apt-proxy
-```
+查看 [example 目录](example/) 获取完整的 Docker Compose 配置。
 
 ## 配置选项
 
-我们可以通过使用 `-h` 参数来查看程序支持的所有参数：
+查看所有可用选项：
 
 ```bash
 ./apt-proxy -h
+```
 
-用法说明：
-  -alpine string
-        用于获取包的 alpine 镜像
-  -cachedir string
-        存储缓存数据的目录 (默认 "./.aptcache")
-  -centos string
-        用于获取包的 centos 镜像
-  -debian string
-        用于获取包的 debian 镜像
-  -debug
-        是否输出调试日志
-  -host string
-        绑定的主机地址 (默认 "0.0.0.0")
-  -mode all
-        选择要缓存的系统模式：all / `ubuntu` / `ubuntu-ports` / `debian` / `centos` / `alpine` (默认 "all")
-  -port string
-        绑定的端口 (默认 "3142")
-  -ubuntu string
-        用于获取包的 ubuntu 镜像
+**可用选项：**
+
+| 选项 | 描述 | 默认值 |
+|------|------|--------|
+| `-host` | 绑定的网络接口 | `0.0.0.0` |
+| `-port` | 监听端口 | `3142` |
+| `-mode` | 发行版模式：`all`、`ubuntu`、`ubuntu-ports`、`debian`、`centos`、`alpine` | `all` |
+| `-cachedir` | 缓存目录 | `./.aptcache` |
+| `-ubuntu` | Ubuntu 镜像 URL 或快捷方式 | （自动选择） |
+| `-ubuntu-ports` | Ubuntu Ports 镜像 URL 或快捷方式 | （自动选择） |
+| `-debian` | Debian 镜像 URL 或快捷方式 | （自动选择） |
+| `-centos` | CentOS 镜像 URL 或快捷方式 | （自动选择） |
+| `-alpine` | Alpine 镜像 URL 或快捷方式 | （自动选择） |
+| `-cache-max-size` | 最大缓存大小（GB，0 表示禁用） | `10` |
+| `-cache-ttl` | 缓存 TTL（小时，0 表示禁用） | `168`（7 天） |
+| `-cache-cleanup-interval` | 缓存清理间隔（分钟） | `60` |
+| `-tls` | 启用 TLS/HTTPS | `false` |
+| `-tls-cert` | TLS 证书文件路径 | |
+| `-tls-key` | TLS 私钥文件路径 | |
+| `-debug` | 启用详细调试日志 | `false` |
+
+**自定义配置示例：**
+
+```bash
+./apt-proxy \
+  --host=0.0.0.0 \
+  --port=3142 \
+  --cachedir=/var/cache/apt-proxy \
+  --mode=ubuntu \
+  --ubuntu=cn:tsinghua \
+  --cache-max-size=20 \
+  --debug
+```
+
+## API 端点
+
+APT Proxy 提供 REST API 端点用于监控和管理：
+
+### 健康检查与监控
+
+| 端点 | 描述 |
+|------|------|
+| `GET /healthz` | 综合健康检查 |
+| `GET /livez` | Kubernetes 存活探针 |
+| `GET /readyz` | Kubernetes 就绪探针 |
+| `GET /version` | 版本信息 |
+| `GET /metrics` | Prometheus 指标 |
+
+### 缓存管理
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/cache/stats` | GET | 缓存统计（大小、命中率、条目数） |
+| `/api/cache/purge` | POST | 清除所有缓存 |
+| `/api/cache/cleanup` | POST | 移除过期缓存条目 |
+
+### 镜像管理
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/mirrors/refresh` | POST | 刷新镜像配置 |
+
+**示例：获取缓存统计**
+
+```bash
+curl http://localhost:3142/api/cache/stats
+```
+
+响应：
+
+```json
+{
+  "total_size_bytes": 1073741824,
+  "total_size_human": "1.00 GB",
+  "item_count": 150,
+  "stale_count": 5,
+  "hit_count": 1250,
+  "miss_count": 150,
+  "hit_rate": 0.893
+}
+```
+
+## 热重载
+
+APT Proxy 支持无需重启即可热重载镜像配置：
+
+```bash
+# 发送 SIGHUP 信号重载镜像配置
+kill -HUP $(pgrep apt-proxy)
+```
+
+或使用 API：
+
+```bash
+curl -X POST http://localhost:3142/api/mirrors/refresh
+```
+
+## 项目结构
+
+```
+apt-proxy/
+├── apt-proxy.go              # 主入口
+├── cli/                      # CLI 和守护进程管理
+│   ├── cli.go               # 配置解析
+│   └── daemon.go            # 服务器生命周期管理
+├── distro/                   # 发行版定义
+│   ├── distro.go            # 通用类型和工具
+│   ├── ubuntu.go            # Ubuntu 配置
+│   ├── debian.go            # Debian 配置
+│   ├── centos.go            # CentOS 配置
+│   └── alpine.go            # Alpine 配置
+├── internal/                 # 内部包
+│   ├── api/                 # REST API 处理器
+│   │   ├── cache.go        # 缓存管理端点
+│   │   ├── mirrors.go      # 镜像管理端点
+│   │   └── response.go     # 响应工具
+│   ├── config/              # 配置管理
+│   │   ├── config.go       # 配置结构
+│   │   ├── defaults.go     # 默认值
+│   │   └── loader.go       # 配置加载
+│   ├── proxy/               # 核心代理功能
+│   │   ├── handler.go      # HTTP 请求处理
+│   │   ├── rewriter.go     # URL 重写
+│   │   ├── page.go         # 首页渲染
+│   │   └── stats.go        # 统计信息
+│   ├── mirrors/             # 镜像管理
+│   └── benchmarks/          # 镜像基准测试
+├── pkg/                      # 可复用包
+│   ├── httpcache/           # HTTP 缓存层
+│   ├── httplog/             # 请求/响应日志
+│   ├── stream.v1/           # 流处理
+│   ├── system/              # 系统工具
+│   └── vfs/                 # 虚拟文件系统
+├── state/                    # 应用状态管理
+└── docker/, example/         # 部署配置
 ```
 
 ## 开发
 
-运行测试：
+### 从源码构建
 
 ```bash
-# 运行带覆盖率报告的测试
+git clone https://github.com/soulteary/apt-proxy.git
+cd apt-proxy
+go build -o apt-proxy .
+```
+
+### 运行测试
+
+```bash
+# 运行所有测试并显示覆盖率
 go test -cover ./...
 
-# 生成并查看详细的覆盖率报告
+# 生成详细的覆盖率报告
 go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
 
+### 贡献代码
 
-## 调试包操作
+欢迎贡献！请随时提交 Pull Request。
 
-对于 Ubuntu/Debian：
+## 故障排除
+
+### 调试模式
+
+启用调试日志来排查问题：
 
 ```bash
-http_proxy=http://192.168.33.1:3142 apt-get -o Debug::pkgProblemResolver=true -o Debug::Acquire::http=true update
-http_proxy=http://192.168.33.1:3142 apt-get -o Debug::pkgProblemResolver=true -o Debug::Acquire::http=true install apache2
+./apt-proxy --debug
 ```
+
+### 调试包操作
+
+对于 Ubuntu/Debian 包管理器操作的详细调试：
+
+```bash
+# 启用详细调试
+http_proxy=http://192.168.33.1:3142 \
+  apt-get -o Debug::pkgProblemResolver=true \
+          -o Debug::Acquire::http=true \
+          update
+
+http_proxy=http://192.168.33.1:3142 \
+  apt-get -o Debug::pkgProblemResolver=true \
+          -o Debug::Acquire::http=true \
+          install apache2
+```
+
+### 常见问题
+
+**问题**：软件包没有被缓存
+**解决方案**：确保代理 URL 配置正确，并且客户端机器可以访问。
+
+**问题**：首次下载很慢
+**解决方案**：这是预期行为 - 首次下载会填充缓存。后续下载会更快。
+
+**问题**：缓存目录过大
+**解决方案**：使用 `--cache-max-size` 配置缓存限制，或使用清理 API 端点。
 
 ## 开源协议
 
-这个项目基于 [Apache License 2.0](https://github.com/soulteary/apt-proxy/blob/master/LICENSE)。
+本项目基于 [Apache License 2.0](https://github.com/soulteary/apt-proxy/blob/master/LICENSE) 协议。
 
-## 依赖组件
+## 致谢
 
-- 未指定协议
-    - [lox/apt-proxy](https://github.com/lox/apt-proxy#readme)
-- MIT License
-    - [lox/httpcache](https://github.com/lox/httpcache/blob/master/LICENSE)
-    - [djherbis/stream](https://github.com/djherbis/stream/blob/master/LICENSE)
-- Mozilla Public License 2.0
-    - [rainycape/vfs](https://github.com/rainycape/vfs/blob/master/LICENSE)
+本项目基于以下优秀项目构建：
+
+- [lox/apt-proxy](https://github.com/lox/apt-proxy) - 原始 APT 代理实现
+- [lox/httpcache](https://github.com/lox/httpcache) - HTTP 缓存库（MIT License）
+- [djherbis/stream](https://github.com/djherbis/stream) - 流处理库（MIT License）
+- [rainycape/vfs](https://github.com/rainycape/vfs) - 虚拟文件系统库（Mozilla Public License 2.0）
+
+## 支持
+
+- **问题反馈**：[GitHub Issues](https://github.com/soulteary/apt-proxy/issues)
+- **讨论交流**：[GitHub Discussions](https://github.com/soulteary/apt-proxy/discussions)
+
+---
+
+由 APT Proxy 社区用 ❤️ 打造

@@ -24,6 +24,8 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
 - **Drop-in Replacement**: Compatible with [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) configurations
 - **Zero Configuration**: Works out of the box with sensible defaults
+- **Observability**: Built-in health checks, Prometheus metrics, and structured logging
+- **Cache Management**: REST API for cache statistics, purging, and cleanup
 
 ## Supported Platforms
 
@@ -52,12 +54,11 @@ Simply run the binary - no configuration required:
 You should see output similar to:
 
 ```
-2022/06/12 16:15:40 starting apt-proxy
-2022/06/12 16:15:41 Starting benchmark for mirrors
-2022/06/12 16:15:41 Finished benchmarking mirrors
-2022/06/12 16:15:41 using fastest mirror https://mirrors.company.ltd/ubuntu/
-2022/06/12 16:15:41 proxy listening on 0.0.0.0:3142
-2022/06/12 16:15:41 server started successfully 🚀
+2024/01/15 10:30:00 INF starting apt-proxy version=1.0.0 listen=0.0.0.0:3142 protocol=http
+2024/01/15 10:30:01 INF Starting benchmark for mirrors
+2024/01/15 10:30:01 INF Finished benchmarking mirrors
+2024/01/15 10:30:01 INF using fastest mirror mirror=https://mirrors.company.ltd/ubuntu/
+2024/01/15 10:30:01 INF server started successfully
 ```
 
 The proxy is now running and ready to cache packages. By default, it listens on `0.0.0.0:3142` and automatically selects the fastest mirror for your location.
@@ -174,11 +175,11 @@ For convenience, you can use predefined shortcuts instead of full URLs:
 Example output:
 
 ```
-2022/06/15 10:55:26 starting apt-proxy
-2022/06/15 10:55:26 using specified debian mirror https://mirrors.163.com/debian/
-2022/06/15 10:55:26 using specified ubuntu mirror https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
-2022/06/15 10:55:26 proxy listening on 0.0.0.0:3142
-2022/06/15 10:55:26 server started successfully 🚀
+2024/01/15 10:55:26 INF starting apt-proxy version=1.0.0
+2024/01/15 10:55:26 INF using specified debian mirror mirror=https://mirrors.163.com/debian/
+2024/01/15 10:55:26 INF using specified ubuntu mirror mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
+2024/01/15 10:55:26 INF proxy listening on 0.0.0.0:3142
+2024/01/15 10:55:26 INF server started successfully
 ```
 
 ## Docker Integration
@@ -240,6 +241,12 @@ View all available options:
 | `-debian` | Debian mirror URL or shortcut | (auto-select) |
 | `-centos` | CentOS mirror URL or shortcut | (auto-select) |
 | `-alpine` | Alpine mirror URL or shortcut | (auto-select) |
+| `-cache-max-size` | Maximum cache size in GB (0 to disable) | `10` |
+| `-cache-ttl` | Cache TTL in hours (0 to disable) | `168` (7 days) |
+| `-cache-cleanup-interval` | Cache cleanup interval in minutes | `60` |
+| `-tls` | Enable TLS/HTTPS | `false` |
+| `-tls-cert` | Path to TLS certificate file | |
+| `-tls-key` | Path to TLS private key file | |
 | `-debug` | Enable verbose debug logging | `false` |
 
 **Example with Custom Configuration:**
@@ -251,7 +258,111 @@ View all available options:
   --cachedir=/var/cache/apt-proxy \
   --mode=ubuntu \
   --ubuntu=cn:tsinghua \
+  --cache-max-size=20 \
   --debug
+```
+
+## API Endpoints
+
+APT Proxy provides REST API endpoints for monitoring and management:
+
+### Health & Monitoring
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /healthz` | Comprehensive health check |
+| `GET /livez` | Kubernetes liveness probe |
+| `GET /readyz` | Kubernetes readiness probe |
+| `GET /version` | Version information |
+| `GET /metrics` | Prometheus metrics |
+
+### Cache Management
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/cache/stats` | GET | Cache statistics (size, hit rate, item count) |
+| `/api/cache/purge` | POST | Purge all cached items |
+| `/api/cache/cleanup` | POST | Remove stale cache entries |
+
+### Mirror Management
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/mirrors/refresh` | POST | Refresh mirror configurations |
+
+**Example: Get Cache Statistics**
+
+```bash
+curl http://localhost:3142/api/cache/stats
+```
+
+Response:
+
+```json
+{
+  "total_size_bytes": 1073741824,
+  "total_size_human": "1.00 GB",
+  "item_count": 150,
+  "stale_count": 5,
+  "hit_count": 1250,
+  "miss_count": 150,
+  "hit_rate": 0.893
+}
+```
+
+## Hot Reload
+
+APT Proxy supports hot reloading of mirror configurations without restart:
+
+```bash
+# Send SIGHUP to reload mirror configurations
+kill -HUP $(pgrep apt-proxy)
+```
+
+Or use the API:
+
+```bash
+curl -X POST http://localhost:3142/api/mirrors/refresh
+```
+
+## Project Structure
+
+```
+apt-proxy/
+├── apt-proxy.go              # Main entry point
+├── cli/                      # CLI and daemon management
+│   ├── cli.go               # Configuration parsing
+│   └── daemon.go            # Server lifecycle management
+├── distro/                   # Distribution definitions
+│   ├── distro.go            # Common types and utilities
+│   ├── ubuntu.go            # Ubuntu configuration
+│   ├── debian.go            # Debian configuration
+│   ├── centos.go            # CentOS configuration
+│   └── alpine.go            # Alpine configuration
+├── internal/                 # Internal packages
+│   ├── api/                 # REST API handlers
+│   │   ├── cache.go        # Cache management endpoints
+│   │   ├── mirrors.go      # Mirror management endpoints
+│   │   └── response.go     # Response utilities
+│   ├── config/              # Configuration management
+│   │   ├── config.go       # Configuration structures
+│   │   ├── defaults.go     # Default values
+│   │   └── loader.go       # Configuration loading
+│   ├── proxy/               # Core proxy functionality
+│   │   ├── handler.go      # HTTP request handling
+│   │   ├── rewriter.go     # URL rewriting
+│   │   ├── page.go         # Home page rendering
+│   │   └── stats.go        # Statistics
+│   ├── mirrors/             # Mirror management
+│   └── benchmarks/          # Mirror benchmarking
+├── pkg/                      # Reusable packages
+│   ├── httpcache/           # HTTP caching layer
+│   ├── httplog/             # Request/response logging
+│   ├── stream.v1/           # Stream processing
+│   ├── system/              # System utilities
+│   └── vfs/                 # Virtual filesystem
+├── state/                    # Application state management
+└── docker/, example/         # Deployment configurations
 ```
 
 ## Development
@@ -315,7 +426,7 @@ http_proxy=http://192.168.33.1:3142 \
 **Solution**: This is expected - the first download populates the cache. Subsequent downloads will be faster.
 
 **Issue**: Cache directory growing too large
-**Solution**: The cache directory can be cleaned manually, or you can set a custom cache directory with `--cachedir`.
+**Solution**: Configure cache limits with `--cache-max-size` or use the cleanup API endpoint.
 
 ## License
 
