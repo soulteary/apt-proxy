@@ -265,7 +265,7 @@ func (c *cache) vfsWrite(path string, r io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	n, err := io.Copy(f, r)
 	if err != nil {
 		return 0, err
@@ -335,7 +335,7 @@ func (c *cache) storeBody(r io.Reader, key string) (int64, error) {
 
 func (c *cache) storeHeader(code int, h http.Header, key string) (int64, error) {
 	hb := &bytes.Buffer{}
-	hb.Write([]byte(fmt.Sprintf("HTTP/1.1 %d %s\r\n", code, http.StatusText(code))))
+	fmt.Fprintf(hb, "HTTP/1.1 %d %s\r\n", code, http.StatusText(code))
 	if err := headersToWriter(h, hb); err != nil {
 		return 0, err
 	}
@@ -544,7 +544,7 @@ func (c *cache) evictIfNeeded(additionalSize int64) {
 		entry := elem.Value.(*cacheEntry)
 		debugf("evicting LRU entry: %s (size: %d, accessed: %s)",
 			entry.key, entry.size, entry.accessedAt.Format(time.RFC3339))
-		c.removeEntry(entry)
+		_ = c.removeEntry(entry)
 
 		// Record eviction metric
 		if DefaultMetrics != nil {
@@ -645,7 +645,7 @@ func (c *cache) cleanupTTLExpired() (int, int64) {
 			debugf("removing TTL-expired entry: %s (stored: %s)",
 				entry.key, entry.storedAt.Format(time.RFC3339))
 			bytesRemoved += entry.size
-			c.removeEntry(entry)
+			_ = c.removeEntry(entry)
 			removed++
 
 			// Record eviction metric
@@ -677,7 +677,7 @@ func (c *cache) enforceMaxSize() (int, int64) {
 		debugf("enforcing max size, removing: %s (size: %d)",
 			entry.key, entry.size)
 		bytesRemoved += entry.size
-		c.removeEntry(entry)
+		_ = c.removeEntry(entry)
 		removed++
 
 		// Record eviction metric
@@ -737,7 +737,7 @@ func (c *cache) Purge() error {
 	for elem := c.lruList.Front(); elem != nil; {
 		entry := elem.Value.(*cacheEntry)
 		next := elem.Next()
-		c.removeEntry(entry)
+		_ = c.removeEntry(entry)
 		elem = next
 	}
 

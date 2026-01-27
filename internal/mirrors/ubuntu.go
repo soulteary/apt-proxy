@@ -12,7 +12,7 @@ func GetUbuntuMirrorUrlsByGeo() (mirrors []string, err error) {
 	if err != nil {
 		return mirrors, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	scanner := bufio.NewScanner(response.Body)
 	for scanner.Scan() {

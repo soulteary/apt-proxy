@@ -14,7 +14,7 @@ func TestAuthMiddlewareWithAPIKey(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	})
 
 	wrapped := middleware.Wrap(handler)
@@ -225,7 +225,7 @@ func TestAuthMiddlewareIsEnabled(t *testing.T) {
 func TestRequireAuth(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}
 
 	wrapped := RequireAuth("my-api-key", handler)

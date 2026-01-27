@@ -23,7 +23,7 @@ const (
 
 func IsInternalUrls(url string) bool {
 	u := strings.ToLower(url)
-	return !(strings.Contains(u, "/ubuntu") || strings.Contains(u, "/debian") || strings.Contains(u, "/centos") || strings.Contains(u, "/alpine"))
+	return !strings.Contains(u, "/ubuntu") && !strings.Contains(u, "/debian") && !strings.Contains(u, "/centos") && !strings.Contains(u, "/alpine")
 }
 
 func GetInternalResType(url string) int {
@@ -64,9 +64,8 @@ func RenderInternalUrls(url string, cacheDir string) (string, int) {
 			diskAvailableLabel = system.ByteCountDecimal(available)
 		}
 
-		memoryUsageLabel := LABEL_NO_VALID_VALUE
 		memoryUsage, goroutine := system.GetMemoryUsageAndGoroutine()
-		memoryUsageLabel = system.ByteCountDecimal(memoryUsage)
+		memoryUsageLabel := system.ByteCountDecimal(memoryUsage)
 
 		return GetBaseTemplate(cacheSizeLabel, filesNumberLabel, diskAvailableLabel, memoryUsageLabel, goroutine), 200
 	case TYPE_PING:

@@ -30,7 +30,7 @@ func (fs *memfs) Create(key string) (File, error) {
 		name: key,
 		r:    bytes.NewBuffer(nil),
 	}
-	file.memReader.memFile = file
+	file.memFile = file
 	fs.files[key] = file
 	return file, nil
 }

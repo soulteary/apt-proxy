@@ -66,7 +66,7 @@ func (k Key) Vary(varyHeader string, r *http.Request) Key {
 func (k Key) String() string {
 	URL := strings.ToLower(canonicalURL(&k.u).String())
 	b := &bytes.Buffer{}
-	b.WriteString(fmt.Sprintf("%s:%s", k.method, URL))
+	fmt.Fprintf(b, "%s:%s", k.method, URL)
 
 	if len(k.vary) > 0 {
 		b.WriteString("::")

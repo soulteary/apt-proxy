@@ -52,15 +52,15 @@ func TestBadFile(t *testing.T) {
 		t.Error(err)
 		t.FailNow()
 	}
-	defer f.Remove()
-	defer f.Close()
+	defer func() { _ = f.Remove() }()
+	defer func() { _ = f.Close() }()
 
 	r, err := f.NextReader()
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	if r.Name() != "test" {
 		t.Errorf("expected name to to be 'test' got %s", r.Name())
 		t.FailNow()
@@ -81,17 +81,15 @@ func TestBadFs(t *testing.T) {
 		t.Error(err)
 		t.FailNow()
 	}
-	defer f.Remove()
-	defer f.Close()
+	defer func() { _ = f.Remove() }()
+	defer func() { _ = f.Close() }()
 
-	r, err := f.NextReader()
+	_, err = f.NextReader()
 	if err == nil {
 		t.Error("expected open error")
 		t.FailNow()
-	} else {
-		return
 	}
-	r.Close()
+	// No need to close if NextReader failed
 }
 
 func TestStd(t *testing.T) {
@@ -112,7 +110,7 @@ func TestMem(t *testing.T) {
 		t.Error(err)
 		t.FailNow()
 	}
-	f.Write(nil)
+	_, _ = f.Write(nil)
 	testFile(f, t)
 }
 
@@ -123,14 +121,14 @@ func TestRemove(t *testing.T) {
 		t.FailNow()
 	}
 	defer f.Close()
-	go f.Remove()
+	go func() { _ = f.Remove() }()
 	<-time.After(100 * time.Millisecond)
 	r, err := f.NextReader()
 	switch err {
 	case ErrRemoving:
 	case nil:
 		t.Error("expected error on NextReader()")
-		r.Close()
+		_ = r.Close()
 	default:
 		t.Error("expected diff error on NextReader()", err)
 	}
@@ -144,13 +142,13 @@ func testFile(f *Stream, t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
-		f.Write(testdata)
+		_, _ = f.Write(testdata)
 		<-time.After(10 * time.Millisecond)
 	}
 
-	f.Close()
+	_ = f.Close()
 	testReader(f, t)
-	f.Remove()
+	_ = f.Remove()
 }
 
 func testReader(f *Stream, t *testing.T) {
@@ -160,7 +158,7 @@ func testReader(f *Stream, t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	buf := bytes.NewBuffer(nil)
 	sr := io.NewSectionReader(r, 1+int64(len(testdata)*5), 5)

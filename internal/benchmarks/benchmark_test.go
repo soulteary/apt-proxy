@@ -12,7 +12,7 @@ func TestBenchmark(t *testing.T) {
 	// Create a test server that responds quickly
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 	defer server.Close()
 
@@ -64,7 +64,7 @@ func TestBenchmarkMultipleTries(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 	defer server.Close()
 
@@ -83,14 +83,14 @@ func TestGetTheFastestMirror(t *testing.T) {
 	// Create multiple test servers with different response times
 	fastServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("fast"))
+		_, _ = w.Write([]byte("fast"))
 	}))
 	defer fastServer.Close()
 
 	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("slow"))
+		_, _ = w.Write([]byte("slow"))
 	}))
 	defer slowServer.Close()
 
@@ -230,7 +230,7 @@ func TestGetTheFastestMirrorWithCache(t *testing.T) {
 	// Create a fast server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 	defer server.Close()
 
@@ -265,7 +265,7 @@ func TestGetTheFastestMirrorAsync(t *testing.T) {
 	// Create a fast server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 	defer server.Close()
 

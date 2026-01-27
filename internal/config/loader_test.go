@@ -139,8 +139,8 @@ func TestLoadConfigFile_EnvironmentExpansion(t *testing.T) {
 	configPath := filepath.Join(tempDir, "env-config.yaml")
 
 	// Set environment variable
-	os.Setenv("TEST_API_KEY", "secret-from-env")
-	defer os.Unsetenv("TEST_API_KEY")
+	_ = os.Setenv("TEST_API_KEY", "secret-from-env")
+	defer func() { _ = os.Unsetenv("TEST_API_KEY") }()
 
 	configContent := `
 security:
@@ -291,8 +291,8 @@ func TestFindConfigFile(t *testing.T) {
 	}
 
 	// Set environment variable to point to the temp config
-	os.Setenv(EnvConfigFile, configPath)
-	defer os.Unsetenv(EnvConfigFile)
+	_ = os.Setenv(EnvConfigFile, configPath)
+	defer func() { _ = os.Unsetenv(EnvConfigFile) }()
 
 	found := FindConfigFile()
 	if found != configPath {
@@ -302,18 +302,18 @@ func TestFindConfigFile(t *testing.T) {
 
 func TestIsConfigFileProvided(t *testing.T) {
 	// Clear environment
-	os.Unsetenv(EnvConfigFile)
+	_ = os.Unsetenv(EnvConfigFile)
 
 	// Save original args
 	origArgs := os.Args
 	defer func() { os.Args = origArgs }()
 
 	// Test with environment variable
-	os.Setenv(EnvConfigFile, "/some/path")
+	_ = os.Setenv(EnvConfigFile, "/some/path")
 	if !IsConfigFileProvided() {
 		t.Error("IsConfigFileProvided() should return true when env var is set")
 	}
-	os.Unsetenv(EnvConfigFile)
+	_ = os.Unsetenv(EnvConfigFile)
 
 	// Test with CLI flag
 	os.Args = []string{"apt-proxy", "--config=/some/path"}

@@ -38,11 +38,11 @@ func TestGenerateAliasFromURL(t *testing.T) {
 
 func TestGenerateBuildInMirorItem(t *testing.T) {
 	mirror := distro.GenerateBuildInMirorItem("http://mirrors.tuna.tsinghua.edu.cn/ubuntu/", true)
-	if !(mirror.Http == true && mirror.Https == false) || mirror.Official != true {
+	if (mirror.Http != true || mirror.Https != false) || mirror.Official != true {
 		t.Fatal("generate build-in mirror item failed")
 	}
 	mirror = distro.GenerateBuildInMirorItem("https://mirrors.tuna.tsinghua.edu.cn/ubuntu/", false)
-	if !(mirror.Http == false && mirror.Https == true) || mirror.Official != false {
+	if (mirror.Http != false || mirror.Https != true) || mirror.Official != false {
 		t.Fatal("generate build-in mirror item failed")
 	}
 }

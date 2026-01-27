@@ -18,7 +18,7 @@ func TestCacheCleanupLRU(t *testing.T) {
 		WithCleanupInterval(0) // Disable automatic cleanup for deterministic testing
 
 	cache := httpcache.NewMemoryCacheWithConfig(config)
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	// Store items that together exceed the limit
 	for i := 0; i < 10; i++ {
@@ -62,7 +62,7 @@ func TestCacheCleanupTTL(t *testing.T) {
 		WithCleanupInterval(0) // Disable automatic cleanup
 
 	cache := httpcache.NewMemoryCacheWithConfig(config)
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	// Store an item
 	body := "test body"
@@ -106,7 +106,7 @@ func TestStaleMapCleanup(t *testing.T) {
 		WithCleanupInterval(0) // Disable automatic cleanup
 
 	cache := httpcache.NewMemoryCacheWithConfig(config)
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	// Store an item and invalidate it
 	body := "test body"
@@ -145,7 +145,7 @@ func TestCacheStats(t *testing.T) {
 		WithCleanupInterval(0)
 
 	cache := httpcache.NewMemoryCacheWithConfig(config)
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	// Initial stats should be empty
 	stats := cache.Stats()
@@ -193,7 +193,7 @@ func TestCachePurge(t *testing.T) {
 		WithCleanupInterval(0)
 
 	cache := httpcache.NewMemoryCacheWithConfig(config)
-	defer cache.Close()
+	defer func() { _ = cache.Close() }()
 
 	// Store multiple items
 	for i := 0; i < 5; i++ {
@@ -282,7 +282,7 @@ func TestCacheDiskScanOnStartup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	config := httpcache.DefaultCacheConfig().
 		WithCleanupInterval(0) // Disable automatic cleanup
@@ -312,14 +312,14 @@ func TestCacheDiskScanOnStartup(t *testing.T) {
 	t.Logf("first cache stats: items=%d, size=%d", stats1.ItemCount, stats1.TotalSize)
 
 	// Close first cache
-	cache1.Close()
+	_ = cache1.Close()
 
 	// Create second cache instance - should scan and find existing items
 	cache2, err := httpcache.NewDiskCacheWithConfig(tmpDir, config)
 	if err != nil {
 		t.Fatalf("failed to create second cache: %v", err)
 	}
-	defer cache2.Close()
+	defer func() { _ = cache2.Close() }()
 
 	// Verify items were found during scan
 	stats2 := cache2.Stats()

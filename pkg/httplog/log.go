@@ -75,10 +75,10 @@ func (l *ResponseLogger) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	if l.DumpResponses {
 		buf := &bytes.Buffer{}
-		buf.WriteString(fmt.Sprintf("HTTP/1.1 %d %s\r\n",
+		fmt.Fprintf(buf, "HTTP/1.1 %d %s\r\n",
 			respWr.status, http.StatusText(respWr.status),
-		))
-		respWr.Header().Write(buf)
+		)
+		_ = respWr.Header().Write(buf)
 		writePrefixString(strings.TrimSpace(buf.String()), "<< ", os.Stderr)
 	}
 
@@ -150,11 +150,11 @@ func isError(code int) bool {
 }
 
 func writePrefixString(s, prefix string, w io.Writer) {
-	os.Stderr.Write([]byte("\n"))
+	_, _ = os.Stderr.Write([]byte("\n"))
 	for _, line := range strings.Split(s, "\r\n") {
-		w.Write([]byte(prefix))
-		w.Write([]byte(line))
-		w.Write([]byte("\n"))
+		_, _ = w.Write([]byte(prefix))
+		_, _ = w.Write([]byte(line))
+		_, _ = w.Write([]byte("\n"))
 	}
-	os.Stderr.Write([]byte("\n"))
+	_, _ = os.Stderr.Write([]byte("\n"))
 }

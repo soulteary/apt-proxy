@@ -14,7 +14,7 @@ import (
 func BenchmarkCachingFiles(b *testing.B) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Cache-Control", "max-age=100000")
-		fmt.Fprintf(w, "cache server payload")
+		_, _ = fmt.Fprintf(w, "cache server payload")
 	}))
 	defer backend.Close()
 
@@ -34,6 +34,6 @@ func BenchmarkCachingFiles(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 }

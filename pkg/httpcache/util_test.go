@@ -162,7 +162,7 @@ func (u *upstreamServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	if u.StatusCode != 0 && u.StatusCode != 200 {
 		rw.WriteHeader(u.StatusCode)
-		io.Copy(rw, bytes.NewReader(u.Body))
+		_, _ = io.Copy(rw, bytes.NewReader(u.Body))
 	} else {
 		http.ServeContent(rw, req, u.Filename, u.LastModified, bytes.NewReader(u.Body))
 	}

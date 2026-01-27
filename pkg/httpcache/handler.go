@@ -121,7 +121,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		debugf("validating cached response")
 		if h.validator.Validate(r, res) {
 			debugf("response is valid")
-			h.cache.Freshen(res, cReq.Key.String())
+			_ = h.cache.Freshen(res, cReq.Key.String())
 		} else {
 			debugf("response is changed")
 			h.passUpstream(rw, cReq)
@@ -225,19 +225,19 @@ func (h *Handler) pipeUpstream(w http.ResponseWriter, r *cacheRequest) {
 		h.upstream.ServeHTTP(w, r.Request)
 		return
 	}
-	rdr, err := rw.Stream.NextReader()
+	rdr, err := rw.NextReader()
 	if err != nil {
 		debugf("error creating next stream reader: %v", err)
 		w.Header().Set(CacheHeader, "SKIP")
 		h.upstream.ServeHTTP(w, r.Request)
 		return
 	}
-	defer rdr.Close()
+	defer func() { _ = rdr.Close() }()
 
 	debugf("piping request upstream")
 	go func() {
 		h.upstream.ServeHTTP(rw, r.Request)
-		rw.Stream.Close()
+		_ = rw.Stream.Close()
 	}()
 	rw.WaitHeaders()
 
@@ -246,10 +246,10 @@ func (h *Handler) pipeUpstream(w http.ResponseWriter, r *cacheRequest) {
 	}
 
 	res := rw.Resource()
-	defer res.Close()
+	defer func() { _ = res.Close() }()
 
 	if r.Method == "HEAD" {
-		h.cache.Freshen(res, r.Key.ForMethod("GET").String())
+		_ = h.cache.Freshen(res, r.Key.ForMethod("GET").String())
 	} else if res.IsNonErrorStatus() {
 		h.invalidateResource(res, r)
 	}
@@ -264,7 +264,7 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 		h.upstream.ServeHTTP(w, r.Request)
 		return
 	}
-	rdr, err := rw.Stream.NextReader()
+	rdr, err := rw.NextReader()
 	if err != nil {
 		debugf("error creating next stream reader: %v", err)
 		w.Header().Set(CacheHeader, "SKIP")
@@ -278,7 +278,7 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 
 	go func() {
 		h.upstream.ServeHTTP(rw, r.Request)
-		rw.Stream.Close()
+		_ = rw.Stream.Close()
 	}()
 	rw.WaitHeaders()
 	debugf("upstream responded headers in %s", Clock().Sub(t).String())
@@ -286,13 +286,13 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 	// just the headers!
 	res := NewResourceBytes(rw.StatusCode, nil, rw.Header())
 	if !h.isCacheable(res, r) {
-		rdr.Close()
+		_ = rdr.Close()
 		debugf("resource is uncacheable")
 		rw.Header().Set(CacheHeader, "SKIP")
 		return
 	}
 	b, err := io.ReadAll(rdr)
-	rdr.Close()
+	_ = rdr.Close()
 	if err != nil {
 		debugf("error reading stream: %v", err)
 		rw.Header().Set(CacheHeader, "SKIP")
@@ -427,7 +427,7 @@ func (h *Handler) serveResource(res *Resource, w http.ResponseWriter, req *cache
 	// hacky handler for non-ok statuses
 	if res.Status() != http.StatusOK {
 		w.WriteHeader(res.Status())
-		io.Copy(w, res)
+		_, _ = io.Copy(w, res)
 	} else {
 		http.ServeContent(w, req.Request, "", res.LastModified(), res)
 	}
@@ -534,11 +534,11 @@ func newCacheRequest(r *http.Request) (*cacheRequest, error) {
 }
 
 func (r *cacheRequest) isStateChanging() bool {
-	return !(r.Method == "POST" || r.Method == "PUT" || r.Method == "DELETE")
+	return r.Method != "POST" && r.Method != "PUT" && r.Method != "DELETE"
 }
 
 func (r *cacheRequest) isCacheable() bool {
-	if !(r.Method == "GET" || r.Method == "HEAD") {
+	if r.Method != "GET" && r.Method != "HEAD" {
 		return false
 	}
 
@@ -607,7 +607,7 @@ func (rw *responseStreamer) Resource() *Resource {
 	r, err := rw.Stream.NextReader()
 	if err == nil {
 		b, err := io.ReadAll(r)
-		r.Close()
+		_ = r.Close()
 		if err == nil {
 			return NewResourceBytes(rw.StatusCode, b, rw.Header())
 		}

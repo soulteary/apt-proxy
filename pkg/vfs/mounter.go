@@ -158,6 +158,7 @@ func (m *Mounter) String() string {
 	return fmt.Sprintf("Mounter: %s", strings.Join(s, ", "))
 }
 
+// mounterCompileTimeCheck is unused but kept for compile-time type checking
 func mounterCompileTimeCheck() VFS {
 	return &Mounter{}
 }

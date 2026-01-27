@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	// SkipDir is used by a WalkFunc to signal Walk that
-	// it wans to skip the given directory.
-	SkipDir = errors.New("skip this directory")
+	// ErrSkipDir is used by a WalkFunc to signal Walk that
+	// it wants to skip the given directory.
+	ErrSkipDir = errors.New("skip this directory")
 	// ErrReadOnly is returned from Write() on a read-only file.
 	ErrReadOnly = errors.New("can't write to read only file")
 	// ErrWriteOnly is returned from Read() on a write-only file.
@@ -25,7 +25,7 @@ type WalkFunc func(fs VFS, path string, info os.FileInfo, err error) error
 func walk(fs VFS, p string, info os.FileInfo, fn WalkFunc) error {
 	err := fn(fs, p, info, nil)
 	if err != nil {
-		if info.IsDir() && err == SkipDir {
+		if info.IsDir() && err == ErrSkipDir {
 			err = nil
 		}
 		return err
@@ -41,12 +41,12 @@ func walk(fs VFS, p string, info os.FileInfo, fn WalkFunc) error {
 		name := pathpkg.Join(p, v.Name())
 		fileInfo, err := fs.Lstat(name)
 		if err != nil {
-			if err := fn(fs, name, fileInfo, err); err != nil && err != SkipDir {
+			if err := fn(fs, name, fileInfo, err); err != nil && err != ErrSkipDir {
 				return err
 			}
 			continue
 		}
-		if err := walk(fs, name, fileInfo, fn); err != nil && (!fileInfo.IsDir() || err != SkipDir) {
+		if err := walk(fs, name, fileInfo, fn); err != nil && (!fileInfo.IsDir() || err != ErrSkipDir) {
 			return err
 		}
 	}
@@ -56,7 +56,7 @@ func walk(fs VFS, p string, info os.FileInfo, fn WalkFunc) error {
 // Walk iterates over all the files in the VFS which descend from the given
 // root (including root itself), descending into any subdirectories. In each
 // directory, files are visited in alphabetical order. The given function might
-// chose to skip a directory by returning SkipDir.
+// chose to skip a directory by returning ErrSkipDir.
 func Walk(fs VFS, root string, fn WalkFunc) error {
 	info, err := fs.Lstat(root)
 	if err != nil {

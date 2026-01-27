@@ -29,6 +29,6 @@ func (b *broadcaster) IsOpen() bool {
 
 func (b *broadcaster) Close() error {
 	atomic.StoreUint32(&b.closed, 1)
-	b.Cond.Broadcast()
+	b.Broadcast()
 	return nil
 }

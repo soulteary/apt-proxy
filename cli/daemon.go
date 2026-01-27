@@ -387,35 +387,8 @@ func Daemon(flags *config.Config) {
 		log.Fatal().Err(err).Msg("invalid configuration")
 	}
 
-	cfg := &config.Config{
-		Debug:    flags.Debug,
-		CacheDir: flags.CacheDir,
-		Mode:     flags.Mode,
-		Listen:   flags.Listen,
-		Mirrors: config.MirrorConfig{
-			Ubuntu:      flags.Mirrors.Ubuntu,
-			UbuntuPorts: flags.Mirrors.UbuntuPorts,
-			Debian:      flags.Mirrors.Debian,
-			CentOS:      flags.Mirrors.CentOS,
-			Alpine:      flags.Mirrors.Alpine,
-		},
-		Cache: config.CacheConfig{
-			MaxSize:         flags.Cache.MaxSize,
-			TTL:             flags.Cache.TTL,
-			CleanupInterval: flags.Cache.CleanupInterval,
-		},
-		TLS: config.TLSConfig{
-			Enabled:  flags.TLS.Enabled,
-			CertFile: flags.TLS.CertFile,
-			KeyFile:  flags.TLS.KeyFile,
-		},
-		Security: config.SecurityConfig{
-			APIKey:        flags.Security.APIKey,
-			EnableAPIAuth: flags.Security.EnableAPIAuth,
-		},
-	}
-
-	srv, err := NewServer(cfg)
+	// Use the provided configuration directly (no need to copy)
+	srv, err := NewServer(flags)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create server")
 	}

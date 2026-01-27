@@ -60,7 +60,7 @@ func WriteJSON(w http.ResponseWriter, statusCode int, data interface{}) error {
 
 // WriteJSONError writes a JSON error response
 func WriteJSONError(w http.ResponseWriter, statusCode int, errMsg string) {
-	WriteJSON(w, statusCode, ErrorResponse{Error: errMsg})
+	_ = WriteJSON(w, statusCode, ErrorResponse{Error: errMsg})
 }
 
 // CalculateHitRate calculates the cache hit rate

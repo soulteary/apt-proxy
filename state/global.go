@@ -196,15 +196,19 @@ func initGlobalState() {
 // to pass the state explicitly.
 func Global() *AppState {
 	initGlobalState()
+	globalStateMu.RLock()
+	defer globalStateMu.RUnlock()
 	return globalState
 }
 
 // SetGlobal replaces the global AppState instance.
 // This is useful for testing or when you want to use a custom state instance.
-// Note: This function is not thread-safe during initialization.
+// This function is thread-safe and can be called concurrently with Global().
 func SetGlobal(state *AppState) {
 	globalStateMu.Lock()
 	defer globalStateMu.Unlock()
+	// Ensure initialization is done before replacing
+	initGlobalState()
 	globalState = state
 }
 

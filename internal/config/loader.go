@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"go.yaml.in/yaml/v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/soulteary/apt-proxy/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
@@ -53,13 +53,9 @@ func ModeToInt(mode string) int {
 	}
 }
 
-// ParseFlags parses command-line flags and returns a Config struct with all
-// application settings. It validates the mode parameter and sets up global state.
-// Configuration priority: CLI flag > environment variable > default value.
-// Returns an error if flag parsing fails or if an invalid mode is specified.
-func ParseFlags() (*Config, error) {
-	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
-
+// defineFlags defines all command-line flags for the application.
+// This function is shared between ParseFlags and ParseFlagsWithConfigFile.
+func defineFlags(flags *flag.FlagSet) {
 	// Define flags (for CLI compatibility and help text)
 	flags.String("host", DefaultHost, "the host to bind to")
 	flags.String("port", DefaultPort, "the port to bind to")
@@ -85,16 +81,19 @@ func ParseFlags() (*Config, error) {
 	flags.Bool("tls", false, "enable TLS/HTTPS")
 	flags.String("tls-cert", "", "path to TLS certificate file")
 	flags.String("tls-key", "", "path to TLS private key file")
+}
+
+// ParseFlags parses command-line flags and returns a Config struct with all
+// application settings. It validates the mode parameter and sets up global state.
+// Configuration priority: CLI flag > environment variable > default value.
+// Returns an error if flag parsing fails or if an invalid mode is specified.
+func ParseFlags() (*Config, error) {
+	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
+	defineFlags(flags)
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
 	}
-
-	// Resolve configuration with priority: CLI > ENV > default
-	host := configutil.ResolveString(flags, "host", EnvHost, DefaultHost, true)
-	port := configutil.ResolveString(flags, "port", EnvPort, DefaultPort, true)
-	debug := configutil.ResolveBool(flags, "debug", EnvDebug, false)
-	cacheDir := configutil.ResolveString(flags, "cachedir", EnvCacheDir, DefaultCacheDir, true)
 
 	// Validate and resolve mode using enum validation
 	modeName, err := configutil.ResolveEnum(flags, "mode", EnvMode, distro.LINUX_ALL_DISTROS, allowedModes, false)
@@ -102,48 +101,13 @@ func ParseFlags() (*Config, error) {
 		return nil, fmt.Errorf("invalid mode: %w", err)
 	}
 
-	// Resolve mirror configurations
-	ubuntu := configutil.ResolveString(flags, "ubuntu", EnvUbuntu, "", true)
-	ubuntuPorts := configutil.ResolveString(flags, "ubuntu-ports", EnvUbuntuPorts, "", true)
-	debian := configutil.ResolveString(flags, "debian", EnvDebian, "", true)
-	centos := configutil.ResolveString(flags, "centos", EnvCentOS, "", true)
-	alpine := configutil.ResolveString(flags, "alpine", EnvAlpine, "", true)
+	// Build CLI configuration with defaults
+	config := buildCLIConfig(flags, DefaultHost, DefaultPort, DefaultCacheDir, DefaultCacheMaxSizeGB, DefaultCacheTTLHours, DefaultCacheCleanupIntervalMin)
 
-	// Resolve cache configurations
-	cacheMaxSizeGB := configutil.ResolveInt64(flags, "cache-max-size", EnvCacheMaxSize, DefaultCacheMaxSizeGB, true)
-	cacheTTLHours := configutil.ResolveInt(flags, "cache-ttl", EnvCacheTTL, DefaultCacheTTLHours, true)
-	cacheCleanupIntervalMin := configutil.ResolveInt(flags, "cache-cleanup-interval", EnvCacheCleanupInterval, DefaultCacheCleanupIntervalMin, true)
+	// Set mode (buildCLIConfig may have set it, but we ensure it's set here with validated value)
+	config.Mode = ModeToInt(modeName)
 
-	// Resolve TLS configurations
-	tlsEnabled := configutil.ResolveBool(flags, "tls", EnvTLSEnabled, false)
-	tlsCertFile := configutil.ResolveString(flags, "tls-cert", EnvTLSCertFile, "", true)
-	tlsKeyFile := configutil.ResolveString(flags, "tls-key", EnvTLSKeyFile, "", true)
-
-	// Build configuration
-	config := Config{
-		Debug:    debug,
-		CacheDir: cacheDir,
-		Mode:     ModeToInt(modeName),
-		Mirrors: MirrorConfig{
-			Ubuntu:      ubuntu,
-			UbuntuPorts: ubuntuPorts,
-			Debian:      debian,
-			CentOS:      centos,
-			Alpine:      alpine,
-		},
-		Cache: CacheConfig{
-			MaxSize:         cacheMaxSizeGB * 1024 * 1024 * 1024, // Convert GB to bytes
-			TTL:             time.Duration(cacheTTLHours) * time.Hour,
-			CleanupInterval: time.Duration(cacheCleanupIntervalMin) * time.Minute,
-		},
-		TLS: TLSConfig{
-			Enabled:  tlsEnabled,
-			CertFile: tlsCertFile,
-			KeyFile:  tlsKeyFile,
-		},
-	}
-
-	// Use defaults from httpcache if values are 0 (meaning use default)
+	// Apply defaults for cache if values are 0
 	if config.Cache.MaxSize == 0 {
 		config.Cache.MaxSize = httpcache.DefaultMaxCacheSize
 	}
@@ -154,21 +118,24 @@ func ParseFlags() (*Config, error) {
 		config.Cache.CleanupInterval = httpcache.DefaultCleanupInterval
 	}
 
-	// Set listen address using templates
-	listenAddr, err := mirrors.BuildListenAddress(host, port)
-	if err != nil {
-		// Fallback to fmt.Sprintf if template fails
-		config.Listen = fmt.Sprintf("%s:%s", host, port)
-	} else {
-		config.Listen = listenAddr
+	// Set listen address if not already set
+	if config.Listen == "" {
+		host := configutil.ResolveString(flags, "host", EnvHost, DefaultHost, true)
+		port := configutil.ResolveString(flags, "port", EnvPort, DefaultPort, true)
+		listenAddr, err := mirrors.BuildListenAddress(host, port)
+		if err != nil {
+			config.Listen = fmt.Sprintf("%s:%s", host, port)
+		} else {
+			config.Listen = listenAddr
+		}
 	}
 
 	// Update global state
-	if err := UpdateGlobalState(&config); err != nil {
+	if err := UpdateGlobalState(config); err != nil {
 		return nil, fmt.Errorf("updating global state: %w", err)
 	}
 
-	return &config, nil
+	return config, nil
 }
 
 // UpdateGlobalState updates the global state with the current configuration,
@@ -460,32 +427,7 @@ func MergeConfigs(base, override *Config) *Config {
 // configuration from a YAML file. Priority: CLI > ENV > Config File > Default.
 func ParseFlagsWithConfigFile() (*Config, error) {
 	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
-
-	// Define flags (for CLI compatibility and help text)
-	flags.String("host", DefaultHost, "the host to bind to")
-	flags.String("port", DefaultPort, "the port to bind to")
-	flags.String("mode", distro.LINUX_ALL_DISTROS,
-		"select the mode of system to cache: all / ubuntu / ubuntu-ports / debian / centos / alpine")
-	flags.Bool("debug", false, "whether to output debugging logging")
-	flags.String("cachedir", DefaultCacheDir, "the dir to store cache data in")
-	flags.String("ubuntu", "", "the ubuntu mirror for fetching packages")
-	flags.String("ubuntu-ports", "", "the ubuntu ports mirror for fetching packages")
-	flags.String("debian", "", "the debian mirror for fetching packages")
-	flags.String("centos", "", "the centos mirror for fetching packages")
-	flags.String("alpine", "", "the alpine mirror for fetching packages")
-
-	// Cache configuration flags
-	flags.Int64("cache-max-size", DefaultCacheMaxSizeGB,
-		"maximum cache size in GB (0 to disable size limit)")
-	flags.Int("cache-ttl", DefaultCacheTTLHours,
-		"cache TTL in hours (0 to disable TTL-based eviction)")
-	flags.Int("cache-cleanup-interval", DefaultCacheCleanupIntervalMin,
-		"cache cleanup interval in minutes (0 to disable automatic cleanup)")
-
-	// TLS configuration flags
-	flags.Bool("tls", false, "enable TLS/HTTPS")
-	flags.String("tls-cert", "", "path to TLS certificate file")
-	flags.String("tls-key", "", "path to TLS private key file")
+	defineFlags(flags)
 
 	// Config file flag
 	flags.String("config", "", "path to YAML configuration file")
@@ -512,7 +454,7 @@ func ParseFlagsWithConfigFile() (*Config, error) {
 	}
 
 	// Build CLI/ENV configuration
-	cliConfig := buildCLIConfig(flags)
+	cliConfig := buildCLIConfig(flags, "", "", "", 0, 0, 0)
 
 	// Merge configurations: file config as base, CLI/ENV as override
 	config := MergeConfigs(fileConfig, cliConfig)
@@ -529,11 +471,12 @@ func ParseFlagsWithConfigFile() (*Config, error) {
 }
 
 // buildCLIConfig builds a Config from CLI flags and environment variables.
-func buildCLIConfig(flags *flag.FlagSet) *Config {
-	host := configutil.ResolveString(flags, "host", EnvHost, "", true)
-	port := configutil.ResolveString(flags, "port", EnvPort, "", true)
+// Default values are used when flags/env vars are not set.
+func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheDir string, defaultCacheMaxSizeGB int64, defaultCacheTTLHours, defaultCacheCleanupIntervalMin int) *Config {
+	host := configutil.ResolveString(flags, "host", EnvHost, defaultHost, true)
+	port := configutil.ResolveString(flags, "port", EnvPort, defaultPort, true)
 	debug := configutil.ResolveBool(flags, "debug", EnvDebug, false)
-	cacheDir := configutil.ResolveString(flags, "cachedir", EnvCacheDir, "", true)
+	cacheDir := configutil.ResolveString(flags, "cachedir", EnvCacheDir, defaultCacheDir, true)
 
 	// Resolve mode
 	modeName, _ := configutil.ResolveEnum(flags, "mode", EnvMode, "", allowedModes, false)
@@ -546,9 +489,9 @@ func buildCLIConfig(flags *flag.FlagSet) *Config {
 	alpine := configutil.ResolveString(flags, "alpine", EnvAlpine, "", true)
 
 	// Resolve cache configurations
-	cacheMaxSizeGB := configutil.ResolveInt64(flags, "cache-max-size", EnvCacheMaxSize, 0, true)
-	cacheTTLHours := configutil.ResolveInt(flags, "cache-ttl", EnvCacheTTL, 0, true)
-	cacheCleanupIntervalMin := configutil.ResolveInt(flags, "cache-cleanup-interval", EnvCacheCleanupInterval, 0, true)
+	cacheMaxSizeGB := configutil.ResolveInt64(flags, "cache-max-size", EnvCacheMaxSize, defaultCacheMaxSizeGB, true)
+	cacheTTLHours := configutil.ResolveInt(flags, "cache-ttl", EnvCacheTTL, defaultCacheTTLHours, true)
+	cacheCleanupIntervalMin := configutil.ResolveInt(flags, "cache-cleanup-interval", EnvCacheCleanupInterval, defaultCacheCleanupIntervalMin, true)
 
 	// Resolve TLS configurations
 	tlsEnabled := configutil.ResolveBool(flags, "tls", EnvTLSEnabled, false)
@@ -596,10 +539,10 @@ func buildCLIConfig(flags *flag.FlagSet) *Config {
 	// Set listen address if host or port specified
 	if host != "" || port != "" {
 		if host == "" {
-			host = DefaultHost
+			host = defaultHost
 		}
 		if port == "" {
-			port = DefaultPort
+			port = defaultPort
 		}
 		listenAddr, err := mirrors.BuildListenAddress(host, port)
 		if err != nil {

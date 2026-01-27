@@ -51,7 +51,7 @@ func (s *Stream) Write(p []byte) (int, error) {
 // read the entire stream.
 func (s *Stream) Close() error {
 	defer s.dec()
-	defer s.b.Close()
+	defer func() { _ = s.b.Close() }()
 	s.b.Lock()
 	defer s.b.Unlock()
 	return s.file.Close()

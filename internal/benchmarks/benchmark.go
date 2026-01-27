@@ -148,7 +148,7 @@ func singleBenchmark(ctx context.Context, client *http.Client, url string) (time
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Discard body but handle potential errors
 	_, err = io.Copy(io.Discard, resp.Body)

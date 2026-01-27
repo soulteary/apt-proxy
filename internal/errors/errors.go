@@ -208,7 +208,7 @@ func WriteHTTPError(w http.ResponseWriter, err *AppError) {
 		Details: err.Details,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // FromHTTPStatus creates an AppError from an HTTP status code.
