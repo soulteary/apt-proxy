@@ -305,6 +305,15 @@ mode: all
 4. `~/.config/apt-proxy/apt-proxy.yaml`
 5. `~/.apt-proxy.yaml`
 
+### Cache Capacity and Eviction
+
+The cache supports a size limit configured via `max_size_gb` (YAML), `--cache-max-size` (CLI), or `APT_PROXY_CACHE_MAX_SIZE` (environment variable). When the total cache size exceeds this limit, the proxy automatically evicts the **least recently used** (LRU) files until the total size is within the limit. Eviction runs both when storing new items and during periodic cleanup.
+
+- Set a positive value (e.g. `20` for 20 GB) to enable the capacity limit and LRU eviction.
+- Set to `0` to disable the size limit; no size-based eviction is performed.
+
+After a process restart, the LRU order is approximated using file modification time until new accesses update it.
+
 ## API Endpoints
 
 APT Proxy provides REST API endpoints for monitoring and management:

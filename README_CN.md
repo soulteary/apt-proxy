@@ -305,6 +305,15 @@ mode: all
 4. `~/.config/apt-proxy/apt-proxy.yaml`（用户配置）
 5. `~/.apt-proxy.yaml`（用户配置）
 
+### 缓存容量与淘汰策略
+
+缓存支持通过 `max_size_gb`（YAML）、`--cache-max-size`（CLI）或 `APT_PROXY_CACHE_MAX_SIZE`（环境变量）设置容量上限。当总缓存大小超过该限制时，代理会按 **最久未访问**（LRU）自动删除文件，直至总容量保持在限制以内。淘汰会在写入新条目时以及定期清理时执行。
+
+- 设置为正整数（如 `20` 表示 20 GB）可启用容量限制与 LRU 淘汰。
+- 设置为 `0` 表示不限制容量，不进行按容量淘汰。
+
+进程重启后，在尚未有新访问之前，LRU 顺序按文件修改时间近似。
+
 ## API 端点
 
 APT Proxy 提供 REST API 端点用于监控和管理：

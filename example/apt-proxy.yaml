@@ -26,7 +26,8 @@ cache:
   # Directory to store cached packages
   dir: /var/cache/apt-proxy
   
-  # Maximum cache size in GB (0 to disable size limit)
+  # Maximum cache size in GB (0 to disable size limit).
+  # When exceeded, least-recently-used files are evicted automatically to keep total size within the limit.
   max_size_gb: 20
   
   # Cache TTL in hours (0 to disable TTL-based eviction)
