@@ -206,14 +206,22 @@ func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
 	return cacheConfig
 }
 
+// Default Fiber server timeouts and buffer sizes.
+const (
+	defaultReadTimeout  = 50 * time.Second
+	defaultWriteTimeout = 100 * time.Second
+	defaultIdleTimeout  = 120 * time.Second
+	defaultReadBufSize  = 4096 * 4 // 16KB, align with former ReadHeaderTimeout behavior
+)
+
 // createFiberApp creates the Fiber application with all routes and middleware.
 func (s *Server) createFiberApp() *fiber.App {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
-		ReadTimeout:           50 * time.Second,
-		WriteTimeout:          100 * time.Second,
-		IdleTimeout:           120 * time.Second,
-		ReadBufferSize:        4096 * 4, // 16KB, align with former ReadHeaderTimeout behavior
+		ReadTimeout:           defaultReadTimeout,
+		WriteTimeout:          defaultWriteTimeout,
+		IdleTimeout:           defaultIdleTimeout,
+		ReadBufferSize:        defaultReadBufSize,
 	})
 
 	// Version headers for all responses
@@ -229,8 +237,10 @@ func (s *Server) createFiberApp() *fiber.App {
 		logCfg.IncludeHeaders = true
 		logCfg.IncludeBody = true
 	}
+	// CustomFieldsFiber allocates one map per request; use capacity 2 for "cache" and "size".
+	// Pooling the map is unsafe unless the logger copies fields before returning.
 	logCfg.CustomFieldsFiber = func(c *fiber.Ctx) map[string]interface{} {
-		m := make(map[string]interface{})
+		m := make(map[string]interface{}, 2)
 		if v := c.Response().Header.Peek("X-Cache"); len(v) > 0 {
 			cache := strings.TrimSpace(string(v))
 			switch {

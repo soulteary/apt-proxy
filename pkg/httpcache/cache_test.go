@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
@@ -56,4 +57,52 @@ func TestSaveResourceWithIncorrectContentLength(t *testing.T) {
 	if err != httpcache.ErrNotFoundInCache {
 		t.Fatal("Entry shouldn't have been cached")
 	}
+}
+
+// TestStoreWithMultipleKeys ensures Store writes the same body for every key (e.g. primary + Vary key).
+// Regression test for the bug where the first key consumed the body reader and later keys got empty body.
+func TestStoreWithMultipleKeys(t *testing.T) {
+	body := strings.Repeat("vary-body", 500)
+	cache := httpcache.NewMemoryCache()
+
+	res := httpcache.NewResourceBytes(http.StatusOK, []byte(body), http.Header{
+		"Vary": []string{"Accept-Encoding"},
+	})
+
+	keyPrimary := "GET:https://example.com/path"
+	keyVary := "GET:https://example.com/path::Accept-Encoding=gzip:"
+	if err := cache.Store(res, keyPrimary, keyVary); err != nil {
+		t.Fatalf("Store(...): %v", err)
+	}
+
+	for _, key := range []string{keyPrimary, keyVary} {
+		resOut, err := cache.Retrieve(key)
+		if err != nil {
+			t.Fatalf("Retrieve(%q): %v", key, err)
+		}
+		got := readAllString(resOut)
+		if got != body {
+			t.Fatalf("key %q: body len=%d want len=%d; body mismatch", key, len(got), len(body))
+		}
+		_ = resOut.Close()
+	}
+}
+
+// TestCloseIdempotent asserts that calling Close() multiple times (including concurrently) does not panic.
+func TestCloseIdempotent(t *testing.T) {
+	config := httpcache.DefaultCacheConfig().WithCleanupInterval(0)
+	ext := httpcache.NewMemoryCacheWithConfig(config)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = ext.Close()
+		}()
+	}
+	wg.Wait()
+	// Additional sequential Close calls
+	_ = ext.Close()
+	_ = ext.Close()
 }

@@ -1,8 +1,6 @@
 package httpcache
 
 import (
-	"bytes"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -65,16 +63,18 @@ func (k Key) Vary(varyHeader string, r *http.Request) Key {
 
 func (k Key) String() string {
 	URL := strings.ToLower(canonicalURL(&k.u).String())
-	b := &bytes.Buffer{}
-	fmt.Fprintf(b, "%s:%s", k.method, URL)
-
+	var b strings.Builder
+	b.Grow(len(k.method) + 1 + len(URL) + 3 + 10*len(k.vary)) // heuristic to reduce allocs
+	b.WriteString(k.method)
+	b.WriteString(":")
+	b.WriteString(URL)
 	if len(k.vary) > 0 {
 		b.WriteString("::")
 		for _, v := range k.vary {
-			b.WriteString(v + ":")
+			b.WriteString(v)
+			b.WriteString(":")
 		}
 	}
-
 	return b.String()
 }
 

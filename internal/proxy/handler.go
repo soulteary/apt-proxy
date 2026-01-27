@@ -14,6 +14,14 @@ import (
 	state "github.com/soulteary/apt-proxy/state"
 )
 
+// Default transport timeouts and limits for upstream requests.
+// Extract to constants for tuning and documentation.
+const (
+	DefaultResponseHeaderTimeout = 45 * time.Second
+	DefaultIdleConnTimeout       = 90 * time.Second
+	DefaultMaxIdleConns          = 100
+)
+
 var hostPatternMap = map[*regexp.Regexp][]distro.Rule{
 	distro.UBUNTU_HOST_PATTERN:       distro.UBUNTU_DEFAULT_CACHE_RULES,
 	distro.UBUNTU_PORTS_HOST_PATTERN: distro.UBUNTU_PORTS_DEFAULT_CACHE_RULES,
@@ -26,10 +34,10 @@ var (
 	rewriters        *URLRewriters
 	defaultTransport = &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		ResponseHeaderTimeout: 45 * time.Second,
+		ResponseHeaderTimeout: DefaultResponseHeaderTimeout,
 		DisableKeepAlives:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          DefaultMaxIdleConns,
+		IdleConnTimeout:       DefaultIdleConnTimeout,
 		DisableCompression:    false,
 	}
 	// retryableTransport wraps defaultTransport with retry logic and tracing

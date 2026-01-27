@@ -6,6 +6,7 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
+	"hash"
 	"hash/fnv"
 	"io"
 	"net/http"
@@ -19,6 +20,11 @@ import (
 
 	"github.com/soulteary/apt-proxy/pkg/vfs"
 )
+
+// hash64Pool reuses FNV-1a 64-bit hashers to reduce allocations in hashKey.
+var hash64Pool = sync.Pool{
+	New: func() interface{} { return fnv.New64a() },
+}
 
 const (
 	headerPrefix = "header/"
@@ -107,8 +113,9 @@ type cache struct {
 	statMutex sync.RWMutex
 
 	// Cleanup control
-	stopChan chan struct{}
-	stopped  bool
+	stopChan  chan struct{}
+	stopped   bool
+	closeOnce sync.Once
 }
 
 var _ Cache = (*cache)(nil)
@@ -287,7 +294,9 @@ func (c *cache) Header(key string) (Header, error) {
 	return readHeaders(bufio.NewReader(f))
 }
 
-// Store a resource against a number of keys
+// Store a resource against a number of keys.
+// When multiple keys are given (e.g. primary + Vary key), the same body is written
+// for each key by using a fresh reader per key (buf is consumed on first read).
 func (c *cache) Store(res *Resource, keys ...string) error {
 	var buf = &bytes.Buffer{}
 
@@ -299,7 +308,8 @@ func (c *cache) Store(res *Resource, keys ...string) error {
 		return err
 	}
 
-	bodySize := int64(buf.Len())
+	bodyBytes := buf.Bytes()
+	bodySize := int64(len(bodyBytes))
 
 	for _, key := range keys {
 		// Remove from stale map
@@ -312,7 +322,9 @@ func (c *cache) Store(res *Resource, keys ...string) error {
 		// Check if we need to evict items before storing
 		c.evictIfNeeded(bodySize)
 
-		bodyBytes, err := c.storeBody(buf, key)
+		// Use a fresh reader per key: io.Reader is consumed by storeBody, so later keys
+		// would get empty body if we reused the same buffer.
+		written, err := c.storeBody(bytes.NewReader(bodyBytes), key)
 		if err != nil {
 			return err
 		}
@@ -323,7 +335,7 @@ func (c *cache) Store(res *Resource, keys ...string) error {
 		}
 
 		// Update LRU tracking
-		c.trackEntry(key, hashedKey, bodyBytes+headerBytes)
+		c.trackEntry(key, hashedKey, written+headerBytes)
 	}
 
 	return nil
@@ -410,9 +422,12 @@ func (c *cache) Freshen(res *Resource, keys ...string) error {
 }
 
 func hashKey(key string) string {
-	h := fnv.New64a()
-	_, err := h.Write([]byte(key))
-	if err != nil {
+	h := hash64Pool.Get().(hash.Hash64)
+	defer func() {
+		h.Reset()
+		hash64Pool.Put(h)
+	}()
+	if _, err := h.Write([]byte(key)); err != nil {
 		return "unable-to-calculate"
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
@@ -749,11 +764,12 @@ func (c *cache) Purge() error {
 	return nil
 }
 
-// Close stops the cache and cleanup goroutines
+// Close stops the cache and cleanup goroutines.
+// Safe to call multiple times; only the first call performs the shutdown.
 func (c *cache) Close() error {
-	if !c.stopped {
+	c.closeOnce.Do(func() {
 		c.stopped = true
 		close(c.stopChan)
-	}
+	})
 	return nil
 }

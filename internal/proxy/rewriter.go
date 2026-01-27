@@ -33,6 +33,50 @@ type URLRewriters struct {
 	Mu          sync.RWMutex
 }
 
+// modeRegistry centralizes mode → rules and mode → rewriter field.
+// Adding a new distro: append to distroModesOrder, add modeRules entry, add case in rewriterField.
+var (
+	distroModesOrder = []int{
+		distro.TYPE_LINUX_DISTROS_UBUNTU,
+		distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS,
+		distro.TYPE_LINUX_DISTROS_DEBIAN,
+		distro.TYPE_LINUX_DISTROS_CENTOS,
+		distro.TYPE_LINUX_DISTROS_ALPINE,
+	}
+	modeRules = map[int][]distro.Rule{
+		distro.TYPE_LINUX_DISTROS_UBUNTU:       distro.UBUNTU_DEFAULT_CACHE_RULES,
+		distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS: distro.UBUNTU_PORTS_DEFAULT_CACHE_RULES,
+		distro.TYPE_LINUX_DISTROS_DEBIAN:       distro.DEBIAN_DEFAULT_CACHE_RULES,
+		distro.TYPE_LINUX_DISTROS_CENTOS:       distro.CENTOS_DEFAULT_CACHE_RULES,
+		distro.TYPE_LINUX_DISTROS_ALPINE:       distro.ALPINE_DEFAULT_CACHE_RULES,
+	}
+)
+
+func modesToInit(mode int) []int {
+	if mode == distro.TYPE_LINUX_ALL_DISTROS {
+		return distroModesOrder
+	}
+	return []int{mode}
+}
+
+// rewriterField returns the *URLRewriter field pointer in r for the given mode, or nil if unknown.
+func rewriterField(r *URLRewriters, mode int) **URLRewriter {
+	switch mode {
+	case distro.TYPE_LINUX_DISTROS_UBUNTU:
+		return &r.Ubuntu
+	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+		return &r.UbuntuPorts
+	case distro.TYPE_LINUX_DISTROS_DEBIAN:
+		return &r.Debian
+	case distro.TYPE_LINUX_DISTROS_CENTOS:
+		return &r.Centos
+	case distro.TYPE_LINUX_DISTROS_ALPINE:
+		return &r.Alpine
+	default:
+		return nil
+	}
+}
+
 // getRewriterConfig returns configuration for a specific distribution
 func getRewriterConfig(mode int) (getMirror func() *url.URL, name string) {
 	switch mode {
@@ -137,32 +181,11 @@ func createRewriterAsync(mode int, rewriters *URLRewriters) *URLRewriter {
 		}
 
 		// Update the rewriter with the new fastest mirror
-		rewriters.Mu.Lock()
-		defer rewriters.Mu.Unlock()
-
-		switch mode {
-		case distro.TYPE_LINUX_DISTROS_UBUNTU:
-			if rewriters.Ubuntu != nil {
-				rewriters.Ubuntu.mirror = parsedMirror
-			}
-		case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-			if rewriters.UbuntuPorts != nil {
-				rewriters.UbuntuPorts.mirror = parsedMirror
-			}
-		case distro.TYPE_LINUX_DISTROS_DEBIAN:
-			if rewriters.Debian != nil {
-				rewriters.Debian.mirror = parsedMirror
-			}
-		case distro.TYPE_LINUX_DISTROS_CENTOS:
-			if rewriters.Centos != nil {
-				rewriters.Centos.mirror = parsedMirror
-			}
-		case distro.TYPE_LINUX_DISTROS_ALPINE:
-			if rewriters.Alpine != nil {
-				rewriters.Alpine.mirror = parsedMirror
-			}
+		if p := rewriterField(rewriters, mode); p != nil && *p != nil {
+			rewriters.Mu.Lock()
+			(*p).mirror = parsedMirror
+			rewriters.Mu.Unlock()
 		}
-
 		log.Info().Str("distro", name).Str("mirror", result.FastestMirror).Msg("async benchmark completed, mirror updated")
 	})
 
@@ -174,26 +197,11 @@ func createRewriterAsync(mode int, rewriters *URLRewriters) *URLRewriter {
 // For faster startup, use CreateNewRewritersAsync instead.
 func CreateNewRewriters(mode int) *URLRewriters {
 	rewriters := &URLRewriters{}
-
-	switch mode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		rewriters.Ubuntu = createRewriter(mode)
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		rewriters.UbuntuPorts = createRewriter(mode)
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		rewriters.Debian = createRewriter(mode)
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		rewriters.Centos = createRewriter(mode)
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		rewriters.Alpine = createRewriter(mode)
-	default:
-		rewriters.Ubuntu = createRewriter(distro.TYPE_LINUX_DISTROS_UBUNTU)
-		rewriters.UbuntuPorts = createRewriter(distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
-		rewriters.Debian = createRewriter(distro.TYPE_LINUX_DISTROS_DEBIAN)
-		rewriters.Centos = createRewriter(distro.TYPE_LINUX_DISTROS_CENTOS)
-		rewriters.Alpine = createRewriter(distro.TYPE_LINUX_DISTROS_ALPINE)
+	for _, m := range modesToInit(mode) {
+		if p := rewriterField(rewriters, m); p != nil {
+			*p = createRewriter(m)
+		}
 	}
-
 	return rewriters
 }
 
@@ -203,51 +211,28 @@ func CreateNewRewriters(mode int) *URLRewriters {
 // This is the recommended method for production use to minimize startup time.
 func CreateNewRewritersAsync(mode int) *URLRewriters {
 	rewriters := &URLRewriters{}
-
-	switch mode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		rewriters.Ubuntu = createRewriterAsync(mode, rewriters)
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		rewriters.UbuntuPorts = createRewriterAsync(mode, rewriters)
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		rewriters.Debian = createRewriterAsync(mode, rewriters)
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		rewriters.Centos = createRewriterAsync(mode, rewriters)
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		rewriters.Alpine = createRewriterAsync(mode, rewriters)
-	default:
-		rewriters.Ubuntu = createRewriterAsync(distro.TYPE_LINUX_DISTROS_UBUNTU, rewriters)
-		rewriters.UbuntuPorts = createRewriterAsync(distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS, rewriters)
-		rewriters.Debian = createRewriterAsync(distro.TYPE_LINUX_DISTROS_DEBIAN, rewriters)
-		rewriters.Centos = createRewriterAsync(distro.TYPE_LINUX_DISTROS_CENTOS, rewriters)
-		rewriters.Alpine = createRewriterAsync(distro.TYPE_LINUX_DISTROS_ALPINE, rewriters)
+	for _, m := range modesToInit(mode) {
+		if p := rewriterField(rewriters, m); p != nil {
+			*p = createRewriterAsync(m, rewriters)
+		}
 	}
-
 	return rewriters
 }
 
 // GetRewriteRulesByMode returns caching rules for a specific mode
 func GetRewriteRulesByMode(mode int) []distro.Rule {
-	switch mode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		return distro.UBUNTU_DEFAULT_CACHE_RULES
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		return distro.UBUNTU_PORTS_DEFAULT_CACHE_RULES
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		return distro.DEBIAN_DEFAULT_CACHE_RULES
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		return distro.CENTOS_DEFAULT_CACHE_RULES
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		return distro.ALPINE_DEFAULT_CACHE_RULES
-	default:
-		rules := make([]distro.Rule, 0)
-		rules = append(rules, distro.UBUNTU_DEFAULT_CACHE_RULES...)
-		rules = append(rules, distro.UBUNTU_PORTS_DEFAULT_CACHE_RULES...)
-		rules = append(rules, distro.DEBIAN_DEFAULT_CACHE_RULES...)
-		rules = append(rules, distro.CENTOS_DEFAULT_CACHE_RULES...)
-		rules = append(rules, distro.ALPINE_DEFAULT_CACHE_RULES...)
+	if rules, ok := modeRules[mode]; ok {
 		return rules
 	}
+	n := 0
+	for _, r := range modeRules {
+		n += len(r)
+	}
+	rules := make([]distro.Rule, 0, n)
+	for _, m := range distroModesOrder {
+		rules = append(rules, modeRules[m]...)
+	}
+	return rules
 }
 
 // RewriteRequestByMode rewrites the request URL to point to the configured mirror
@@ -261,20 +246,10 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	rewriters.Mu.RLock()
 	defer rewriters.Mu.RUnlock()
 
-	rewriter := &URLRewriter{}
-	switch mode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		rewriter = rewriters.Ubuntu
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		rewriter = rewriters.UbuntuPorts
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		rewriter = rewriters.Debian
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		rewriter = rewriters.Centos
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		rewriter = rewriters.Alpine
+	var rewriter *URLRewriter
+	if p := rewriterField(rewriters, mode); p != nil {
+		rewriter = *p
 	}
-
 	if rewriter == nil || rewriter.mirror == nil || rewriter.pattern == nil {
 		return
 	}
@@ -346,52 +321,17 @@ func RefreshRewriters(rewriters *URLRewriters, mode int) {
 
 	// Create new rewriters OUTSIDE the lock to avoid blocking requests
 	// during potentially slow network operations (benchmark tests)
-	var (
-		newUbuntu      *URLRewriter
-		newUbuntuPorts *URLRewriter
-		newDebian      *URLRewriter
-		newCentos      *URLRewriter
-		newAlpine      *URLRewriter
-	)
-
-	switch mode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		newUbuntu = createRewriter(mode)
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		newUbuntuPorts = createRewriter(mode)
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		newDebian = createRewriter(mode)
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		newCentos = createRewriter(mode)
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		newAlpine = createRewriter(mode)
-	default:
-		newUbuntu = createRewriter(distro.TYPE_LINUX_DISTROS_UBUNTU)
-		newUbuntuPorts = createRewriter(distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS)
-		newDebian = createRewriter(distro.TYPE_LINUX_DISTROS_DEBIAN)
-		newCentos = createRewriter(distro.TYPE_LINUX_DISTROS_CENTOS)
-		newAlpine = createRewriter(distro.TYPE_LINUX_DISTROS_ALPINE)
+	newByMode := make(map[int]*URLRewriter, len(distroModesOrder))
+	for _, m := range modesToInit(mode) {
+		newByMode[m] = createRewriter(m)
 	}
 
 	// Only hold the lock briefly during the pointer swap
 	rewriters.Mu.Lock()
-	switch mode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		rewriters.Ubuntu = newUbuntu
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		rewriters.UbuntuPorts = newUbuntuPorts
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		rewriters.Debian = newDebian
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		rewriters.Centos = newCentos
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		rewriters.Alpine = newAlpine
-	default:
-		rewriters.Ubuntu = newUbuntu
-		rewriters.UbuntuPorts = newUbuntuPorts
-		rewriters.Debian = newDebian
-		rewriters.Centos = newCentos
-		rewriters.Alpine = newAlpine
+	for _, m := range modesToInit(mode) {
+		if p := rewriterField(rewriters, m); p != nil {
+			*p = newByMode[m]
+		}
 	}
 	rewriters.Mu.Unlock()
 

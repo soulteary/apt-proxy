@@ -575,18 +575,20 @@ type responseStreamer struct {
 	StatusCode int
 	http.ResponseWriter
 	*stream.Stream
-	// C will be closed by WriteHeader to signal the headers' writing.
-	C chan struct{}
+	// C is closed by WriteHeader to signal the headers' writing. headerOnce ensures it is closed at most once.
+	C          chan struct{}
+	headerOnce sync.Once
 }
 
-// WaitHeaders returns iff and when WriteHeader has been called.
+// WaitHeaders returns when WriteHeader has been called (i.e. rw.C is closed).
 func (rw *responseStreamer) WaitHeaders() {
 	for range rw.C {
 	}
 }
 
+// WriteHeader implements http.ResponseWriter. Safe if called more than once; only the first call closes C and writes the status.
 func (rw *responseStreamer) WriteHeader(status int) {
-	defer close(rw.C)
+	rw.headerOnce.Do(func() { close(rw.C) })
 	rw.StatusCode = status
 	rw.ResponseWriter.WriteHeader(status)
 }
