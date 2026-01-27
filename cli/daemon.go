@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,7 +23,6 @@ import (
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
-	"github.com/soulteary/apt-proxy/pkg/httplog"
 )
 
 // Server represents the main application server that handles HTTP requests,
@@ -30,8 +30,7 @@ import (
 type Server struct {
 	config           *config.Config          // Application configuration
 	cache            httpcache.ExtendedCache // HTTP cache implementation with management capabilities
-	proxy            *proxy.PackageStruct    // Main proxy router
-	responseLogger   *httplog.ResponseLogger // Request/response logger
+	proxy            *proxy.PackageStruct    // Main proxy router (Handler is cache-wrapped)
 	app              *fiber.App              // Fiber application
 	log              *logger.Logger          // Structured logger
 	healthAggregator *health.Aggregator      // Health check aggregator
@@ -148,21 +147,15 @@ func (s *Server) initialize() error {
 	// in the background after benchmarking completes
 	s.proxy = proxy.CreatePackageStructRouterAsync(s.config.CacheDir, s.log)
 
-	// Wrap proxy with cache
+	// Wrap proxy with cache (request logging is done by logger-kit FiberMiddleware)
 	cachedHandler := httpcache.NewHandler(s.cache, s.proxy.Handler)
 	s.proxy.Handler = cachedHandler
 
-	// Initialize response logger
 	if s.config.Debug {
 		s.log.Debug().Msg("debug mode enabled")
 		httpcache.DebugLogging = true
 	}
-	// Set httpcache logger to use the same logger instance
 	httpcache.SetLogger(s.log)
-	s.responseLogger = httplog.NewResponseLogger(cachedHandler, s.log)
-	s.responseLogger.DumpRequests = s.config.Debug
-	s.responseLogger.DumpResponses = s.config.Debug
-	s.responseLogger.DumpErrors = s.config.Debug
 
 	// Initialize API handlers
 	s.cacheHandler = api.NewCacheHandler(s.cache, s.log)
@@ -228,6 +221,34 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Security headers
 	app.Use(middleware.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
 
+	// Request logging: logger-kit FiberMiddleware, unified with request_id and cache/size for proxy
+	logCfg := logger.DefaultMiddlewareConfig()
+	logCfg.Logger = s.log
+	logCfg.SkipPaths = []string{"/healthz", "/livez", "/readyz"} // skip health noise
+	if s.config.Debug {
+		logCfg.IncludeHeaders = true
+		logCfg.IncludeBody = true
+	}
+	logCfg.CustomFieldsFiber = func(c *fiber.Ctx) map[string]interface{} {
+		m := make(map[string]interface{})
+		if v := c.Response().Header.Peek("X-Cache"); len(v) > 0 {
+			cache := strings.TrimSpace(string(v))
+			switch {
+			case strings.HasPrefix(cache, "MISS"):
+				m["cache"] = "MISS"
+			case strings.HasPrefix(cache, "HIT"):
+				m["cache"] = "HIT"
+			default:
+				m["cache"] = cache
+			}
+		} else {
+			m["cache"] = "SKIP"
+		}
+		m["size"] = len(c.Response().Body())
+		return m
+	}
+	app.Use(logger.FiberMiddleware(logCfg))
+
 	// Health check endpoints (Fiber native)
 	app.Get("/healthz", health.FiberHandler(s.healthAggregator))
 	app.Get("/livez", health.FiberLivenessHandler("apt-proxy"))
@@ -256,10 +277,10 @@ func (s *Server) createFiberApp() *fiber.App {
 	app.All("/_/ping", pingHandler)
 	app.All("/_/ping/*", pingHandler)
 
-	// Root: exact "/" -> home page, everything else -> proxy+cache+log (net/http handler chain)
+	// Root: exact "/" -> home page, everything else -> proxy+cache (request log via logger-kit FiberMiddleware)
 	rootHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
-			s.responseLogger.ServeHTTP(w, r)
+			s.proxy.Handler.ServeHTTP(w, r)
 			return
 		}
 		proxy.HandleHomePage(w, r, s.config.CacheDir)
