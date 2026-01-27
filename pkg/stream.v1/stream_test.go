@@ -156,8 +156,9 @@ func testFile(f *Stream, t *testing.T) {
 func testReader(f *Stream, t *testing.T) {
 	r, err := f.NextReader()
 	if err != nil {
+		// Use t.Error instead of t.FailNow to avoid calling FailNow from goroutine
 		t.Error(err)
-		t.FailNow()
+		return
 	}
 	defer r.Close()
 
