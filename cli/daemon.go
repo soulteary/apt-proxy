@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	health "github.com/soulteary/health-kit"
 	logger "github.com/soulteary/logger-kit"
 	metrics "github.com/soulteary/metrics-kit"
@@ -30,8 +32,7 @@ type Server struct {
 	cache            httpcache.ExtendedCache // HTTP cache implementation with management capabilities
 	proxy            *proxy.PackageStruct    // Main proxy router
 	responseLogger   *httplog.ResponseLogger // Request/response logger
-	router           http.Handler            // HTTP router with orthodox routing
-	server           *http.Server            // HTTP server instance
+	app              *fiber.App              // Fiber application
 	log              *logger.Logger          // Structured logger
 	healthAggregator *health.Aggregator      // Health check aggregator
 	metricsRegistry  *metrics.Registry       // Prometheus metrics registry
@@ -173,18 +174,8 @@ func (s *Server) initialize() error {
 		Logger: s.log,
 	})
 
-	// Create router with orthodox routing (home, ping, health, version, metrics handlers)
-	s.router = s.createRouter()
-
-	// Initialize HTTP server
-	s.server = &http.Server{
-		Addr:              s.config.Listen,
-		Handler:           s.router,
-		ReadHeaderTimeout: 50 * time.Second,
-		ReadTimeout:       50 * time.Second,
-		WriteTimeout:      100 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
+	// Create Fiber app with all routes
+	s.app = s.createFiberApp()
 
 	return nil
 }
@@ -222,56 +213,60 @@ func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
 	return cacheConfig
 }
 
-// createRouter creates the main HTTP router with all endpoints
-func (s *Server) createRouter() http.Handler {
-	mux := http.NewServeMux()
+// createFiberApp creates the Fiber application with all routes and middleware.
+func (s *Server) createFiberApp() *fiber.App {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		ReadTimeout:           50 * time.Second,
+		WriteTimeout:          100 * time.Second,
+		IdleTimeout:           120 * time.Second,
+		ReadBufferSize:        4096 * 4, // 16KB, align with former ReadHeaderTimeout behavior
+	})
 
-	// Register health check endpoints
-	mux.HandleFunc("/healthz", health.Handler(s.healthAggregator))
-	mux.HandleFunc("/livez", health.LivenessHandler("apt-proxy"))
-	mux.HandleFunc("/readyz", health.ReadinessHandler(s.healthAggregator))
+	// Version headers for all responses
+	app.Use(version.FiberMiddleware(s.versionInfo, "X-"))
+	// Security headers
+	app.Use(middleware.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
 
-	// Register version endpoint
-	mux.HandleFunc("/version", version.Handler(version.HandlerConfig{
+	// Health check endpoints (Fiber native)
+	app.Get("/healthz", health.FiberHandler(s.healthAggregator))
+	app.Get("/livez", health.FiberLivenessHandler("apt-proxy"))
+	app.Get("/readyz", health.FiberReadinessHandler(s.healthAggregator))
+
+	// Version endpoint (Fiber native)
+	app.Get("/version", version.FiberHandler(version.HandlerConfig{
 		Info:   s.versionInfo,
 		Pretty: true,
 	}))
 
-	// Register metrics endpoint
-	mux.Handle("/metrics", metrics.HandlerFor(s.metricsRegistry))
+	// Metrics (wrap net/http handler via adaptor)
+	app.Get("/metrics", adaptor.HTTPHandler(metrics.HandlerFor(s.metricsRegistry)))
 
-	// Register cache management API endpoints (protected by API key if configured)
-	mux.HandleFunc("/api/cache/stats", s.authMiddleware.WrapFunc(s.cacheHandler.HandleCacheStats))
-	mux.HandleFunc("/api/cache/purge", s.authMiddleware.WrapFunc(s.cacheHandler.HandleCachePurge))
-	mux.HandleFunc("/api/cache/cleanup", s.authMiddleware.WrapFunc(s.cacheHandler.HandleCacheCleanup))
+	// Cache & mirrors API (wrap net/http handlers, auth applied inside)
+	app.All("/api/cache/stats", adaptor.HTTPHandler(s.authMiddleware.WrapFunc(s.cacheHandler.HandleCacheStats)))
+	app.All("/api/cache/purge", adaptor.HTTPHandler(s.authMiddleware.WrapFunc(s.cacheHandler.HandleCachePurge)))
+	app.All("/api/cache/cleanup", adaptor.HTTPHandler(s.authMiddleware.WrapFunc(s.cacheHandler.HandleCacheCleanup)))
+	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(s.authMiddleware.WrapFunc(s.mirrorsHandler.HandleMirrorsRefresh)))
 
-	// Register mirror management API endpoints (protected by API key if configured)
-	mux.HandleFunc("/api/mirrors/refresh", s.authMiddleware.WrapFunc(s.mirrorsHandler.HandleMirrorsRefresh))
+	// Ping (/_/ping and /_/ping/ and /_/ping/...)
+	pingHandler := func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "text/plain; charset=utf-8")
+		return c.SendString("pong")
+	}
+	app.All("/_/ping", pingHandler)
+	app.All("/_/ping/*", pingHandler)
 
-	// Register ping endpoint handler
-	mux.HandleFunc("/_/ping/", func(rw http.ResponseWriter, r *http.Request) {
-		rw.WriteHeader(http.StatusOK)
-		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		rw.Write([]byte("pong"))
-	})
-
-	// Register home page handler for exact "/" path
-	mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
-		// Only handle exact "/" path, delegate everything else to package proxy
+	// Root: exact "/" -> home page, everything else -> proxy+cache+log (net/http handler chain)
+	rootHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
-			s.responseLogger.ServeHTTP(rw, r)
+			s.responseLogger.ServeHTTP(w, r)
 			return
 		}
-		proxy.HandleHomePage(rw, r, s.config.CacheDir)
+		proxy.HandleHomePage(w, r, s.config.CacheDir)
 	})
+	app.All("/*", adaptor.HTTPHandler(rootHandler))
 
-	// Apply security headers middleware
-	handler := middleware.SecurityHeadersStd(middleware.DefaultSecurityHeadersConfig())(mux)
-
-	// Apply version headers middleware
-	handler = version.Middleware(s.versionInfo, "X-")(handler)
-
-	return handler
+	return app
 }
 
 // Start begins serving HTTP requests and handles graceful shutdown on SIGINT or SIGTERM.
@@ -298,7 +293,7 @@ func (s *Server) Start() error {
 	signal.Notify(sighupChan, syscall.SIGHUP)
 	defer signal.Stop(sighupChan)
 
-	// Start server in goroutine
+	// Start Fiber in goroutine
 	serverErr := make(chan error, 1)
 	go func() {
 		var err error
@@ -307,11 +302,11 @@ func (s *Server) Start() error {
 				Str("cert", s.config.TLS.CertFile).
 				Str("key", s.config.TLS.KeyFile).
 				Msg("starting HTTPS server with TLS")
-			err = s.server.ListenAndServeTLS(s.config.TLS.CertFile, s.config.TLS.KeyFile)
+			err = s.app.ListenTLS(s.config.Listen, s.config.TLS.CertFile, s.config.TLS.KeyFile)
 		} else {
-			err = s.server.ListenAndServe()
+			err = s.app.Listen(s.config.Listen)
 		}
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil {
 			serverErr <- err
 		}
 	}()
@@ -349,12 +344,12 @@ func (s *Server) reload() {
 func (s *Server) shutdown() error {
 	s.log.Info().Msg("shutting down proxy...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := s.server.Shutdown(ctx); err != nil {
+	if err := s.app.ShutdownWithTimeout(5 * time.Second); err != nil {
 		return wrapError("failed to shutdown server gracefully", err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// Close cache to stop cleanup goroutines
 	if s.cache != nil {

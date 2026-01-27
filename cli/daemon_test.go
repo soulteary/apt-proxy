@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"context"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -160,8 +160,8 @@ func TestServerCreateRouter(t *testing.T) {
 		t.Fatalf("NewServer() error = %v", err)
 	}
 
-	if srv.router == nil {
-		t.Error("Server router is nil")
+	if srv.app == nil {
+		t.Error("Server Fiber app is nil")
 	}
 }
 
@@ -189,12 +189,12 @@ func TestServerStartAndShutdown(t *testing.T) {
 		t.Fatalf("NewServer() error = %v", err)
 	}
 
-	// Start server in goroutine
+	// Start Fiber in goroutine
 	serverStarted := make(chan struct{})
 	serverErr := make(chan error, 1)
 	go func() {
 		close(serverStarted)
-		if err := srv.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.app.Listen(cfg.Listen); err != nil {
 			serverErr <- err
 		}
 		close(serverErr)
@@ -205,11 +205,8 @@ func TestServerStartAndShutdown(t *testing.T) {
 	// Give server time to start listening
 	time.Sleep(50 * time.Millisecond)
 
-	// Shutdown the server
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	if err := srv.server.Shutdown(ctx); err != nil {
+	// Shutdown the Fiber app
+	if err := srv.app.ShutdownWithTimeout(2 * time.Second); err != nil {
 		t.Errorf("Server shutdown error: %v", err)
 	}
 
@@ -303,16 +300,15 @@ func TestHealthEndpoints(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
-			rr := &responseRecorder{
-				headers:    make(http.Header),
-				statusCode: http.StatusOK,
+			resp, err := srv.app.Test(req)
+			if err != nil {
+				t.Fatalf("app.Test(%s) error: %v", tt.path, err)
 			}
-
-			srv.router.ServeHTTP(rr, req)
+			defer resp.Body.Close()
 
 			// Note: We're just checking that the endpoints exist and respond
 			// The exact status may vary depending on health check state
-			if rr.statusCode == 0 {
+			if resp.StatusCode == 0 {
 				t.Errorf("%s returned status 0", tt.path)
 			}
 		})
@@ -471,20 +467,19 @@ func TestCacheStatsAPI(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
-			rr := &responseRecorder{
-				headers:    make(http.Header),
-				statusCode: http.StatusOK,
+			resp, err := srv.app.Test(req)
+			if err != nil {
+				t.Fatalf("app.Test(%s) error: %v", tt.method, err)
 			}
+			defer resp.Body.Close()
 
-			srv.router.ServeHTTP(rr, req)
-
-			if rr.statusCode != tt.wantStatus {
-				t.Errorf("status = %d, want %d", rr.statusCode, tt.wantStatus)
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
 			}
 
 			// For successful GET, verify JSON response contains expected fields
-			if tt.method == http.MethodGet && rr.statusCode == http.StatusOK {
-				body := string(rr.body)
+			if tt.method == http.MethodGet && resp.StatusCode == http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
 				expectedFields := []string{
 					"total_size_bytes",
 					"total_size_human",
@@ -495,7 +490,7 @@ func TestCacheStatsAPI(t *testing.T) {
 					"hit_rate",
 				}
 				for _, field := range expectedFields {
-					if !containsField(body, field) {
+					if !containsField(string(body), field) {
 						t.Errorf("response missing field %q", field)
 					}
 				}
@@ -562,27 +557,26 @@ func TestCachePurgeAPI(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
-			rr := &responseRecorder{
-				headers:    make(http.Header),
-				statusCode: http.StatusOK,
+			resp, err := srv.app.Test(req)
+			if err != nil {
+				t.Fatalf("app.Test(%s) error: %v", tt.method, err)
 			}
+			defer resp.Body.Close()
 
-			srv.router.ServeHTTP(rr, req)
-
-			if rr.statusCode != tt.wantStatus {
-				t.Errorf("status = %d, want %d", rr.statusCode, tt.wantStatus)
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
 			}
 
 			// For successful POST, verify JSON response contains expected fields
-			if tt.method == http.MethodPost && rr.statusCode == http.StatusOK {
-				body := string(rr.body)
+			if tt.method == http.MethodPost && resp.StatusCode == http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
 				expectedFields := []string{
 					"success",
 					"items_removed",
 					"bytes_freed",
 				}
 				for _, field := range expectedFields {
-					if !containsField(body, field) {
+					if !containsField(string(body), field) {
 						t.Errorf("response missing field %q", field)
 					}
 				}
@@ -649,20 +643,19 @@ func TestCacheCleanupAPI(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
-			rr := &responseRecorder{
-				headers:    make(http.Header),
-				statusCode: http.StatusOK,
+			resp, err := srv.app.Test(req)
+			if err != nil {
+				t.Fatalf("app.Test(%s) error: %v", tt.method, err)
 			}
+			defer resp.Body.Close()
 
-			srv.router.ServeHTTP(rr, req)
-
-			if rr.statusCode != tt.wantStatus {
-				t.Errorf("status = %d, want %d", rr.statusCode, tt.wantStatus)
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
 			}
 
 			// For successful POST, verify JSON response contains expected fields
-			if tt.method == http.MethodPost && rr.statusCode == http.StatusOK {
-				body := string(rr.body)
+			if tt.method == http.MethodPost && resp.StatusCode == http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
 				expectedFields := []string{
 					"success",
 					"items_removed",
@@ -671,7 +664,7 @@ func TestCacheCleanupAPI(t *testing.T) {
 					"duration_ms",
 				}
 				for _, field := range expectedFields {
-					if !containsField(body, field) {
+					if !containsField(string(body), field) {
 						t.Errorf("response missing field %q", field)
 					}
 				}
@@ -738,27 +731,26 @@ func TestMirrorsRefreshAPI(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
-			rr := &responseRecorder{
-				headers:    make(http.Header),
-				statusCode: http.StatusOK,
+			resp, err := srv.app.Test(req)
+			if err != nil {
+				t.Fatalf("app.Test(%s) error: %v", tt.method, err)
 			}
+			defer resp.Body.Close()
 
-			srv.router.ServeHTTP(rr, req)
-
-			if rr.statusCode != tt.wantStatus {
-				t.Errorf("status = %d, want %d", rr.statusCode, tt.wantStatus)
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
 			}
 
 			// For successful POST, verify JSON response contains expected fields
-			if tt.method == http.MethodPost && rr.statusCode == http.StatusOK {
-				body := string(rr.body)
+			if tt.method == http.MethodPost && resp.StatusCode == http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
 				expectedFields := []string{
 					"success",
 					"message",
 					"duration_ms",
 				}
 				for _, field := range expectedFields {
-					if !containsField(body, field) {
+					if !containsField(string(body), field) {
 						t.Errorf("response missing field %q", field)
 					}
 				}
