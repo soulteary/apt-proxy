@@ -38,6 +38,11 @@ cache:
   # Default: 60 (1 hour)
   cleanup_interval_min: 60
 
+# Optional: path to distributions/mirrors YAML (distributions.yaml)
+# Enables adding or editing distributions and mirrors without recompiling.
+# Hot-reload with SIGHUP or POST /api/mirrors/refresh
+# distributions_config: ./config/distributions.yaml
+
 # Mirror configuration
 # Use full URLs or shortcuts (e.g., cn:tsinghua, cn:ustc, cn:aliyun)
 mirrors:

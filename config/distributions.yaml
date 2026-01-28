@@ -1,0 +1,267 @@
+# apt-proxy distributions configuration
+# Add or edit distributions and mirrors here. Reload with SIGHUP or POST /api/mirrors/refresh.
+# If mirrors.official/custom are empty for a distribution, built-in mirrors are used for that dist.
+#
+# distributions:
+#   - id: ubuntu
+#     name: Ubuntu
+#     type: 1
+#     url_pattern: "/ubuntu/(.+)$"
+#     benchmark_url: "dists/noble/main/binary-amd64/Release"
+#     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+#     cache_rules:
+#       - pattern: "deb$"
+#         cache_control: "max-age=100000"
+#         rewrite: true
+#       - pattern: "InRelease$"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#     mirrors:
+#       official:
+#         - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+#         - "mirrors.ustc.edu.cn/ubuntu/"
+#       custom:
+#         - "mirrors.163.com/ubuntu/"
+#     aliases:
+#       tsinghua: "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+#       ustc: "mirrors.ustc.edu.cn/ubuntu/"
+#       aliyun: "mirrors.aliyun.com/ubuntu/"
+#       tencent: "mirrors.cloud.tencent.com/ubuntu/"
+#       163: "mirrors.163.com/ubuntu/"
+#       huaweicloud: "mirrors.huaweicloud.com/repository/ubuntu/"
+
+distributions:
+  - id: ubuntu
+    name: Ubuntu
+    type: 1
+    url_pattern: "/ubuntu/(.+)$"
+    benchmark_url: "dists/noble/main/binary-amd64/Release"
+    geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "udeb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "InRelease$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "DiffIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "PackagesIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Packages\\.(bz2|gz|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "SourcesIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Sources\\.(bz2|gz|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Release(\\.gpg)?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "/by-hash/"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.cn99.com/ubuntu/"
+        - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+        - "mirrors.ustc.edu.cn/ubuntu/"
+        - "mirrors.aliyun.com/ubuntu/"
+        - "mirrors.cloud.tencent.com/ubuntu/"
+        - "mirrors.huaweicloud.com/repository/ubuntu/"
+        - "mirrors.163.com/ubuntu/"
+      custom: []
+    aliases:
+      tsinghua: "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+      ustc: "mirrors.ustc.edu.cn/ubuntu/"
+      aliyun: "mirrors.aliyun.com/ubuntu/"
+      tencent: "mirrors.cloud.tencent.com/ubuntu/"
+      163: "mirrors.163.com/ubuntu/"
+      huaweicloud: "mirrors.huaweicloud.com/repository/ubuntu/"
+
+  - id: ubuntu-ports
+    name: Ubuntu Ports
+    type: 2
+    url_pattern: "/ubuntu-ports/(.+)$"
+    benchmark_url: "dists/noble/InRelease/Release"
+    geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "udeb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "InRelease$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "DiffIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "PackagesIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Packages\\.(bz2|gz|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "SourcesIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Sources\\.(bz2|gz|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Release(\\.gpg)?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "/by-hash/"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/"
+        - "mirrors.ustc.edu.cn/ubuntu-ports/"
+        - "mirrors.aliyun.com/ubuntu-ports/"
+        - "mirrors.cloud.tencent.com/ubuntu-ports/"
+      custom: []
+    aliases:
+      tsinghua: "mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/"
+      ustc: "mirrors.ustc.edu.cn/ubuntu-ports/"
+      aliyun: "mirrors.aliyun.com/ubuntu-ports/"
+      tencent: "mirrors.cloud.tencent.com/ubuntu-ports/"
+
+  - id: debian
+    name: Debian
+    type: 3
+    url_pattern: "/debian(-security)?/(.+)$"
+    benchmark_url: "dists/bullseye/main/binary-amd64/Release"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "udeb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "InRelease$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "DiffIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "PackagesIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Packages\\.(bz2|gz|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "SourcesIndex$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Sources\\.(bz2|gz|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Release(\\.gpg)?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "/by-hash/"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "http://ftp.cn.debian.org/debian/"
+        - "mirrors.tuna.tsinghua.edu.cn/debian/"
+        - "mirrors.ustc.edu.cn/debian/"
+        - "mirrors.163.com/debian/"
+      custom:
+        - "mirrors.aliyun.com/debian/"
+        - "mirrors.cloud.tencent.com/debian/"
+        - "mirrors.huaweicloud.com/debian/"
+    aliases:
+      tsinghua: "mirrors.tuna.tsinghua.edu.cn/debian/"
+      ustc: "mirrors.ustc.edu.cn/debian/"
+      aliyun: "mirrors.aliyun.com/debian/"
+      tencent: "mirrors.cloud.tencent.com/debian/"
+      163: "mirrors.163.com/debian/"
+
+  - id: centos
+    name: CentOS
+    type: 4
+    url_pattern: "/centos/(.+)$"
+    benchmark_url: "TIME"
+    cache_rules:
+      - pattern: "repomd.xml$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "filelist.gz$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "dir_sizes$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "TIME$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "timestamp.txt$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: ".*"
+        cache_control: "max-age=100000"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/centos/"
+        - "mirrors.ustc.edu.cn/centos/"
+        - "mirrors.aliyun.com/centos/"
+        - "mirrors.163.com/centos/"
+        - "mirrors.huaweicloud.com/centos/"
+      custom: []
+    aliases:
+      tsinghua: "mirrors.tuna.tsinghua.edu.cn/centos/"
+      ustc: "mirrors.ustc.edu.cn/centos/"
+      aliyun: "mirrors.aliyun.com/centos/"
+      163: "mirrors.163.com/centos/"
+      huaweicloud: "mirrors.huaweicloud.com/centos/"
+
+  - id: alpine
+    name: Alpine Linux
+    type: 5
+    url_pattern: "/alpine/(.+)$"
+    benchmark_url: "MIRRORS.txt"
+    cache_rules:
+      - pattern: "APKINDEX.tar.gz$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "tar.gz$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "apk$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: ".*"
+        cache_control: "max-age=100000"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/alpine/"
+        - "mirrors.ustc.edu.cn/alpine/"
+        - "mirrors.aliyun.com/alpine/"
+      custom: []
+    aliases:
+      tsinghua: "mirrors.tuna.tsinghua.edu.cn/alpine/"
+      ustc: "mirrors.ustc.edu.cn/alpine/"
+      aliyun: "mirrors.aliyun.com/alpine/"

@@ -11,17 +11,20 @@ import (
 
 // MirrorsHandler handles mirror-related API endpoints
 type MirrorsHandler struct {
-	log *logger.Logger
+	log        *logger.Logger
+	reloadFunc func() // optional: reload distributions config then refresh mirrors
 }
 
-// NewMirrorsHandler creates a new MirrorsHandler
-func NewMirrorsHandler(log *logger.Logger) *MirrorsHandler {
+// NewMirrorsHandler creates a new MirrorsHandler. reloadFunc is optional; if set,
+// HandleMirrorsRefresh will call it (e.g. reload distributions.yaml then refresh mirrors).
+func NewMirrorsHandler(log *logger.Logger, reloadFunc func()) *MirrorsHandler {
 	return &MirrorsHandler{
-		log: log,
+		log:        log,
+		reloadFunc: reloadFunc,
 	}
 }
 
-// HandleMirrorsRefresh triggers a mirror benchmark refresh
+// HandleMirrorsRefresh triggers distribution config reload and mirror refresh
 func (h *MirrorsHandler) HandleMirrorsRefresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		WriteJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -30,8 +33,11 @@ func (h *MirrorsHandler) HandleMirrorsRefresh(w http.ResponseWriter, r *http.Req
 
 	start := time.Now()
 
-	// Refresh mirrors using the server reload mechanism
-	proxy.RefreshMirrors()
+	if h.reloadFunc != nil {
+		h.reloadFunc()
+	} else {
+		proxy.RefreshMirrors()
+	}
 
 	duration := time.Since(start)
 

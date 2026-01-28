@@ -70,3 +70,18 @@ func TestGenerateBuildInList(t *testing.T) {
 		t.Fatal("generate build-in mirror list failed")
 	}
 }
+
+func TestReloadDistributionsConfig_NonExistentPath(t *testing.T) {
+	// Reload with non-existent path: registry should keep only built-in distributions
+	distro.ReloadDistributionsConfig("/nonexistent/distributions.yaml")
+	reg := distro.GetRegistry()
+	for _, id := range []string{distro.LINUX_DISTROS_UBUNTU, distro.LINUX_DISTROS_DEBIAN, distro.LINUX_DISTROS_CENTOS, distro.LINUX_DISTROS_ALPINE} {
+		if _, ok := reg.GetByID(id); !ok {
+			t.Errorf("expected built-in distribution %q to be registered", id)
+		}
+	}
+	m := distro.GetHostPatternMap()
+	if len(m) == 0 {
+		t.Error("GetHostPatternMap() should return non-empty map after built-in registration")
+	}
+}

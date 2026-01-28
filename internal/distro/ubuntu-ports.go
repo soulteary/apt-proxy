@@ -6,7 +6,7 @@ import (
 
 const (
 	UBUNTU_PORTS_GEO_MIRROR_API = "http://mirrors.ubuntu.com/mirrors.txt"
-	UBUNTU_PORTS_BENCHMAKR_URL  = "dists/noble/InRelease/Release"
+	UBUNTU_PORTS_BENCHMARK_URL  = "dists/noble/InRelease/Release"
 )
 
 var UBUNTU_PORTS_HOST_PATTERN = regexp.MustCompile(`/ubuntu-ports/(.+)$`)

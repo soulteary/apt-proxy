@@ -29,6 +29,9 @@ const (
 
 	// Configuration file environment variable
 	EnvConfigFile = "APT_PROXY_CONFIG_FILE"
+
+	// Distributions configuration (distributions.yaml) path
+	EnvDistributionsConfig = "APT_PROXY_DISTRIBUTIONS_CONFIG"
 )
 
 // Default configuration values

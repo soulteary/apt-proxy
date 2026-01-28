@@ -59,7 +59,7 @@ func newTestServer(t *testing.T) *testServer {
 
 	// Create handlers
 	cacheHandler := api.NewCacheHandler(cache, log)
-	mirrorsHandler := api.NewMirrorsHandler(log)
+	mirrorsHandler := api.NewMirrorsHandler(log, nil)
 	authMiddleware := api.NewAuthMiddleware(api.AuthConfig{
 		APIKey: "test-api-key",
 		Logger: log,

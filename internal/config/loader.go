@@ -68,6 +68,7 @@ func defineFlags(flags *flag.FlagSet) {
 	flags.String("debian", "", "the debian mirror for fetching packages")
 	flags.String("centos", "", "the centos mirror for fetching packages")
 	flags.String("alpine", "", "the alpine mirror for fetching packages")
+	flags.String("distributions-config", "", "path to distributions YAML (distributions.yaml)")
 
 	// Cache configuration flags
 	flags.Int64("cache-max-size", DefaultCacheMaxSizeGB,
@@ -224,7 +225,8 @@ type YAMLConfig struct {
 		EnableAPIAuth bool   `yaml:"enable_api_auth"`
 	} `yaml:"security"`
 
-	Mode string `yaml:"mode"`
+	Mode                string `yaml:"mode"`
+	DistributionsConfig string `yaml:"distributions_config"`
 }
 
 // LoadConfigFile loads configuration from a YAML file.
@@ -275,6 +277,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			APIKey:        yamlCfg.Security.APIKey,
 			EnableAPIAuth: yamlCfg.Security.EnableAPIAuth,
 		},
+		DistributionsConfigPath: yamlCfg.DistributionsConfig,
 	}
 
 	// Convert mode string to int
@@ -419,6 +422,9 @@ func MergeConfigs(base, override *Config) *Config {
 	if override.Security.EnableAPIAuth {
 		result.Security.EnableAPIAuth = override.Security.EnableAPIAuth
 	}
+	if override.DistributionsConfigPath != "" {
+		result.DistributionsConfigPath = override.DistributionsConfigPath
+	}
 
 	return &result
 }
@@ -481,6 +487,9 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	// Resolve mode
 	modeName, _ := configutil.ResolveEnum(flags, "mode", EnvMode, "", allowedModes, false)
 
+	// Resolve distributions config path
+	distributionsConfig := configutil.ResolveString(flags, "distributions-config", EnvDistributionsConfig, "", true)
+
 	// Resolve mirror configurations
 	ubuntu := configutil.ResolveString(flags, "ubuntu", EnvUbuntu, "", true)
 	ubuntuPorts := configutil.ResolveString(flags, "ubuntu-ports", EnvUbuntuPorts, "", true)
@@ -529,6 +538,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 			APIKey:        apiKey,
 			EnableAPIAuth: enableAPIAuth,
 		},
+		DistributionsConfigPath: distributionsConfig,
 	}
 
 	// Set mode if specified

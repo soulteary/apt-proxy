@@ -50,7 +50,7 @@ func TestGetMirrorUrlsByGeo(t *testing.T) {
 	}
 
 	mirrors = GetGeoMirrorUrlsByMode(distro.TYPE_LINUX_DISTROS_DEBIAN)
-	if len(mirrors) != len(BUILDIN_DEBIAN_MIRRORS) {
+	if len(mirrors) != len(distro.BUILDIN_DEBIAN_MIRRORS) {
 		t.Fatal("Get mirrors error")
 	}
 
@@ -62,7 +62,7 @@ func TestGetMirrorUrlsByGeo(t *testing.T) {
 
 func TestGetPredefinedConfiguration(t *testing.T) {
 	res, pattern := GetPredefinedConfiguration(distro.TYPE_LINUX_DISTROS_UBUNTU)
-	if res != distro.UBUNTU_BENCHMAKR_URL {
+	if res != distro.UBUNTU_BENCHMARK_URL {
 		t.Fatal("Failed to get resource link")
 	}
 	if !pattern.MatchString("/ubuntu/InRelease") {
@@ -73,7 +73,7 @@ func TestGetPredefinedConfiguration(t *testing.T) {
 	}
 
 	res, pattern = GetPredefinedConfiguration(distro.TYPE_LINUX_DISTROS_DEBIAN)
-	if res != distro.DEBIAN_BENCHMAKR_URL {
+	if res != distro.DEBIAN_BENCHMARK_URL {
 		t.Fatal("Failed to get resource link")
 	}
 	if !pattern.MatchString("/debian/InRelease") {
@@ -81,7 +81,7 @@ func TestGetPredefinedConfiguration(t *testing.T) {
 	}
 
 	res, pattern = GetPredefinedConfiguration(distro.TYPE_LINUX_DISTROS_CENTOS)
-	if res != distro.CENTOS_BENCHMAKR_URL {
+	if res != distro.CENTOS_BENCHMARK_URL {
 		t.Fatal("Failed to get resource link")
 	}
 	if !pattern.MatchString("/centos/test/repomd.xml") {
@@ -89,7 +89,7 @@ func TestGetPredefinedConfiguration(t *testing.T) {
 	}
 
 	res, pattern = GetPredefinedConfiguration(distro.TYPE_LINUX_DISTROS_ALPINE)
-	if res != distro.ALPINE_BENCHMAKR_URL {
+	if res != distro.ALPINE_BENCHMARK_URL {
 		t.Fatal("Failed to get resource link")
 	}
 	if !pattern.MatchString("/alpine/test/APKINDEX.tar.gz") {

@@ -6,7 +6,7 @@ import (
 
 const (
 	UBUNTU_GEO_MIRROR_API = "http://mirrors.ubuntu.com/mirrors.txt"
-	UBUNTU_BENCHMAKR_URL  = "dists/noble/main/binary-amd64/Release"
+	UBUNTU_BENCHMARK_URL  = "dists/noble/main/binary-amd64/Release"
 )
 
 var UBUNTU_HOST_PATTERN = regexp.MustCompile(`/ubuntu/(.+)$`)

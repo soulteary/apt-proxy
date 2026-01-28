@@ -136,6 +136,48 @@ apk update
 
 ## Advanced Configuration
 
+### Distributions and Mirrors Config (distributions.yaml)
+
+You can maintain distributions and mirror lists via an external YAML file without changing code or recompiling.
+
+**Config file search order (when not specified):**
+
+1. `./config/distributions.yaml`
+2. `./distributions.yaml`
+3. `/etc/apt-proxy/distributions.yaml`
+4. `~/.config/apt-proxy/distributions.yaml`
+
+You can also set the path explicitly via `--distributions-config` or `APT_PROXY_DISTRIBUTIONS_CONFIG`.
+
+**Example `config/distributions.yaml`:**
+
+```yaml
+distributions:
+  - id: ubuntu
+    name: Ubuntu
+    type: 1
+    url_pattern: "/ubuntu/(.+)$"
+    benchmark_url: "dists/noble/main/binary-amd64/Release"
+    geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+        - "mirrors.ustc.edu.cn/ubuntu/"
+      custom:
+        - "mirrors.163.com/ubuntu/"
+    aliases:
+      tsinghua: "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+      ustc: "mirrors.ustc.edu.cn/ubuntu/"
+```
+
+After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to hot-reload without restart.
+
+**Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases`. The repo includes an example at `config/distributions.yaml` that you can extend.
+
 ### Custom Mirror Selection
 
 By default, APT Proxy automatically benchmarks available mirrors and selects the fastest one. However, you can specify custom mirrors if needed.
@@ -241,6 +283,7 @@ View all available options:
 | `-debian` | Debian mirror URL or shortcut | (auto-select) |
 | `-centos` | CentOS mirror URL or shortcut | (auto-select) |
 | `-alpine` | Alpine mirror URL or shortcut | (auto-select) |
+| `-distributions-config` | Path to distributions/mirrors YAML (distributions.yaml) | (optional) |
 | `-cache-max-size` | Maximum cache size in GB (0 to disable) | `10` |
 | `-cache-ttl` | Cache TTL in hours (0 to disable) | `168` (7 days) |
 | `-cache-cleanup-interval` | Cache cleanup interval in minutes | `60` |
@@ -340,7 +383,7 @@ APT Proxy provides REST API endpoints for monitoring and management:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/mirrors/refresh` | POST | Refresh mirror configurations |
+| `/api/mirrors/refresh` | POST | Reload distributions/mirrors config (distributions.yaml) and refresh mirrors |
 
 ### API Authentication
 
@@ -378,10 +421,10 @@ Response:
 
 ## Hot Reload
 
-APT Proxy supports hot reloading of mirror configurations without restart:
+APT Proxy supports hot reloading of distributions and mirror config (including distributions.yaml) without restart:
 
 ```bash
-# Send SIGHUP to reload mirror configurations
+# Send SIGHUP to reload config and refresh mirrors
 kill -HUP $(pgrep apt-proxy)
 ```
 

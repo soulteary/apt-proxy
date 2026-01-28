@@ -3,7 +3,7 @@ package distro
 import "regexp"
 
 const (
-	DEBIAN_BENCHMAKR_URL = "dists/bullseye/main/binary-amd64/Release"
+	DEBIAN_BENCHMARK_URL = "dists/bullseye/main/binary-amd64/Release"
 )
 
 var DEBIAN_HOST_PATTERN = regexp.MustCompile(`/debian(-security)?/(.+)$`)

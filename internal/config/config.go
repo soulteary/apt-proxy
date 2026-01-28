@@ -5,14 +5,15 @@ import "time"
 
 // Config holds all application configuration
 type Config struct {
-	Debug    bool           `yaml:"debug"`
-	CacheDir string         `yaml:"cache_dir"`
-	Mode     int            `yaml:"mode"`
-	Listen   string         `yaml:"listen"`
-	Mirrors  MirrorConfig   `yaml:"mirrors"`
-	Cache    CacheConfig    `yaml:"cache"`
-	TLS      TLSConfig      `yaml:"tls"`
-	Security SecurityConfig `yaml:"security"`
+	Debug                   bool           `yaml:"debug"`
+	CacheDir                string         `yaml:"cache_dir"`
+	Mode                    int            `yaml:"mode"`
+	Listen                  string         `yaml:"listen"`
+	Mirrors                 MirrorConfig   `yaml:"mirrors"`
+	Cache                   CacheConfig    `yaml:"cache"`
+	TLS                     TLSConfig      `yaml:"tls"`
+	Security                SecurityConfig `yaml:"security"`
+	DistributionsConfigPath string         `yaml:"distributions_config"`
 }
 
 // SecurityConfig holds security-related configuration

@@ -4,7 +4,7 @@ import "regexp"
 
 var ALPINE_HOST_PATTERN = regexp.MustCompile(`/alpine/(.+)$`)
 
-const ALPINE_BENCHMAKR_URL = "MIRRORS.txt"
+const ALPINE_BENCHMARK_URL = "MIRRORS.txt"
 
 // https://mirrors.alpinelinux.org/ 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol

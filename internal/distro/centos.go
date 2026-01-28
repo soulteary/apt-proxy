@@ -4,7 +4,7 @@ import "regexp"
 
 var CENTOS_HOST_PATTERN = regexp.MustCompile(`/centos/(.+)$`)
 
-const CENTOS_BENCHMAKR_URL = "TIME"
+const CENTOS_BENCHMARK_URL = "TIME"
 
 // https://www.centos.org/download/mirrors/ 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol

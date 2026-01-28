@@ -219,8 +219,14 @@ func CreateNewRewritersAsync(mode int) *URLRewriters {
 	return rewriters
 }
 
-// GetRewriteRulesByMode returns caching rules for a specific mode
+// GetRewriteRulesByMode returns caching rules for a specific mode.
+// Prefers registry (config-loaded) rules when present.
 func GetRewriteRulesByMode(mode int) []distro.Rule {
+	if reg := distro.GetRegistry(); reg != nil {
+		if d, ok := reg.GetByType(mode); ok && len(d.CacheRules) > 0 {
+			return d.CacheRules
+		}
+	}
 	if rules, ok := modeRules[mode]; ok {
 		return rules
 	}

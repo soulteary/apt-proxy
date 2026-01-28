@@ -136,6 +136,48 @@ apk update
 
 ## 高级配置
 
+### 发行版与镜像配置文件（distributions.yaml）
+
+通过外部 YAML 文件可维护发行版和镜像列表，无需改代码或重新编译。
+
+**配置文件路径（未指定时按以下顺序查找）：**
+
+1. `./config/distributions.yaml`
+2. `./distributions.yaml`
+3. `/etc/apt-proxy/distributions.yaml`
+4. `~/.config/apt-proxy/distributions.yaml`
+
+也可通过 `--distributions-config` 或环境变量 `APT_PROXY_DISTRIBUTIONS_CONFIG` 显式指定路径。
+
+**示例 `config/distributions.yaml`：**
+
+```yaml
+distributions:
+  - id: ubuntu
+    name: Ubuntu
+    type: 1
+    url_pattern: "/ubuntu/(.+)$"
+    benchmark_url: "dists/noble/main/binary-amd64/Release"
+    geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+        - "mirrors.ustc.edu.cn/ubuntu/"
+      custom:
+        - "mirrors.163.com/ubuntu/"
+    aliases:
+      tsinghua: "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+      ustc: "mirrors.ustc.edu.cn/ubuntu/"
+```
+
+修改配置后，发送 **SIGHUP** 或调用 **POST /api/mirrors/refresh** 即可热重载，无需重启。
+
+**添加或修改发行版：** 在 `distributions` 下增加或编辑一项，填写 `id`、`name`、`type`、`url_pattern`、`benchmark_url`、`cache_rules`、`mirrors`、`aliases` 即可。本仓库自带示例 `config/distributions.yaml`，可直接在此基础上增删改。
+
 ### 自定义镜像选择
 
 默认情况下，APT Proxy 会自动测试可用镜像并选择最快的一个。但如果需要，你可以指定自定义镜像。
@@ -241,6 +283,7 @@ http_proxy=http://host.docker.internal:3142 \
 | `-debian` | Debian 镜像 URL 或快捷方式 | （自动选择） |
 | `-centos` | CentOS 镜像 URL 或快捷方式 | （自动选择） |
 | `-alpine` | Alpine 镜像 URL 或快捷方式 | （自动选择） |
+| `-distributions-config` | 发行版/镜像配置文件路径（distributions.yaml） | （可选） |
 | `-cache-max-size` | 最大缓存大小（GB，0 表示禁用） | `10` |
 | `-cache-ttl` | 缓存 TTL（小时，0 表示禁用） | `168`（7 天） |
 | `-cache-cleanup-interval` | 缓存清理间隔（分钟） | `60` |
@@ -340,7 +383,7 @@ APT Proxy 提供 REST API 端点用于监控和管理：
 
 | 端点 | 方法 | 描述 |
 |------|------|------|
-| `/api/mirrors/refresh` | POST | 刷新镜像配置 |
+| `/api/mirrors/refresh` | POST | 重载发行版/镜像配置（distributions.yaml）并刷新镜像 |
 
 ### API 认证
 
@@ -378,10 +421,10 @@ curl -H "X-API-Key: your-api-key" http://localhost:3142/api/cache/stats
 
 ## 热重载
 
-APT Proxy 支持无需重启即可热重载镜像配置：
+APT Proxy 支持无需重启即可热重载发行版/镜像配置（含 distributions.yaml）：
 
 ```bash
-# 发送 SIGHUP 信号重载镜像配置
+# 发送 SIGHUP 信号重载配置并刷新镜像
 kill -HUP $(pgrep apt-proxy)
 ```
 

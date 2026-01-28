@@ -20,6 +20,7 @@ import (
 
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
+	"github.com/soulteary/apt-proxy/internal/distro"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
@@ -142,6 +143,9 @@ func (s *Server) initialize() error {
 	// Initialize health check aggregator
 	s.initHealthChecks()
 
+	// Load distributions config (distributions.yaml) if path set; overlays built-in
+	distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
+
 	// Initialize proxy with async benchmark for faster startup
 	// This uses default mirrors immediately and updates to the fastest mirror
 	// in the background after benchmarking completes
@@ -156,9 +160,12 @@ func (s *Server) initialize() error {
 		httpcache.DebugLogging = true
 	}
 
-	// Initialize API handlers
+	// Initialize API handlers (mirrors refresh also reloads distributions config when path set)
 	s.cacheHandler = api.NewCacheHandler(s.cache, s.log)
-	s.mirrorsHandler = api.NewMirrorsHandler(s.log)
+	s.mirrorsHandler = api.NewMirrorsHandler(s.log, func() {
+		distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
+		proxy.RefreshMirrors()
+	})
 
 	// Initialize API authentication middleware
 	s.authMiddleware = api.NewAuthMiddleware(api.AuthConfig{
@@ -358,11 +365,11 @@ func (s *Server) Start() error {
 }
 
 // reload handles configuration hot reload triggered by SIGHUP signal.
-// It refreshes mirror configurations without restarting the proxy.
+// It reloads distributions config (if path set) and refreshes mirror configurations.
 func (s *Server) reload() {
 	s.log.Info().Msg("received SIGHUP, reloading configuration...")
 
-	// Refresh mirror configurations
+	distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
 	proxy.RefreshMirrors()
 
 	s.log.Info().Msg("configuration reload complete")

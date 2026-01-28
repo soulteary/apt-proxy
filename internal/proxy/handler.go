@@ -22,7 +22,16 @@ const (
 	DefaultMaxIdleConns          = 100
 )
 
-var hostPatternMap = map[*regexp.Regexp][]distro.Rule{
+// getHostPatternMap returns pattern -> rules from registry (config-loaded or built-in)
+func getHostPatternMap() map[*regexp.Regexp][]distro.Rule {
+	m := distro.GetHostPatternMap()
+	if len(m) > 0 {
+		return m
+	}
+	return defaultHostPatternMap
+}
+
+var defaultHostPatternMap = map[*regexp.Regexp][]distro.Rule{
 	distro.UBUNTU_HOST_PATTERN:       distro.UBUNTU_DEFAULT_CACHE_RULES,
 	distro.UBUNTU_PORTS_HOST_PATTERN: distro.UBUNTU_PORTS_DEFAULT_CACHE_RULES,
 	distro.DEBIAN_HOST_PATTERN:       distro.DEBIAN_DEFAULT_CACHE_RULES,
@@ -161,7 +170,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 // the appropriate caching rule if a match is found.
 func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	path := r.URL.Path
-	for pattern, rules := range hostPatternMap {
+	for pattern, rules := range getHostPatternMap() {
 		if pattern.MatchString(path) {
 			return ap.processMatchingRule(r, rules)
 		}
