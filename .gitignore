@@ -1,3 +1,4 @@
 .aptcache
 coverage.*
 *.test
+apt-proxy
