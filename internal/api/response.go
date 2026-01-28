@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 )
 
 // API response types for JSON serialization
@@ -58,9 +60,14 @@ func WriteJSON(w http.ResponseWriter, statusCode int, data interface{}) error {
 	return encoder.Encode(data)
 }
 
-// WriteJSONError writes a JSON error response
+// WriteJSONError writes a JSON error response (plain message; for backward compatibility).
 func WriteJSONError(w http.ResponseWriter, statusCode int, errMsg string) {
 	_ = WriteJSON(w, statusCode, ErrorResponse{Error: errMsg})
+}
+
+// WriteAppError writes a structured AppError as HTTP JSON (code + message) for API consistency.
+func WriteAppError(w http.ResponseWriter, err *apperrors.AppError) {
+	apperrors.WriteHTTPError(w, err)
 }
 
 // CalculateHitRate calculates the cache hit rate

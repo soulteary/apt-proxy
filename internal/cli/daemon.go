@@ -29,17 +29,18 @@ import (
 // Server represents the main application server that handles HTTP requests,
 // manages caching, and coordinates all server components.
 type Server struct {
-	config           *config.Config          // Application configuration
-	cache            httpcache.ExtendedCache // HTTP cache implementation with management capabilities
-	proxy            *proxy.PackageStruct    // Main proxy router (Handler is cache-wrapped)
-	app              *fiber.App              // Fiber application
-	log              *logger.Logger          // Structured logger
-	healthAggregator *health.Aggregator      // Health check aggregator
-	metricsRegistry  *metrics.Registry       // Prometheus metrics registry
-	versionInfo      *version.Info           // Version information
-	cacheHandler     *api.CacheHandler       // Cache API handler
-	mirrorsHandler   *api.MirrorsHandler     // Mirrors API handler
-	authMiddleware   *api.AuthMiddleware     // API authentication middleware
+	config              *config.Config           // Application configuration
+	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
+	proxy               *proxy.PackageStruct     // Main proxy router (Handler is cache-wrapped)
+	app                 *fiber.App               // Fiber application
+	log                 *logger.Logger           // Structured logger
+	healthAggregator    *health.Aggregator       // Health check aggregator
+	metricsRegistry     *metrics.Registry        // Prometheus metrics registry
+	versionInfo         *version.Info            // Version information
+	cacheHandler        *api.CacheHandler        // Cache API handler
+	mirrorsHandler      *api.MirrorsHandler      // Mirrors API handler
+	authMiddleware      *api.AuthMiddleware      // API authentication middleware
+	rateLimitMiddleware *api.RateLimitMiddleware // API rate limit (per IP)
 }
 
 // NewServer creates and initializes a new Server instance with the provided
@@ -146,6 +147,9 @@ func (s *Server) initialize() error {
 	// Load distributions config (distributions.yaml) if path set; overlays built-in
 	distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
 
+	// Configure upstream transport (keep-alive to mirrors; default true)
+	proxy.InitUpstreamTransport(s.config.UpstreamKeepAlive)
+
 	// Initialize proxy with async benchmark for faster startup
 	// This uses default mirrors immediately and updates to the fastest mirror
 	// in the background after benchmarking completes
@@ -172,6 +176,9 @@ func (s *Server) initialize() error {
 		APIKey: s.config.Security.APIKey,
 		Logger: s.log,
 	})
+
+	// Initialize API rate limit (per IP per minute; 0 = disabled)
+	s.rateLimitMiddleware = api.NewRateLimitMiddleware(s.config.Security.APIRateLimitPerMinute, s.log)
 
 	// Create Fiber app with all routes
 	s.app = s.createFiberApp()
@@ -279,11 +286,14 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Metrics (wrap net/http handler via adaptor)
 	app.Get("/metrics", adaptor.HTTPHandler(metrics.HandlerFor(s.metricsRegistry)))
 
-	// Cache & mirrors API (wrap net/http handlers, auth applied inside)
-	app.All("/api/cache/stats", adaptor.HTTPHandler(s.authMiddleware.WrapFunc(s.cacheHandler.HandleCacheStats)))
-	app.All("/api/cache/purge", adaptor.HTTPHandler(s.authMiddleware.WrapFunc(s.cacheHandler.HandleCachePurge)))
-	app.All("/api/cache/cleanup", adaptor.HTTPHandler(s.authMiddleware.WrapFunc(s.cacheHandler.HandleCacheCleanup)))
-	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(s.authMiddleware.WrapFunc(s.mirrorsHandler.HandleMirrorsRefresh)))
+	// Cache & mirrors API (rate limit then auth)
+	apiHandler := func(h http.HandlerFunc) http.Handler {
+		return s.rateLimitMiddleware.Wrap(s.authMiddleware.WrapFunc(h))
+	}
+	app.All("/api/cache/stats", adaptor.HTTPHandler(apiHandler(s.cacheHandler.HandleCacheStats)))
+	app.All("/api/cache/purge", adaptor.HTTPHandler(apiHandler(s.cacheHandler.HandleCachePurge)))
+	app.All("/api/cache/cleanup", adaptor.HTTPHandler(apiHandler(s.cacheHandler.HandleCacheCleanup)))
+	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(apiHandler(s.mirrorsHandler.HandleMirrorsRefresh)))
 
 	// Ping (/_/ping and /_/ping/ and /_/ping/...)
 	pingHandler := func(c *fiber.Ctx) error {

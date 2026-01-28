@@ -41,17 +41,36 @@ var defaultHostPatternMap = map[*regexp.Regexp][]distro.Rule{
 
 var (
 	rewriters        *URLRewriters
+	defaultTransport *http.Transport
+	// retryableTransport wraps defaultTransport with retry logic and tracing
+	retryableTransport *RetryableTransport
+)
+
+func init() {
+	initUpstreamTransport(true) // default: disable keep-alives (legacy behavior)
+}
+
+// initUpstreamTransport sets the package-level upstream transport.
+// When disableKeepAlives is true, connections are not reused (legacy behavior).
+// When false, HTTP keep-alive to upstream mirrors is enabled for better performance.
+func initUpstreamTransport(disableKeepAlives bool) {
 	defaultTransport = &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ResponseHeaderTimeout: DefaultResponseHeaderTimeout,
-		DisableKeepAlives:     true,
+		DisableKeepAlives:     disableKeepAlives,
 		MaxIdleConns:          DefaultMaxIdleConns,
 		IdleConnTimeout:       DefaultIdleConnTimeout,
 		DisableCompression:    false,
 	}
-	// retryableTransport wraps defaultTransport with retry logic and tracing
 	retryableTransport = NewRetryableTransport(defaultTransport)
-)
+}
+
+// InitUpstreamTransport configures the upstream HTTP transport (e.g. from config).
+// Call before CreatePackageStructRouter or CreatePackageStructRouterAsync.
+// enableKeepAlive: true = reuse connections to mirrors (recommended); false = disable keep-alives.
+func InitUpstreamTransport(enableKeepAlive bool) {
+	initUpstreamTransport(!enableKeepAlive)
+}
 
 // PackageStruct is the main HTTP handler that routes requests to appropriate
 // distribution-specific handlers and applies caching rules.

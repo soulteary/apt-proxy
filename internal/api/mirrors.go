@@ -6,6 +6,7 @@ import (
 
 	logger "github.com/soulteary/logger-kit"
 
+	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 )
 
@@ -27,7 +28,7 @@ func NewMirrorsHandler(log *logger.Logger, reloadFunc func()) *MirrorsHandler {
 // HandleMirrorsRefresh triggers distribution config reload and mirror refresh
 func (h *MirrorsHandler) HandleMirrorsRefresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		WriteJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		WriteAppError(w, apperrors.New(apperrors.ErrMethodNotAllowed, "Method not allowed"))
 		return
 	}
 

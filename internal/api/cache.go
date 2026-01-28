@@ -5,6 +5,7 @@ import (
 
 	logger "github.com/soulteary/logger-kit"
 
+	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
 )
 
@@ -25,7 +26,7 @@ func NewCacheHandler(cache httpcache.ExtendedCache, log *logger.Logger) *CacheHa
 // HandleCacheStats returns cache statistics as JSON
 func (h *CacheHandler) HandleCacheStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		WriteJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		WriteAppError(w, apperrors.New(apperrors.ErrMethodNotAllowed, "Method not allowed"))
 		return
 	}
 
@@ -63,7 +64,7 @@ func (h *CacheHandler) HandleCachePurge(w http.ResponseWriter, r *http.Request) 
 
 	if err := h.cache.Purge(); err != nil {
 		h.log.Error().Err(err).Msg("failed to purge cache")
-		WriteJSONError(w, http.StatusInternalServerError, "Failed to purge cache")
+		WriteAppError(w, apperrors.CacheError(apperrors.ErrCachePurge, "Failed to purge cache", err))
 		return
 	}
 
@@ -86,7 +87,7 @@ func (h *CacheHandler) HandleCachePurge(w http.ResponseWriter, r *http.Request) 
 // HandleCacheCleanup triggers a manual cleanup cycle
 func (h *CacheHandler) HandleCacheCleanup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		WriteJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		WriteAppError(w, apperrors.New(apperrors.ErrMethodNotAllowed, "Method not allowed"))
 		return
 	}
 

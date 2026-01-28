@@ -245,6 +245,19 @@ func TestIs(t *testing.T) {
 	if Is(errors.New("regular error"), ErrConfigInvalid) {
 		t.Error("Is should return false for non-AppError")
 	}
+
+	// Wrapped chain: outer wraps inner AppError; Is should find code in chain
+	inner := New(ErrCachePurge, "inner purge failed")
+	outer := Wrap(ErrInternal, "outer", inner)
+	if !Is(outer, ErrCachePurge) {
+		t.Error("Is should return true for AppError code in unwrap chain")
+	}
+	if !Is(outer, ErrInternal) {
+		t.Error("Is should return true for outer AppError code")
+	}
+	if Is(outer, ErrConfigInvalid) {
+		t.Error("Is should return false for code not in chain")
+	}
 }
 
 func TestGetCode(t *testing.T) {

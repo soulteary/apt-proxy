@@ -14,6 +14,8 @@ type Config struct {
 	TLS                     TLSConfig      `yaml:"tls"`
 	Security                SecurityConfig `yaml:"security"`
 	DistributionsConfigPath string         `yaml:"distributions_config"`
+	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors (default true).
+	UpstreamKeepAlive bool `yaml:"upstream_keep_alive"`
 }
 
 // SecurityConfig holds security-related configuration
@@ -23,6 +25,8 @@ type SecurityConfig struct {
 	APIKey string `yaml:"api_key"`
 	// EnableAPIAuth enables API authentication when APIKey is set.
 	EnableAPIAuth bool `yaml:"enable_api_auth"`
+	// APIRateLimitPerMinute limits API requests per IP per minute (0 = disabled). Default 60.
+	APIRateLimitPerMinute int `yaml:"api_rate_limit_per_minute"`
 }
 
 // TLSConfig holds TLS/HTTPS configuration

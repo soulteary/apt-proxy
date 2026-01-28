@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	stderrors "errors"
 )
 
 // Code represents a unique error code for categorizing errors.
@@ -242,10 +244,13 @@ func FromHTTPStatus(status int, message string) *AppError {
 	}
 }
 
-// Is checks if the error is an AppError with the specified code.
+// Is checks if the error or any error in its unwrap chain is an AppError with the specified code.
+// Uses standard library errors.Unwrap to walk the chain for compatibility with errors.As.
 func Is(err error, code Code) bool {
-	if appErr, ok := err.(*AppError); ok {
-		return appErr.Code == code
+	for e := err; e != nil; e = stderrors.Unwrap(e) {
+		if appErr, ok := e.(*AppError); ok && appErr.Code == code {
+			return true
+		}
 	}
 	return false
 }

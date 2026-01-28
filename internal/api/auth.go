@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	logger "github.com/soulteary/logger-kit"
+
+	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 )
 
 // AuthConfig holds authentication configuration for the API middleware.
@@ -57,14 +59,14 @@ func (m *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 
 		if key == "" {
 			m.logAuthFailure(r, "missing API key")
-			WriteJSONError(w, http.StatusUnauthorized, "API key required")
+			WriteAppError(w, apperrors.AuthError(apperrors.ErrAuthRequired, "API key required"))
 			return
 		}
 
 		// Use constant-time comparison to prevent timing attacks
 		if !m.validateAPIKey(key) {
 			m.logAuthFailure(r, "invalid API key")
-			WriteJSONError(w, http.StatusUnauthorized, "Invalid API key")
+			WriteAppError(w, apperrors.AuthError(apperrors.ErrAuthInvalid, "Invalid API key"))
 			return
 		}
 

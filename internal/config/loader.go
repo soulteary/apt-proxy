@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,6 +83,12 @@ func defineFlags(flags *flag.FlagSet) {
 	flags.Bool("tls", false, "enable TLS/HTTPS")
 	flags.String("tls-cert", "", "path to TLS certificate file")
 	flags.String("tls-key", "", "path to TLS private key file")
+
+	// Security: API rate limit (0 = disabled)
+	flags.Int("api-rate-limit", DefaultAPIRateLimitPerMinute, "API requests per IP per minute (0=disabled)")
+
+	// Upstream: keep-alive to mirrors (default true)
+	flags.Bool("upstream-keep-alive", true, "enable HTTP keep-alive to upstream mirrors")
 }
 
 // ParseFlags parses command-line flags and returns a Config struct with all
@@ -169,6 +176,22 @@ func ValidateConfig(config *Config) error {
 		return fmt.Errorf("listen address must be specified")
 	}
 
+	// Validate listen address format (host:port or :port)
+	if _, _, err := net.SplitHostPort(config.Listen); err != nil {
+		return fmt.Errorf("invalid listen address %q: %w", config.Listen, err)
+	}
+
+	// Ensure cache directory exists and is writable
+	if err := os.MkdirAll(config.CacheDir, 0755); err != nil {
+		return fmt.Errorf("cache directory %q cannot be created: %w", config.CacheDir, err)
+	}
+	// Check writable by creating a temp file
+	testFile := filepath.Join(config.CacheDir, ".apt-proxy-write-test")
+	if err := os.WriteFile(testFile, nil, 0644); err != nil {
+		return fmt.Errorf("cache directory %q is not writable: %w", config.CacheDir, err)
+	}
+	_ = os.Remove(testFile)
+
 	// Validate TLS configuration
 	if config.TLS.Enabled {
 		if config.TLS.CertFile == "" {
@@ -221,8 +244,9 @@ type YAMLConfig struct {
 	} `yaml:"tls"`
 
 	Security struct {
-		APIKey        string `yaml:"api_key"`
-		EnableAPIAuth bool   `yaml:"enable_api_auth"`
+		APIKey                string `yaml:"api_key"`
+		EnableAPIAuth         bool   `yaml:"enable_api_auth"`
+		APIRateLimitPerMinute int    `yaml:"api_rate_limit_per_minute"`
 	} `yaml:"security"`
 
 	Mode                string `yaml:"mode"`
@@ -274,8 +298,9 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			KeyFile:  yamlCfg.TLS.KeyFile,
 		},
 		Security: SecurityConfig{
-			APIKey:        yamlCfg.Security.APIKey,
-			EnableAPIAuth: yamlCfg.Security.EnableAPIAuth,
+			APIKey:                yamlCfg.Security.APIKey,
+			EnableAPIAuth:         yamlCfg.Security.EnableAPIAuth,
+			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 		},
 		DistributionsConfigPath: yamlCfg.DistributionsConfig,
 	}
@@ -422,9 +447,14 @@ func MergeConfigs(base, override *Config) *Config {
 	if override.Security.EnableAPIAuth {
 		result.Security.EnableAPIAuth = override.Security.EnableAPIAuth
 	}
+	if override.Security.APIRateLimitPerMinute > 0 {
+		result.Security.APIRateLimitPerMinute = override.Security.APIRateLimitPerMinute
+	}
 	if override.DistributionsConfigPath != "" {
 		result.DistributionsConfigPath = override.DistributionsConfigPath
 	}
+	// UpstreamKeepAlive: override (CLI/ENV) wins when merging
+	result.UpstreamKeepAlive = override.UpstreamKeepAlive
 
 	return &result
 }
@@ -513,10 +543,13 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	if apiKey != "" {
 		enableAPIAuth = true
 	}
+	apiRateLimitPerMinute := configutil.ResolveInt(flags, "api-rate-limit", EnvAPIRateLimitPerMinute, DefaultAPIRateLimitPerMinute, true)
+	upstreamKeepAlive := configutil.ResolveBool(flags, "upstream-keep-alive", EnvUpstreamKeepAlive, true)
 
 	config := &Config{
-		Debug:    debug,
-		CacheDir: cacheDir,
+		Debug:             debug,
+		CacheDir:          cacheDir,
+		UpstreamKeepAlive: upstreamKeepAlive,
 		Mirrors: MirrorConfig{
 			Ubuntu:      ubuntu,
 			UbuntuPorts: ubuntuPorts,
@@ -535,8 +568,9 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 			KeyFile:  tlsKeyFile,
 		},
 		Security: SecurityConfig{
-			APIKey:        apiKey,
-			EnableAPIAuth: enableAPIAuth,
+			APIKey:                apiKey,
+			EnableAPIAuth:         enableAPIAuth,
+			APIRateLimitPerMinute: apiRateLimitPerMinute,
 		},
 		DistributionsConfigPath: distributionsConfig,
 	}

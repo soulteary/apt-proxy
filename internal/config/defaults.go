@@ -24,11 +24,15 @@ const (
 	EnvTLSKeyFile  = "APT_PROXY_TLS_KEY"
 
 	// Security configuration environment variables
-	EnvAPIKey        = "APT_PROXY_API_KEY"
-	EnvEnableAPIAuth = "APT_PROXY_ENABLE_API_AUTH"
+	EnvAPIKey                = "APT_PROXY_API_KEY"
+	EnvEnableAPIAuth         = "APT_PROXY_ENABLE_API_AUTH"
+	EnvAPIRateLimitPerMinute = "APT_PROXY_API_RATE_LIMIT_PER_MINUTE"
 
 	// Configuration file environment variable
 	EnvConfigFile = "APT_PROXY_CONFIG_FILE"
+
+	// Upstream transport
+	EnvUpstreamKeepAlive = "APT_PROXY_UPSTREAM_KEEP_ALIVE"
 
 	// Distributions configuration (distributions.yaml) path
 	EnvDistributionsConfig = "APT_PROXY_DISTRIBUTIONS_CONFIG"
@@ -50,6 +54,9 @@ const (
 
 	// Default async benchmark setting
 	DefaultAsyncBenchmark = true // Enable async mirror benchmark by default for faster startup
+
+	// Default API rate limit: requests per IP per minute (0 = disabled)
+	DefaultAPIRateLimitPerMinute = 60
 )
 
 // Environment variable names for logging configuration

@@ -421,7 +421,9 @@ Response:
 
 ## Hot Reload
 
-APT Proxy supports hot reloading of distributions and mirror config (including distributions.yaml) without restart:
+APT Proxy supports hot reloading of **distributions and mirror config only** (including `distributions.yaml`) without restart. Changes to the **main configuration** (e.g. `apt-proxy.yaml`: server host/port, cache limits, TLS, security, API key) **do not** hot-reload and require a process restart.
+
+To reload distributions and mirrors:
 
 ```bash
 # Send SIGHUP to reload config and refresh mirrors
