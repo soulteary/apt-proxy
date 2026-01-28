@@ -426,44 +426,45 @@ flowchart LR
 
 ```
 apt-proxy/
-├── apt-proxy.go              # 主入口
-├── cli/                      # CLI 和守护进程管理
-│   ├── cli.go               # 配置解析
-│   └── daemon.go            # 服务器生命周期管理
-├── distro/                   # 发行版定义
-│   ├── distro.go            # 通用类型和工具
-│   ├── ubuntu.go            # Ubuntu 配置
-│   ├── debian.go            # Debian 配置
-│   ├── centos.go            # CentOS 配置
-│   └── alpine.go            # Alpine 配置
-├── internal/                 # 内部包
-│   ├── api/                 # REST API 处理器
-│   │   ├── auth.go         # API 认证中间件
-│   │   ├── cache.go        # 缓存管理端点
-│   │   ├── mirrors.go      # 镜像管理端点
-│   │   └── response.go     # 响应工具
-│   ├── config/              # 配置管理
-│   │   ├── config.go       # 配置结构
-│   │   ├── defaults.go     # 默认值
-│   │   └── loader.go       # 配置加载（CLI、ENV、YAML）
-│   ├── errors/              # 统一错误处理
-│   │   └── errors.go       # 错误码和类型
-│   │   └── loader.go       # 配置加载
-│   ├── proxy/               # 核心代理功能
-│   │   ├── handler.go      # HTTP 请求处理
-│   │   ├── rewriter.go     # URL 重写
-│   │   ├── page.go         # 首页渲染
-│   │   └── stats.go        # 统计信息
-│   ├── mirrors/             # 镜像管理
-│   └── benchmarks/          # 镜像基准测试
-├── pkg/                      # 可复用包
-│   ├── httpcache/           # HTTP 缓存层
-│   ├── httplog/             # 请求/响应日志
-│   ├── stream.v1/           # 流处理
-│   ├── system/              # 系统工具
-│   └── vfs/                 # 虚拟文件系统
-├── state/                    # 应用状态管理
-└── docker/, example/         # 部署配置
+├── cmd/
+│   └── apt-proxy/            # 应用入口
+│       └── main.go           # 主入口
+├── internal/                 # 私有应用代码
+│   ├── api/                  # REST API 处理器
+│   │   ├── auth.go           # API 认证中间件
+│   │   ├── cache.go          # 缓存管理端点
+│   │   ├── mirrors.go        # 镜像管理端点
+│   │   └── response.go       # 响应工具
+│   ├── benchmarks/           # 镜像基准测试（同步和异步）
+│   ├── cli/                  # CLI 和守护进程管理
+│   │   ├── cli.go            # 配置解析和重新导出
+│   │   └── daemon.go         # 服务器生命周期管理
+│   ├── config/               # 配置管理
+│   │   ├── config.go         # 配置结构
+│   │   ├── defaults.go       # 默认值
+│   │   └── loader.go         # 配置加载（CLI、ENV、YAML）
+│   ├── distro/               # 发行版定义
+│   │   ├── distro.go         # 通用类型和工具
+│   │   ├── ubuntu.go         # Ubuntu 配置
+│   │   ├── debian.go         # Debian 配置
+│   │   ├── centos.go         # CentOS 配置
+│   │   └── alpine.go         # Alpine 配置
+│   ├── errors/               # 统一错误处理
+│   │   └── errors.go         # 错误码和类型
+│   ├── mirrors/              # 镜像管理
+│   ├── proxy/                # 核心代理功能
+│   │   ├── handler.go        # HTTP 请求处理
+│   │   ├── rewriter.go       # URL 重写
+│   │   ├── page.go           # 首页渲染
+│   │   └── stats.go          # 统计信息
+│   ├── state/                # 应用状态管理
+│   └── system/               # 系统工具（磁盘、GC、文件大小）
+├── pkg/                      # 可复用包（可被其他项目导入）
+│   ├── httpcache/            # HTTP 缓存层（含指标）
+│   └── vfs/                  # 虚拟文件系统
+├── tests/                    # 集成测试
+│   └── integration/          # 端到端测试
+└── docker/, example/, docs/  # 部署和文档
 ```
 
 ## 开发
@@ -473,7 +474,7 @@ apt-proxy/
 ```bash
 git clone https://github.com/soulteary/apt-proxy.git
 cd apt-proxy
-go build -o apt-proxy .
+go build -o apt-proxy ./cmd/apt-proxy
 ```
 
 ### 运行测试

@@ -11,7 +11,7 @@ ENV GOPROXY=https://goproxy.cn
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -ldflags "-w -s"
+RUN go build -o apt-proxy -ldflags "-w -s" ./cmd/apt-proxy
 
 FROM alpine:3.21
 # Install ca-certificates and timezone data

@@ -750,3 +750,132 @@ func TestSpecMultipleCacheControlHeaders(t *testing.T) {
 		t.Fatalf("Cache status: %s not equal", r1.cacheStatus)
 	}
 }
+
+// TestStreamingLargeFile tests that passUpstream can handle large files using streaming
+// without loading the entire response into memory.
+func TestStreamingLargeFile(t *testing.T) {
+	// Create a large body (10MB) to test streaming
+	largeBody := strings.Repeat("x", 10*1024*1024)
+
+	upstream := &upstreamServer{
+		Body:         []byte(largeBody),
+		asserts:      []func(r *http.Request){},
+		Now:          time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC),
+		CacheControl: "max-age=3600",
+		Header:       http.Header{},
+	}
+
+	httpcache.Clock = func() time.Time {
+		return upstream.Now
+	}
+
+	cacheHandler := httpcache.NewHandler(
+		httpcache.NewMemoryCache(),
+		upstream,
+	)
+	cacheHandler.Shared = true
+
+	client := &client{handler: cacheHandler, cacheHandler: cacheHandler}
+
+	// First request should cache (MISS)
+	r1 := client.get("/large-file")
+	if r1.statusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", r1.statusCode)
+	}
+	if r1.cacheStatus != "MISS" {
+		t.Fatalf("Expected cache status MISS, got %s", r1.cacheStatus)
+	}
+	if len(r1.body) != len(largeBody) {
+		t.Fatalf("Expected body length %d, got %d", len(largeBody), len(r1.body))
+	}
+	if string(r1.body) != largeBody {
+		t.Fatal("Body content mismatch")
+	}
+
+	// Wait for cache write to complete
+	httpcache.Writes.Wait()
+
+	// Second request should be served from cache (HIT)
+	r2 := client.get("/large-file")
+	if r2.statusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", r2.statusCode)
+	}
+	if r2.cacheStatus != "HIT" {
+		t.Fatalf("Expected cache status HIT, got %s", r2.cacheStatus)
+	}
+	if len(r2.body) != len(largeBody) {
+		t.Fatalf("Expected body length %d, got %d", len(largeBody), len(r2.body))
+	}
+	if string(r2.body) != largeBody {
+		t.Fatal("Body content mismatch on cached response")
+	}
+
+	// Should only have made one upstream request
+	if upstream.requests != 1 {
+		t.Fatalf("Expected 1 upstream request, got %d", upstream.requests)
+	}
+}
+
+// TestStreamingWithVaryHeader tests streaming with Vary header (multiple keys)
+func TestStreamingWithVaryHeader(t *testing.T) {
+	body := strings.Repeat("test-body", 1000)
+
+	upstream := &upstreamServer{
+		Body:         []byte(body),
+		asserts:      []func(r *http.Request){},
+		Now:          time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC),
+		CacheControl: "max-age=3600",
+		Vary:         "Accept-Encoding",
+		Header:       http.Header{},
+	}
+
+	httpcache.Clock = func() time.Time {
+		return upstream.Now
+	}
+
+	cacheHandler := httpcache.NewHandler(
+		httpcache.NewMemoryCache(),
+		upstream,
+	)
+	cacheHandler.Shared = true
+
+	client := &client{handler: cacheHandler, cacheHandler: cacheHandler}
+
+	// First request with Accept-Encoding: gzip
+	r1 := client.get("/vary-test", "Accept-Encoding: gzip")
+	if r1.statusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", r1.statusCode)
+	}
+	if r1.cacheStatus != "MISS" {
+		t.Fatalf("Expected cache status MISS, got %s", r1.cacheStatus)
+	}
+
+	// Wait for cache write to complete
+	httpcache.Writes.Wait()
+
+	// Second request with same Accept-Encoding should be HIT
+	r2 := client.get("/vary-test", "Accept-Encoding: gzip")
+	if r2.statusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", r2.statusCode)
+	}
+	if r2.cacheStatus != "HIT" {
+		t.Fatalf("Expected cache status HIT, got %s", r2.cacheStatus)
+	}
+
+	// Request with different Accept-Encoding should be MISS (different Vary key)
+	r3 := client.get("/vary-test", "Accept-Encoding: br")
+	if r3.statusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", r3.statusCode)
+	}
+	if r3.cacheStatus != "MISS" {
+		t.Fatalf("Expected cache status MISS for different Vary, got %s", r3.cacheStatus)
+	}
+
+	// Wait for second cache write
+	httpcache.Writes.Wait()
+
+	// Should have made 2 upstream requests (one for each Vary variant)
+	if upstream.requests != 2 {
+		t.Fatalf("Expected 2 upstream requests, got %d", upstream.requests)
+	}
+}

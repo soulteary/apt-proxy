@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/soulteary/apt-proxy/distro"
+	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/cli-kit/testutil"
 )
 

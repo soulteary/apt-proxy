@@ -266,16 +266,16 @@ func (c *cache) scanDirectory(dir string, callback func(hashedKey string, info o
 
 func (c *cache) vfsWrite(path string, r io.Reader) (int64, error) {
 	if err := vfs.MkdirAll(c.fs, pathutil.Dir(path), 0700); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to create cache directory for %q: %w", path, err)
 	}
 	f, err := c.fs.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to open cache file %q: %w", path, err)
 	}
 	defer func() { _ = f.Close() }()
 	n, err := io.Copy(f, r)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to write cache file %q: %w", path, err)
 	}
 	return n, nil
 }
@@ -288,10 +288,15 @@ func (c *cache) Header(key string) (Header, error) {
 		if vfs.IsNotExist(err) {
 			return Header{}, ErrNotFoundInCache
 		}
-		return Header{}, err
+		return Header{}, fmt.Errorf("failed to open header file %q for key %q: %w", path, key, err)
 	}
+	defer func() { _ = f.Close() }()
 
-	return readHeaders(bufio.NewReader(f))
+	h, err := readHeaders(bufio.NewReader(f))
+	if err != nil {
+		return Header{}, fmt.Errorf("failed to read headers from %q for key %q: %w", path, key, err)
+	}
+	return h, nil
 }
 
 // Store a resource against a number of keys.
@@ -342,36 +347,46 @@ func (c *cache) Store(res *Resource, keys ...string) error {
 }
 
 func (c *cache) storeBody(r io.Reader, key string) (int64, error) {
-	return c.vfsWrite(bodyPrefix+formatPrefix+hashKey(key), r)
+	n, err := c.vfsWrite(bodyPrefix+formatPrefix+hashKey(key), r)
+	if err != nil {
+		return 0, fmt.Errorf("failed to store body for key %q: %w", key, err)
+	}
+	return n, nil
 }
 
 func (c *cache) storeHeader(code int, h http.Header, key string) (int64, error) {
 	hb := &bytes.Buffer{}
 	fmt.Fprintf(hb, "HTTP/1.1 %d %s\r\n", code, http.StatusText(code))
 	if err := headersToWriter(h, hb); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to serialize headers for key %q: %w", key, err)
 	}
-	return c.vfsWrite(headerPrefix+formatPrefix+hashKey(key), bytes.NewReader(hb.Bytes()))
+	n, err := c.vfsWrite(headerPrefix+formatPrefix+hashKey(key), bytes.NewReader(hb.Bytes()))
+	if err != nil {
+		return 0, fmt.Errorf("failed to store header for key %q: %w", key, err)
+	}
+	return n, nil
 }
 
 // Retrieve returns a cached Resource for the given key
 func (c *cache) Retrieve(key string) (*Resource, error) {
 	hashedKey := hashKey(key)
-	f, err := c.fs.Open(bodyPrefix + formatPrefix + hashedKey)
+	bodyPath := bodyPrefix + formatPrefix + hashedKey
+	f, err := c.fs.Open(bodyPath)
 	if err != nil {
 		if vfs.IsNotExist(err) {
 			c.recordMiss()
 			return nil, ErrNotFoundInCache
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to open body file %q for key %q: %w", bodyPath, key, err)
 	}
 	h, err := c.Header(key)
 	if err != nil {
-		if vfs.IsNotExist(err) {
+		_ = f.Close()
+		if err == ErrNotFoundInCache {
 			c.recordMiss()
 			return nil, ErrNotFoundInCache
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to retrieve header for key %q: %w", key, err)
 	}
 	res := NewResource(h.StatusCode, f, h.Header)
 
@@ -410,7 +425,7 @@ func (c *cache) Freshen(res *Resource, keys ...string) error {
 			if h.StatusCode == res.Status() && headersEqual(h.Header, res.Header()) {
 				debugf("freshening key %s", key)
 				if _, err := c.storeHeader(h.StatusCode, res.Header(), key); err != nil {
-					return err
+					return fmt.Errorf("failed to freshen header for key %q: %w", key, err)
 				}
 			} else {
 				debugf("freshen failed, invalidating %s", key)

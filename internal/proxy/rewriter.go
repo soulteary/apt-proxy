@@ -11,10 +11,10 @@ import (
 
 	logger "github.com/soulteary/logger-kit"
 
-	"github.com/soulteary/apt-proxy/distro"
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
+	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
-	"github.com/soulteary/apt-proxy/state"
+	"github.com/soulteary/apt-proxy/internal/state"
 )
 
 // URLRewriter holds the mirror and pattern for URL rewriting

@@ -5,7 +5,8 @@ builds:
       env:
         - CGO_ENABLED=0
       ldflags:
-        - -w -s -X "github.com/soulteary/apt-proxy/cli/cli.Version={{ .Tag }}"
+        - -w -s -X "github.com/soulteary/apt-proxy/internal/cli.Version={{ .Tag }}"
+      main: ./cmd/apt-proxy
     id: macos
     goos: [ darwin ]
     goarch: [ amd64, arm64 ]

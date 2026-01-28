@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/soulteary/apt-proxy/distro"
+	"github.com/soulteary/apt-proxy/internal/distro"
 )
 
 func GenerateMirrorListByPredefined(osType int) (mirrors []string) {

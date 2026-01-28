@@ -3,7 +3,7 @@ package state
 import (
 	"testing"
 
-	"github.com/soulteary/apt-proxy/distro"
+	"github.com/soulteary/apt-proxy/internal/distro"
 )
 
 func TestNewAppState(t *testing.T) {

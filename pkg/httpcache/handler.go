@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -292,6 +293,7 @@ func (h *Handler) pipeUpstream(w http.ResponseWriter, r *cacheRequest) {
 }
 
 // passUpstream makes the request via the upstream handler and stores the result
+// It uses streaming to avoid loading the entire response into memory for large files.
 func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 	rw, err := newResponseStreamer(w)
 	if err != nil {
@@ -329,16 +331,85 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 		_ = rdr.Close()
 		return
 	}
-	b, err := io.ReadAll(rdr)
-	_ = rdr.Close()
+
+	// Create temporary file to store body for caching (supports multiple reads for multiple keys)
+	tmpFile, err := os.CreateTemp("", "httpcache-*.tmp")
 	if err != nil {
-		h.debugf("error reading stream: %v", err)
+		h.debugf("error creating temp file: %v, falling back to in-memory", err)
+		// Fallback to in-memory for small files
+		b, err := io.ReadAll(rdr)
+		_ = rdr.Close()
+		if err != nil {
+			h.debugf("error reading stream: %v", err)
+			rw.Header().Set(CacheHeader, "SKIP")
+			return
+		}
+		res.ReadSeekCloser = &byteReadSeekCloser{bytes.NewReader(b)}
+		h.finishPassUpstream(res, r, rw, t)
+		return
+	}
+	tmpPath := tmpFile.Name()
+
+	// Since responseStreamer.Write already writes to both pipeWriter (for pipeReader) and ResponseWriter (client),
+	// the client is already receiving data. We read from pipeReader and write to temp file for caching.
+	// This allows us to cache without blocking the client response.
+	_, err = io.Copy(tmpFile, rdr)
+	if err != nil {
+		h.debugf("error copying to temp file: %v", err)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+		_ = rdr.Close()
 		rw.Header().Set(CacheHeader, "SKIP")
 		return
 	}
+
+	// Close temp file for writing
+	if err := tmpFile.Close(); err != nil {
+		h.debugf("error closing temp file: %v", err)
+		_ = os.Remove(tmpPath)
+		_ = rdr.Close()
+		rw.Header().Set(CacheHeader, "SKIP")
+		return
+	}
+	_ = rdr.Close()
+
 	upstreamDuration := Clock().Sub(t)
 	h.debugf("full upstream response took %s", upstreamDuration.String())
-	res.ReadSeekCloser = &byteReadSeekCloser{bytes.NewReader(b)}
+
+	// Create Resource from temp file for caching
+	tmpFileReader, err := os.Open(tmpPath)
+	if err != nil {
+		h.debugf("error reopening temp file for caching: %v", err)
+		_ = os.Remove(tmpPath)
+		rw.Header().Set(CacheHeader, "SKIP")
+		return
+	}
+
+	// Create a ReadSeekCloser from temp file
+	// The temp file will be cleaned up after caching is complete
+	res.ReadSeekCloser = &tempFileReadSeekCloser{file: tmpFileReader, path: tmpPath}
+
+	// Record upstream duration metric
+	if h.metrics != nil {
+		h.metrics.RecordUpstreamDuration(r.Method, rw.StatusCode, upstreamDuration.Seconds())
+	}
+
+	if age, err := correctedAge(res.Header(), t, Clock()); err == nil {
+		res.Header().Set("Age", strconv.Itoa(int(math.Ceil(age.Seconds()))))
+	} else {
+		h.debugf("error calculating corrected age: %s", err.Error())
+	}
+
+	rw.Header().Set(ProxyDateHeader, Clock().Format(http.TimeFormat))
+
+	// Store resource in background - errors won't affect client response
+	h.storeResource(res, r)
+}
+
+// finishPassUpstream completes the passUpstream flow for in-memory fallback
+func (h *Handler) finishPassUpstream(res *Resource, r *cacheRequest, rw *responseStreamer, t time.Time) {
+	upstreamDuration := Clock().Sub(t)
+	h.debugf("full upstream response took %s", upstreamDuration.String())
 
 	// Record upstream duration metric
 	if h.metrics != nil {
@@ -353,6 +424,34 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 
 	rw.Header().Set(ProxyDateHeader, Clock().Format(http.TimeFormat))
 	h.storeResource(res, r)
+}
+
+// tempFileReadSeekCloser implements ReadSeekCloser for temporary files
+type tempFileReadSeekCloser struct {
+	file *os.File
+	path string
+}
+
+func (t *tempFileReadSeekCloser) Read(p []byte) (n int, err error) {
+	return t.file.Read(p)
+}
+
+func (t *tempFileReadSeekCloser) Seek(offset int64, whence int) (int64, error) {
+	return t.file.Seek(offset, whence)
+}
+
+func (t *tempFileReadSeekCloser) Close() error {
+	var err error
+	if t.file != nil {
+		err = t.file.Close()
+	}
+	// Clean up temp file after use
+	if t.path != "" {
+		if removeErr := os.Remove(t.path); removeErr != nil && err == nil {
+			err = removeErr
+		}
+	}
+	return err
 }
 
 // correctedAge adjusts the age of a resource for clock skew and travel time

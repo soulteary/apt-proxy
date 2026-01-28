@@ -10,8 +10,8 @@ import (
 	logger "github.com/soulteary/logger-kit"
 	tracing "github.com/soulteary/tracing-kit"
 
-	"github.com/soulteary/apt-proxy/distro"
-	state "github.com/soulteary/apt-proxy/state"
+	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/state"
 )
 
 // Default transport timeouts and limits for upstream requests.

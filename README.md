@@ -426,45 +426,45 @@ flowchart LR
 
 ```
 apt-proxy/
-├── apt-proxy.go              # Main entry point
-├── cli/                      # CLI and daemon management
-│   ├── cli.go               # Configuration parsing
-│   └── daemon.go            # Server lifecycle management
-├── distro/                   # Distribution definitions
-│   ├── distro.go            # Common types and utilities
-│   ├── ubuntu.go            # Ubuntu configuration
-│   ├── debian.go            # Debian configuration
-│   ├── centos.go            # CentOS configuration
-│   └── alpine.go            # Alpine configuration
-├── internal/                 # Internal packages
-│   ├── api/                 # REST API handlers
-│   │   ├── auth.go         # API authentication middleware
-│   │   ├── cache.go        # Cache management endpoints
-│   │   ├── mirrors.go      # Mirror management endpoints
-│   │   └── response.go     # Response utilities
-│   ├── config/              # Configuration management
-│   │   ├── config.go       # Configuration structures
-│   │   ├── defaults.go     # Default values
-│   │   └── loader.go       # Configuration loading (CLI, ENV, YAML)
-│   ├── errors/              # Unified error handling
-│   │   └── errors.go       # Error codes and types
-│   ├── proxy/               # Core proxy functionality
-│   │   ├── handler.go      # HTTP request handling
-│   │   ├── rewriter.go     # URL rewriting
-│   │   ├── page.go         # Home page rendering
-│   │   └── stats.go        # Statistics
-│   ├── mirrors/             # Mirror management
-│   └── benchmarks/          # Mirror benchmarking (sync & async)
-├── pkg/                      # Reusable packages
-│   ├── httpcache/           # HTTP caching layer with metrics
-│   ├── httplog/             # Request/response logging
-│   ├── stream.v1/           # Stream processing
-│   ├── system/              # System utilities
-│   └── vfs/                 # Virtual filesystem
-├── state/                    # Application state management
+├── cmd/
+│   └── apt-proxy/            # Application entrypoint
+│       └── main.go           # Main entry point
+├── internal/                 # Private application code
+│   ├── api/                  # REST API handlers
+│   │   ├── auth.go           # API authentication middleware
+│   │   ├── cache.go          # Cache management endpoints
+│   │   ├── mirrors.go        # Mirror management endpoints
+│   │   └── response.go       # Response utilities
+│   ├── benchmarks/           # Mirror benchmarking (sync & async)
+│   ├── cli/                  # CLI and daemon management
+│   │   ├── cli.go            # Configuration parsing & re-exports
+│   │   └── daemon.go         # Server lifecycle management
+│   ├── config/               # Configuration management
+│   │   ├── config.go         # Configuration structures
+│   │   ├── defaults.go       # Default values
+│   │   └── loader.go         # Configuration loading (CLI, ENV, YAML)
+│   ├── distro/               # Distribution definitions
+│   │   ├── distro.go         # Common types and utilities
+│   │   ├── ubuntu.go         # Ubuntu configuration
+│   │   ├── debian.go         # Debian configuration
+│   │   ├── centos.go         # CentOS configuration
+│   │   └── alpine.go         # Alpine configuration
+│   ├── errors/               # Unified error handling
+│   │   └── errors.go         # Error codes and types
+│   ├── mirrors/              # Mirror management
+│   ├── proxy/                # Core proxy functionality
+│   │   ├── handler.go        # HTTP request handling
+│   │   ├── rewriter.go       # URL rewriting
+│   │   ├── page.go           # Home page rendering
+│   │   └── stats.go          # Statistics
+│   ├── state/                # Application state management
+│   └── system/               # System utilities (disk, gc, filesize)
+├── pkg/                      # Reusable packages (importable by others)
+│   ├── httpcache/            # HTTP caching layer with metrics
+│   └── vfs/                  # Virtual filesystem
 ├── tests/                    # Integration tests
 │   └── integration/         # End-to-end tests
-└── docker/, example/         # Deployment configurations
+└── docker/, example/, docs/   # Deployment and documentation
 ```
 
 ## Development
@@ -474,7 +474,7 @@ apt-proxy/
 ```bash
 git clone https://github.com/soulteary/apt-proxy.git
 cd apt-proxy
-go build -o apt-proxy .
+go build -o apt-proxy ./cmd/apt-proxy
 ```
 
 ### Running Tests

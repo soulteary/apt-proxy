@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/soulteary/apt-proxy/distro"
-	"github.com/soulteary/apt-proxy/state"
+	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/state"
 )
 
 // setupTestMirrors sets up mock mirrors to avoid network requests during tests

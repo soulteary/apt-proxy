@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/soulteary/apt-proxy/distro"
+	"github.com/soulteary/apt-proxy/internal/distro"
 	mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
 )
 

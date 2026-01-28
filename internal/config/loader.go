@@ -10,10 +10,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/soulteary/apt-proxy/distro"
+	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
+	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
-	"github.com/soulteary/apt-proxy/state"
 	"github.com/soulteary/cli-kit/configutil"
 )
 
