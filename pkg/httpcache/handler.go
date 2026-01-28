@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/soulteary/apt-proxy/pkg/stream.v1"
 )
 
 const (
@@ -237,7 +235,7 @@ func (h *Handler) pipeUpstream(w http.ResponseWriter, r *cacheRequest) {
 	debugf("piping request upstream")
 	go func() {
 		h.upstream.ServeHTTP(rw, r.Request)
-		_ = rw.Stream.Close()
+		_ = rw.Close()
 	}()
 	rw.WaitHeaders()
 
@@ -278,7 +276,7 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 
 	go func() {
 		h.upstream.ServeHTTP(rw, r.Request)
-		_ = rw.Stream.Close()
+		_ = rw.Close()
 	}()
 	rw.WaitHeaders()
 	debugf("upstream responded headers in %s", Clock().Sub(t).String())
@@ -286,9 +284,11 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 	// just the headers!
 	res := NewResourceBytes(rw.StatusCode, nil, rw.Header())
 	if !h.isCacheable(res, r) {
-		_ = rdr.Close()
 		debugf("resource is uncacheable")
 		rw.Header().Set(CacheHeader, "SKIP")
+		// Drain body so upstream goroutine can finish and client receives the response
+		_, _ = io.Copy(io.Discard, rdr)
+		_ = rdr.Close()
 		return
 	}
 	b, err := io.ReadAll(rdr)
@@ -560,13 +560,11 @@ func (r *cacheRequest) isCacheable() bool {
 }
 
 func newResponseStreamer(w http.ResponseWriter) (*responseStreamer, error) {
-	strm, err := stream.NewStream("responseBuffer", stream.NewMemFS())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create response stream: %w", err)
-	}
+	pr, pw := io.Pipe()
 	return &responseStreamer{
 		ResponseWriter: w,
-		Stream:         strm,
+		pipeReader:     pr,
+		pipeWriter:     pw,
 		C:              make(chan struct{}),
 	}, nil
 }
@@ -574,7 +572,8 @@ func newResponseStreamer(w http.ResponseWriter) (*responseStreamer, error) {
 type responseStreamer struct {
 	StatusCode int
 	http.ResponseWriter
-	*stream.Stream
+	pipeReader *io.PipeReader
+	pipeWriter *io.PipeWriter
 	// C is closed by WriteHeader to signal the headers' writing. headerOnce ensures it is closed at most once.
 	C          chan struct{}
 	headerOnce sync.Once
@@ -594,31 +593,29 @@ func (rw *responseStreamer) WriteHeader(status int) {
 }
 
 func (rw *responseStreamer) Write(b []byte) (int, error) {
-	i, err := rw.Stream.Write(b)
-	if err != nil {
-		return i, err
-	}
-	return rw.ResponseWriter.Write(b)
+	return io.MultiWriter(rw.pipeWriter, rw.ResponseWriter).Write(b)
 }
+
 func (rw *responseStreamer) Close() error {
-	return rw.Stream.Close()
+	return rw.pipeWriter.Close()
+}
+
+// NextReader returns a reader for the response body (reads from the same pipe that upstream writes to).
+func (rw *responseStreamer) NextReader() (io.ReadCloser, error) {
+	return rw.pipeReader, nil
 }
 
 // Resource returns a copy of the responseStreamer as a Resource object
 func (rw *responseStreamer) Resource() *Resource {
-	r, err := rw.Stream.NextReader()
-	if err == nil {
-		b, err := io.ReadAll(r)
-		_ = r.Close()
-		if err == nil {
-			return NewResourceBytes(rw.StatusCode, b, rw.Header())
+	b, err := io.ReadAll(rw.pipeReader)
+	if err != nil {
+		return &Resource{
+			header:         rw.Header(),
+			statusCode:     rw.StatusCode,
+			ReadSeekCloser: errReadSeekCloser{err},
 		}
 	}
-	return &Resource{
-		header:         rw.Header(),
-		statusCode:     rw.StatusCode,
-		ReadSeekCloser: errReadSeekCloser{err},
-	}
+	return NewResourceBytes(rw.StatusCode, b, rw.Header())
 }
 
 type errReadSeekCloser struct {
