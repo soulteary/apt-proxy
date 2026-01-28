@@ -3,6 +3,7 @@ package vfs
 import (
 	"errors"
 	"fmt"
+	iofs "io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,11 +103,17 @@ func (fs *fileSystem) Stat(path string) (os.FileInfo, error) {
 }
 
 func (fs *fileSystem) ReadDir(path string) ([]os.FileInfo, error) {
-	entries, err := os.ReadDir(fs.path(path))
+	// Use io/fs.ReadDir for read-only path: same API, standard implementation (Go 1.16+).
+	relName := filepath.ToSlash(filepath.Clean(path))
+	if relName == "" || relName == "." || relName == "/" {
+		relName = "."
+	} else if strings.HasPrefix(relName, "/") {
+		relName = relName[1:]
+	}
+	entries, err := iofs.ReadDir(os.DirFS(fs.root), relName)
 	if err != nil {
 		return nil, err
 	}
-
 	files := make([]os.FileInfo, 0, len(entries))
 	for _, entry := range entries {
 		info, err := entry.Info()
@@ -115,7 +122,6 @@ func (fs *fileSystem) ReadDir(path string) ([]os.FileInfo, error) {
 		}
 		files = append(files, info)
 	}
-
 	return files, nil
 }
 

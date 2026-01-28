@@ -20,4 +20,9 @@
 //
 // All VFS implementations are thread safe, so multiple readers and writers might
 // operate on them at any time.
+//
+// For read-only code paths, AsReadOnlyFS returns an io/fs.FS view of any VFS.
+// Use it with fs.ReadFile, fs.WalkDir, fs.Glob, etc., without changing the VFS
+// interface. The on-disk fileSystem's ReadDir uses io/fs.ReadDir internally
+// (Go 1.16+) for the read-only list path.
 package vfs
