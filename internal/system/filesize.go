@@ -2,44 +2,32 @@ package system
 
 import (
 	"fmt"
+	"io/fs"
 	"math"
-	"os"
 	"path/filepath"
-
-	"golang.org/x/sys/unix"
 )
 
-func DiskAvailable() (uint64, error) {
-	var stat unix.Statfs_t
-	wd, err := os.Getwd()
-	if err != nil {
-		return 0, err
-	}
-
-	err = unix.Statfs(wd, &stat)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(stat.Bavail) * uint64(stat.Bsize), nil
-}
-
-// uint64 ver https://stackoverflow.com/questions/32482673/how-to-get-directory-total-size
+// DirSize returns the total size in bytes of all files under path.
+// Uses filepath.WalkDir for fewer syscalls and better performance (Go 1.16+).
 func DirSize(path string) (uint64, error) {
 	var size int64
-	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() {
-			size += info.Size()
+		if d.IsDir() {
+			return nil
 		}
-		return err
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		size += info.Size()
+		return nil
 	})
 	return uint64(size), err
 }
 
-// https://hakk.dev/docs/golang-convert-file-size-human-readable/
 func fileSizeRound(val float64, roundOn float64, places int) float64 {
 	var round float64
 	pow := math.Pow(10, float64(places))
@@ -53,7 +41,7 @@ func fileSizeRound(val float64, roundOn float64, places int) float64 {
 	return round / pow
 }
 
-// uint64 ver https://programming.guide/go/formatting-byte-size-to-human-readable-format.html
+// ByteCountDecimal formats b as human-readable size (1000-based: kB, MB, …).
 func ByteCountDecimal(b uint64) string {
 	const unit = 1000
 	if b < unit {
