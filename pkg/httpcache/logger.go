@@ -10,7 +10,8 @@ var DebugLogging = false
 // cacheLogger is the logger instance used by httpcache package
 var cacheLogger = logger.Default()
 
-// SetLogger sets the logger instance for the httpcache package
+// SetLogger sets the package-level logger used when Handler has no Logger injected.
+// Prefer passing Logger via NewHandlerWithOptions; SetLogger is retained for backward compatibility.
 func SetLogger(log *logger.Logger) {
 	if log != nil {
 		cacheLogger = log

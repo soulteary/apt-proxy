@@ -148,14 +148,13 @@ func (s *Server) initialize() error {
 	s.proxy = proxy.CreatePackageStructRouterAsync(s.config.CacheDir, s.log)
 
 	// Wrap proxy with cache (request logging is done by logger-kit FiberMiddleware)
-	cachedHandler := httpcache.NewHandler(s.cache, s.proxy.Handler)
+	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, &httpcache.HandlerOptions{Logger: s.log})
 	s.proxy.Handler = cachedHandler
 
 	if s.config.Debug {
 		s.log.Debug().Msg("debug mode enabled")
 		httpcache.DebugLogging = true
 	}
-	httpcache.SetLogger(s.log)
 
 	// Initialize API handlers
 	s.cacheHandler = api.NewCacheHandler(s.cache, s.log)

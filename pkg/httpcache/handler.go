@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	logger "github.com/soulteary/logger-kit"
 )
 
 const (
@@ -40,22 +42,58 @@ var cacheableByDefault = map[int]bool{
 	http.StatusPartialContent:       true,
 }
 
+// HandlerOptions holds optional configuration for NewHandlerWithOptions.
+// Logger injected here is used by the handler for all debug/error logging;
+// if nil, the package-level logger (see SetLogger) is used.
+type HandlerOptions struct {
+	Logger *logger.Logger
+}
+
 type Handler struct {
 	Shared    bool
 	upstream  http.Handler
 	validator *Validator
 	cache     Cache
 	metrics   *CacheMetrics
+	log       *logger.Logger
 }
 
+// NewHandler returns a cache handler with default options (package-level logger).
 func NewHandler(cache Cache, upstream http.Handler) *Handler {
-	return &Handler{
+	return NewHandlerWithOptions(cache, upstream, nil)
+}
+
+// NewHandlerWithOptions returns a cache handler with the given options.
+// If opts.Logger is set, it is used for handler logging; otherwise the package-level logger is used.
+func NewHandlerWithOptions(cache Cache, upstream http.Handler, opts *HandlerOptions) *Handler {
+	h := &Handler{
 		upstream:  upstream,
 		cache:     cache,
 		validator: &Validator{upstream},
 		Shared:    false,
 		metrics:   DefaultMetrics,
 	}
+	if opts != nil && opts.Logger != nil {
+		h.log = opts.Logger
+	}
+	return h
+}
+
+func (h *Handler) logRef() *logger.Logger {
+	if h.log != nil {
+		return h.log
+	}
+	return cacheLogger
+}
+
+func (h *Handler) debugf(format string, args ...interface{}) {
+	if DebugLogging {
+		h.logRef().Debug().Msgf(format, args...)
+	}
+}
+
+func (h *Handler) errorf(format string, args ...interface{}) {
+	h.logRef().Error().Msgf(format, args...)
 }
 
 // SetMetrics sets the metrics instance for the handler
@@ -72,7 +110,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if !cReq.isCacheable() {
-		debugf("request not cacheable")
+		h.debugf("request not cacheable")
 		rw.Header().Set(CacheHeader, "SKIP")
 		if h.metrics != nil {
 			h.metrics.RecordCacheSkip()
@@ -99,14 +137,14 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				http.StatusGatewayTimeout)
 			return
 		}
-		debugf("%s %s not in %s cache", r.Method, r.URL.String(), cacheType)
+		h.debugf("%s %s not in %s cache", r.Method, r.URL.String(), cacheType)
 		if h.metrics != nil {
 			h.metrics.RecordCacheMiss(r.Method)
 		}
 		h.passUpstream(rw, cReq)
 		return
 	} else {
-		debugf("%s %s found in %s cache", r.Method, r.URL.String(), cacheType)
+		h.debugf("%s %s found in %s cache", r.Method, r.URL.String(), cacheType)
 	}
 
 	if h.needsValidation(res, cReq) {
@@ -116,18 +154,18 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		debugf("validating cached response")
+		h.debugf("validating cached response")
 		if h.validator.Validate(r, res) {
-			debugf("response is valid")
+			h.debugf("response is valid")
 			_ = h.cache.Freshen(res, cReq.Key.String())
 		} else {
-			debugf("response is changed")
+			h.debugf("response is changed")
 			h.passUpstream(rw, cReq)
 			return
 		}
 	}
 
-	debugf("serving from cache")
+	h.debugf("serving from cache")
 	res.Header().Set(CacheHeader, "HIT")
 	if h.metrics != nil {
 		h.metrics.RecordCacheHit(r.Method)
@@ -135,7 +173,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	h.serveResource(res, rw, cReq)
 
 	if err := res.Close(); err != nil {
-		errorf("Error closing resource: %s", err.Error())
+		h.errorf("Error closing resource: %s", err.Error())
 	}
 }
 
@@ -153,7 +191,7 @@ func (h *Handler) freshness(res *Resource, r *cacheRequest) (time.Duration, erro
 		}
 
 		if reqMaxAge < maxAge {
-			debugf("using request max-age of %s", reqMaxAge.String())
+			h.debugf("using request max-age of %s", reqMaxAge.String())
 			maxAge = reqMaxAge
 		}
 	}
@@ -168,7 +206,7 @@ func (h *Handler) freshness(res *Resource, r *cacheRequest) (time.Duration, erro
 	}
 
 	if hFresh := res.HeuristicFreshness(); hFresh > maxAge {
-		debugf("using heuristic freshness of %q", hFresh)
+		h.debugf("using heuristic freshness of %q", hFresh)
 		maxAge = hFresh
 	}
 
@@ -182,31 +220,31 @@ func (h *Handler) needsValidation(res *Resource, r *cacheRequest) bool {
 
 	freshness, err := h.freshness(res, r)
 	if err != nil {
-		debugf("error calculating freshness: %s", err.Error())
+		h.debugf("error calculating freshness: %s", err.Error())
 		return true
 	}
 
 	if r.CacheControl.Has("min-fresh") {
 		reqMinFresh, err := r.CacheControl.Duration("min-fresh")
 		if err != nil {
-			debugf("error parsing request min-fresh: %s", err.Error())
+			h.debugf("error parsing request min-fresh: %s", err.Error())
 			return true
 		}
 
 		if freshness < reqMinFresh {
-			debugf("resource is fresh, but won't satisfy min-fresh of %s", reqMinFresh)
+			h.debugf("resource is fresh, but won't satisfy min-fresh of %s", reqMinFresh)
 			return true
 		}
 	}
 
-	debugf("resource has a freshness of %s", freshness)
+	h.debugf("resource has a freshness of %s", freshness)
 
 	if freshness <= 0 && r.CacheControl.Has("max-stale") {
 		if len(r.CacheControl["max-stale"]) == 0 {
-			debugf("resource is stale, but client sent max-stale")
+			h.debugf("resource is stale, but client sent max-stale")
 			return false
 		} else if maxStale, _ := r.CacheControl.Duration("max-stale"); maxStale >= (freshness * -1) {
-			debugf("resource is stale, but within allowed max-stale period of %s", maxStale)
+			h.debugf("resource is stale, but within allowed max-stale period of %s", maxStale)
 			return false
 		}
 	}
@@ -218,21 +256,21 @@ func (h *Handler) needsValidation(res *Resource, r *cacheRequest) bool {
 func (h *Handler) pipeUpstream(w http.ResponseWriter, r *cacheRequest) {
 	rw, err := newResponseStreamer(w)
 	if err != nil {
-		debugf("error creating response streamer: %v", err)
+		h.debugf("error creating response streamer: %v", err)
 		w.Header().Set(CacheHeader, "SKIP")
 		h.upstream.ServeHTTP(w, r.Request)
 		return
 	}
 	rdr, err := rw.NextReader()
 	if err != nil {
-		debugf("error creating next stream reader: %v", err)
+		h.debugf("error creating next stream reader: %v", err)
 		w.Header().Set(CacheHeader, "SKIP")
 		h.upstream.ServeHTTP(w, r.Request)
 		return
 	}
 	defer func() { _ = rdr.Close() }()
 
-	debugf("piping request upstream")
+	h.debugf("piping request upstream")
 	go func() {
 		h.upstream.ServeHTTP(rw, r.Request)
 		_ = rw.Close()
@@ -257,21 +295,21 @@ func (h *Handler) pipeUpstream(w http.ResponseWriter, r *cacheRequest) {
 func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 	rw, err := newResponseStreamer(w)
 	if err != nil {
-		debugf("error creating response streamer: %v", err)
+		h.debugf("error creating response streamer: %v", err)
 		w.Header().Set(CacheHeader, "SKIP")
 		h.upstream.ServeHTTP(w, r.Request)
 		return
 	}
 	rdr, err := rw.NextReader()
 	if err != nil {
-		debugf("error creating next stream reader: %v", err)
+		h.debugf("error creating next stream reader: %v", err)
 		w.Header().Set(CacheHeader, "SKIP")
 		h.upstream.ServeHTTP(w, r.Request)
 		return
 	}
 
 	t := Clock()
-	debugf("passing request upstream")
+	h.debugf("passing request upstream")
 	rw.Header().Set(CacheHeader, "MISS")
 
 	go func() {
@@ -279,12 +317,12 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 		_ = rw.Close()
 	}()
 	rw.WaitHeaders()
-	debugf("upstream responded headers in %s", Clock().Sub(t).String())
+	h.debugf("upstream responded headers in %s", Clock().Sub(t).String())
 
 	// just the headers!
 	res := NewResourceBytes(rw.StatusCode, nil, rw.Header())
 	if !h.isCacheable(res, r) {
-		debugf("resource is uncacheable")
+		h.debugf("resource is uncacheable")
 		rw.Header().Set(CacheHeader, "SKIP")
 		// Drain body so upstream goroutine can finish and client receives the response
 		_, _ = io.Copy(io.Discard, rdr)
@@ -294,12 +332,12 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 	b, err := io.ReadAll(rdr)
 	_ = rdr.Close()
 	if err != nil {
-		debugf("error reading stream: %v", err)
+		h.debugf("error reading stream: %v", err)
 		rw.Header().Set(CacheHeader, "SKIP")
 		return
 	}
 	upstreamDuration := Clock().Sub(t)
-	debugf("full upstream response took %s", upstreamDuration.String())
+	h.debugf("full upstream response took %s", upstreamDuration.String())
 	res.ReadSeekCloser = &byteReadSeekCloser{bytes.NewReader(b)}
 
 	// Record upstream duration metric
@@ -310,7 +348,7 @@ func (h *Handler) passUpstream(w http.ResponseWriter, r *cacheRequest) {
 	if age, err := correctedAge(res.Header(), t, Clock()); err == nil {
 		res.Header().Set("Age", strconv.Itoa(int(math.Ceil(age.Seconds()))))
 	} else {
-		debugf("error calculating corrected age: %s", err.Error())
+		h.debugf("error calculating corrected age: %s", err.Error())
 	}
 
 	rw.Header().Set(ProxyDateHeader, Clock().Format(http.TimeFormat))
@@ -351,7 +389,7 @@ func correctedAge(h http.Header, reqTime, respTime time.Time) (time.Duration, er
 func (h *Handler) isCacheable(res *Resource, r *cacheRequest) bool {
 	cc, err := res.cacheControl()
 	if err != nil {
-		errorf("Error parsing cache-control: %s", err.Error())
+		h.errorf("Error parsing cache-control: %s", err.Error())
 		return false
 	}
 
@@ -418,7 +456,7 @@ func (h *Handler) serveResource(res *Resource, w http.ResponseWriter, req *cache
 		w.Header().Add("Warning", `110 - "Response is Stale"`)
 	}
 
-	debugf("resource is %s old, updating age from %s",
+	h.debugf("resource is %s old, updating age from %s",
 		age.String(), w.Header().Get("Age"))
 
 	w.Header().Set("Age", fmt.Sprintf("%.f", math.Floor(age.Seconds())))
@@ -438,7 +476,7 @@ func (h *Handler) invalidateResource(res *Resource, r *cacheRequest) {
 
 	go func() {
 		defer Writes.Done()
-		debugf("invalidating resource %+v", res)
+		h.debugf("invalidating resource %+v", res)
 	}()
 }
 
@@ -461,7 +499,7 @@ func (h *Handler) storeResource(res *Resource, r *cacheRequest) {
 		}
 
 		if err := h.cache.Store(res, keys...); err != nil {
-			errorf("storing resources %#v failed with error: %s", keys, err.Error())
+			h.errorf("storing resources %#v failed with error: %s", keys, err.Error())
 			if h.metrics != nil {
 				h.metrics.RecordStoreOperation(false)
 			}
@@ -471,7 +509,7 @@ func (h *Handler) storeResource(res *Resource, r *cacheRequest) {
 			}
 		}
 
-		debugf("stored resources %+v in %s", keys, Clock().Sub(t))
+		h.debugf("stored resources %+v in %s", keys, Clock().Sub(t))
 	}()
 }
 
@@ -488,7 +526,7 @@ func (h *Handler) lookup(req *cacheRequest) (*Resource, error) {
 		}
 
 		if res.HasExplicitExpiration() && req.isCacheable() {
-			debugf("using cached GET request for serving HEAD")
+			h.debugf("using cached GET request for serving HEAD")
 			return res, nil
 		} else {
 			return nil, ErrNotFoundInCache
