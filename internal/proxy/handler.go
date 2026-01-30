@@ -88,14 +88,10 @@ type responseWriter struct {
 	rule *distro.Rule // The matched caching rule for this request
 }
 
-// CreatePackageStructRouter initializes and returns a new PackageStruct instance
-// configured for the current proxy mode. It sets up URL rewriters and caching rules.
-// Uses synchronous benchmark which may block startup. For faster startup, use
-// CreatePackageStructRouterAsync instead.
-func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStruct {
+// createPackageStruct initializes a PackageStruct with the given rewriter factory.
+func createPackageStruct(cacheDir string, log *logger.Logger, rewriterFactory func(int) *URLRewriters) *PackageStruct {
 	mode := state.GetProxyMode()
-	rewriters = CreateNewRewriters(mode)
-
+	rewriters = rewriterFactory(mode)
 	return &PackageStruct{
 		Rules:    GetRewriteRulesByMode(mode),
 		CacheDir: cacheDir,
@@ -107,23 +103,17 @@ func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStru
 	}
 }
 
-// CreatePackageStructRouterAsync initializes and returns a new PackageStruct instance
-// configured for the current proxy mode using async benchmark.
-// This allows faster startup by using default mirrors immediately while
-// benchmarking runs in the background to find the fastest mirror.
-func CreatePackageStructRouterAsync(cacheDir string, log *logger.Logger) *PackageStruct {
-	mode := state.GetProxyMode()
-	rewriters = CreateNewRewritersAsync(mode)
+// CreatePackageStructRouter initializes and returns a new PackageStruct instance
+// configured for the current proxy mode. Uses synchronous benchmark (may block startup).
+// For faster startup, use CreatePackageStructRouterAsync instead.
+func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStruct {
+	return createPackageStruct(cacheDir, log, CreateNewRewriters)
+}
 
-	return &PackageStruct{
-		Rules:    GetRewriteRulesByMode(mode),
-		CacheDir: cacheDir,
-		log:      log,
-		Handler: &httputil.ReverseProxy{
-			Director:  func(r *http.Request) {},
-			Transport: retryableTransport,
-		},
-	}
+// CreatePackageStructRouterAsync initializes and returns a new PackageStruct instance
+// using async benchmark for faster startup (recommended).
+func CreatePackageStructRouterAsync(cacheDir string, log *logger.Logger) *PackageStruct {
+	return createPackageStruct(cacheDir, log, CreateNewRewritersAsync)
 }
 
 // HandleHomePage serves the home page with statistics
@@ -162,11 +152,9 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	rule := ap.handleExternalURLs(r)
 	if rule != nil {
-		// Set distribution rule attribute
-		distroName := getDistributionName(rule.OS)
-		if distroName != "" {
+		if name := distro.DistributionName(rule.OS); name != "" {
 			tracing.SetSpanAttributes(span, map[string]string{
-				"proxy.distribution": distroName,
+				"proxy.distribution": name,
 			})
 		}
 
@@ -255,22 +243,4 @@ func (rw *responseWriter) shouldSetCacheControl(status int) bool {
 func RefreshMirrors() {
 	mode := state.GetProxyMode()
 	RefreshRewriters(rewriters, mode)
-}
-
-// getDistributionName converts distribution type int to string name
-func getDistributionName(distType int) string {
-	switch distType {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		return distro.LINUX_DISTROS_UBUNTU
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		return distro.LINUX_DISTROS_UBUNTU_PORTS
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		return distro.LINUX_DISTROS_DEBIAN
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		return distro.LINUX_DISTROS_CENTOS
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		return distro.LINUX_DISTROS_ALPINE
-	default:
-		return ""
-	}
 }

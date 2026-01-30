@@ -31,6 +31,25 @@ const (
 	TYPE_LINUX_DISTROS_ALPINE       int = 5
 )
 
+// DistributionName returns the distribution ID string for the given type.
+// Returns empty string for unknown types.
+func DistributionName(distType int) string {
+	switch distType {
+	case TYPE_LINUX_DISTROS_UBUNTU:
+		return LINUX_DISTROS_UBUNTU
+	case TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+		return LINUX_DISTROS_UBUNTU_PORTS
+	case TYPE_LINUX_DISTROS_DEBIAN:
+		return LINUX_DISTROS_DEBIAN
+	case TYPE_LINUX_DISTROS_CENTOS:
+		return LINUX_DISTROS_CENTOS
+	case TYPE_LINUX_DISTROS_ALPINE:
+		return LINUX_DISTROS_ALPINE
+	default:
+		return ""
+	}
+}
+
 // Rule defines a caching rule for package files
 type Rule struct {
 	OS           int

@@ -14,8 +14,8 @@ import (
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
 	"github.com/soulteary/apt-proxy/internal/state"
-	httpcache "github.com/soulteary/httpcache-kit"
 	"github.com/soulteary/cli-kit/configutil"
+	httpcache "github.com/soulteary/httpcache-kit"
 )
 
 var (

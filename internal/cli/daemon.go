@@ -233,6 +233,21 @@ const (
 	defaultReadBufSize  = 4096 * 4 // 16KB, align with former ReadHeaderTimeout behavior
 )
 
+// cacheLabelFromHeader normalizes X-Cache header to HIT/MISS/SKIP for logging.
+func cacheLabelFromHeader(h string) string {
+	h = strings.TrimSpace(h)
+	if h == "" {
+		return "SKIP"
+	}
+	if strings.HasPrefix(h, "HIT") {
+		return "HIT"
+	}
+	if strings.HasPrefix(h, "MISS") {
+		return "MISS"
+	}
+	return h
+}
+
 // createFiberApp creates the Fiber application with all routes and middleware.
 func (s *Server) createFiberApp() *fiber.App {
 	app := fiber.New(fiber.Config{
@@ -256,25 +271,11 @@ func (s *Server) createFiberApp() *fiber.App {
 		logCfg.IncludeHeaders = true
 		logCfg.IncludeBody = true
 	}
-	// CustomFieldsFiber allocates one map per request; use capacity 2 for "cache" and "size".
-	// Pooling the map is unsafe unless the logger copies fields before returning.
 	logCfg.CustomFieldsFiber = func(c *fiber.Ctx) map[string]interface{} {
-		m := make(map[string]interface{}, 2)
-		if v := c.Response().Header.Peek("X-Cache"); len(v) > 0 {
-			cache := strings.TrimSpace(string(v))
-			switch {
-			case strings.HasPrefix(cache, "MISS"):
-				m["cache"] = "MISS"
-			case strings.HasPrefix(cache, "HIT"):
-				m["cache"] = "HIT"
-			default:
-				m["cache"] = cache
-			}
-		} else {
-			m["cache"] = "SKIP"
+		return map[string]interface{}{
+			"cache": cacheLabelFromHeader(string(c.Response().Header.Peek("X-Cache"))),
+			"size":  len(c.Response().Body()),
 		}
-		m["size"] = len(c.Response().Body())
-		return m
 	}
 	app.Use(logger.FiberMiddleware(logCfg))
 
@@ -309,15 +310,15 @@ func (s *Server) createFiberApp() *fiber.App {
 	app.All("/_/ping", pingHandler)
 	app.All("/_/ping/*", pingHandler)
 
-	// Root: exact "/" -> home page, everything else -> proxy+cache (request log via logger-kit FiberMiddleware)
-	rootHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			s.proxy.Handler.ServeHTTP(w, r)
-			return
-		}
-		proxy.HandleHomePage(w, r, s.config.CacheDir)
+	// Root "/" -> home page (Fiber native)
+	app.Get("/", func(c *fiber.Ctx) error {
+		tpl, status := proxy.RenderInternalUrls("/", s.config.CacheDir)
+		c.Set("Content-Type", "text/html; charset=utf-8")
+		c.Status(status)
+		return c.SendString(tpl)
 	})
-	app.All("/*", adaptor.HTTPHandler(rootHandler))
+	// All other paths -> proxy + cache
+	app.All("/*", adaptor.HTTPHandler(s.proxy.Handler))
 
 	return app
 }

@@ -59,40 +59,41 @@ func modesToInit(mode int) []int {
 	return []int{mode}
 }
 
-// rewriterField returns the *URLRewriter field pointer in r for the given mode, or nil if unknown.
-func rewriterField(r *URLRewriters, mode int) **URLRewriter {
-	switch mode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		return &r.Ubuntu
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		return &r.UbuntuPorts
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		return &r.Debian
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		return &r.Centos
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		return &r.Alpine
-	default:
-		return nil
-	}
+// rewriterConfigEntry holds getter and display name for a distribution rewriter
+type rewriterConfigEntry struct {
+	getMirror func() *url.URL
+	name      string
 }
 
-// getRewriterConfig returns configuration for a specific distribution
+var rewriterConfigByMode = map[int]rewriterConfigEntry{
+	distro.TYPE_LINUX_DISTROS_UBUNTU:       {state.GetUbuntuMirror, "Ubuntu"},
+	distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS: {state.GetUbuntuPortsMirror, "Ubuntu Ports"},
+	distro.TYPE_LINUX_DISTROS_DEBIAN:       {state.GetDebianMirror, "Debian"},
+	distro.TYPE_LINUX_DISTROS_CENTOS:       {state.GetCentOSMirror, "CentOS"},
+	distro.TYPE_LINUX_DISTROS_ALPINE:       {state.GetAlpineMirror, "Alpine"},
+}
+
+var rewriterFieldByMode = map[int]func(*URLRewriters) **URLRewriter{
+	distro.TYPE_LINUX_DISTROS_UBUNTU:       func(r *URLRewriters) **URLRewriter { return &r.Ubuntu },
+	distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS: func(r *URLRewriters) **URLRewriter { return &r.UbuntuPorts },
+	distro.TYPE_LINUX_DISTROS_DEBIAN:       func(r *URLRewriters) **URLRewriter { return &r.Debian },
+	distro.TYPE_LINUX_DISTROS_CENTOS:       func(r *URLRewriters) **URLRewriter { return &r.Centos },
+	distro.TYPE_LINUX_DISTROS_ALPINE:       func(r *URLRewriters) **URLRewriter { return &r.Alpine },
+}
+
+func rewriterField(r *URLRewriters, mode int) **URLRewriter {
+	if fn, ok := rewriterFieldByMode[mode]; ok {
+		return fn(r)
+	}
+	return nil
+}
+
 func getRewriterConfig(mode int) (getMirror func() *url.URL, name string) {
-	switch mode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		return state.GetUbuntuMirror, "Ubuntu"
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		return state.GetUbuntuPortsMirror, "Ubuntu Ports"
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		return state.GetDebianMirror, "Debian"
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		return state.GetCentOSMirror, "CentOS"
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		return state.GetAlpineMirror, "Alpine"
-	default:
+	e, ok := rewriterConfigByMode[mode]
+	if !ok {
 		return nil, ""
 	}
+	return e.getMirror, e.name
 }
 
 // createRewriter creates a new URLRewriter for a specific distribution.
