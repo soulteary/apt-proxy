@@ -601,24 +601,9 @@ func TestSpecAgeHeaderWithResponseDelay(t *testing.T) {
 	}
 }
 
-// TODO: fix testcase
+// TestSpecAgeHeaderGeneratedWhereNoneExists is skipped: age header test disabled until test setup is fixed.
 func TestSpecAgeHeaderGeneratedWhereNoneExists(t *testing.T) {
-	// client, upstream := testSetup()
-	// upstream.CacheControl = "max-age=86400"
-	// upstream.ResponseDuration = time.Second * 2
-	// age := client.get("/").age
-	// if time.Second*2 != age {
-	// 	t.Fatalf("age: %d not equal", age)
-	// }
-
-	// upstream.timeTravel(time.Second * 60)
-	// age = client.get("/").age
-	// if time.Second*62 != age {
-	// 	t.Fatalf("age: %d not equal", age)
-	// }
-	// if upstream.requests != 1 {
-	// 	t.Fatalf("Unexpected requests: %d", upstream.requests)
-	// }
+	t.Skip("TODO: fix testcase — age header assertion and upstream time travel need correct setup")
 }
 
 func TestSpecWarningForOldContent(t *testing.T) {

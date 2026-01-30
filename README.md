@@ -436,6 +436,19 @@ Or use the API:
 curl -X POST http://localhost:3142/api/mirrors/refresh
 ```
 
+## Observability and Metrics
+
+The `/metrics` endpoint exposes Prometheus metrics. Key metrics and suggested alerts:
+
+| Metric / area | Description | Suggested alert |
+|---------------|-------------|-----------------|
+| `apt_proxy_cache_*` | Cache hits, misses, size, item count, evictions, cleanup duration | Cache error rate high; cache size near limit |
+| `apt_proxy_cache_upstream_*` | Upstream request duration and errors | Upstream 5xx or timeout rate high |
+| `apt_proxy_cache_request_duration_seconds` | Request latency by distro and cache hit | Request latency P99 above threshold |
+| Health (`/healthz`, `/readyz`) | Service and dependency health | Health check failing |
+
+Run tests with coverage: `go test -cover ./...`; generate report with `go test -coverprofile=coverage.out ./...` and `go tool cover -html=coverage.out`.
+
 ## Architecture
 
 ```mermaid
@@ -505,8 +518,7 @@ apt-proxy/
 │   ├── state/                # Application state management
 │   └── system/               # System utilities (disk, gc, filesize)
 ├── pkg/                      # Reusable packages (importable by others)
-│   ├── httpcache/            # HTTP caching layer with metrics
-│   └── vfs/                  # Virtual filesystem
+│   └── httpcache/            # HTTP caching layer with metrics (uses github.com/soulteary/vfs-kit)
 ├── tests/                    # Integration tests
 │   └── integration/         # End-to-end tests
 └── docker/, example/, docs/   # Deployment and documentation
@@ -521,6 +533,8 @@ git clone https://github.com/soulteary/apt-proxy.git
 cd apt-proxy
 go build -o apt-proxy ./cmd/apt-proxy
 ```
+
+When developing alongside [vfs-kit](https://github.com/soulteary/vfs-kit), `go.mod` may use a `replace` directive pointing to a local `../kits/vfs-kit`; remove it when using a published vfs-kit version.
 
 ### Running Tests
 
@@ -586,7 +600,7 @@ This project builds upon the excellent work of:
 - [lox/apt-proxy](https://github.com/lox/apt-proxy) - Original APT proxy implementation
 - [lox/httpcache](https://github.com/lox/httpcache) - HTTP caching library (MIT License)
 - [djherbis/stream](https://github.com/djherbis/stream) - Stream handling library (MIT License)
-- [rainycape/vfs](https://github.com/rainycape/vfs) - Virtual filesystem library (Mozilla Public License 2.0)
+- [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) - Virtual filesystem library (from rainycape/vfs, Mozilla Public License 2.0)
 
 ## Support
 

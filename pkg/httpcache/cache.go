@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soulteary/apt-proxy/pkg/vfs"
+	"github.com/soulteary/vfs-kit"
 )
 
 // hash64Pool reuses FNV-1a 64-bit hashers to reduce allocations in hashKey.

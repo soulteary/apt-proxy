@@ -24,6 +24,7 @@ import (
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/pkg/httpcache"
+	vfs "github.com/soulteary/vfs-kit"
 )
 
 // Server represents the main application server that handles HTTP requests,
@@ -124,6 +125,11 @@ func (s *Server) initTracing() {
 // logging, and HTTP server configuration. This method is called automatically
 // by NewServer and should not be called directly.
 func (s *Server) initialize() error {
+	// Optional: log vfs file-close errors (e.g. from finalizer)
+	if s.log != nil {
+		vfs.LogCloseError = func(err error) { s.log.Error().Err(err).Msg("vfs: error closing file") }
+	}
+
 	// Initialize version info
 	s.versionInfo = version.Default()
 

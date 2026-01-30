@@ -12,7 +12,12 @@ We provide security updates for the following versions:
 - **Supported**: Security fixes and critical bug fixes are backported.
 - **Unsupported**: No new fixes; please upgrade to a supported version.
 
-## Reporting a Vulnerability
+## End of Life Policy
+
+- **Stopping support**: When a version line reaches end of life, we will announce it in the release notes and this document. After EOL, that version will not receive security or bug fixes.
+- **Upgrade**: We recommend staying on a supported version and upgrading before your current version goes out of support.
+
+## Reporting a Vulnerability (Disclosure Process)
 
 If you discover a security issue, please report it responsibly:
 

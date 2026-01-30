@@ -357,6 +357,48 @@ func TestYamlConfigToConfig_HostPort(t *testing.T) {
 	}
 }
 
+func TestValidateConfig(t *testing.T) {
+	t.Run("nil config", func(t *testing.T) {
+		if err := ValidateConfig(nil); err == nil {
+			t.Error("ValidateConfig(nil) should return error")
+		}
+	})
+	t.Run("empty CacheDir", func(t *testing.T) {
+		cfg := &Config{Listen: "0.0.0.0:3142", CacheDir: ""}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("ValidateConfig with empty CacheDir should return error")
+		}
+	})
+	t.Run("empty Listen", func(t *testing.T) {
+		cfg := &Config{Listen: "", CacheDir: t.TempDir()}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("ValidateConfig with empty Listen should return error")
+		}
+	})
+	t.Run("invalid Listen format", func(t *testing.T) {
+		cfg := &Config{Listen: "not-host-port", CacheDir: t.TempDir()}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("ValidateConfig with invalid Listen should return error")
+		}
+	})
+	t.Run("CacheDir is a file not a directory", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(f, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		cfg := &Config{Listen: "0.0.0.0:3142", CacheDir: f}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("ValidateConfig with CacheDir as file should return error")
+		}
+	})
+	t.Run("valid config", func(t *testing.T) {
+		cfg := &Config{Listen: "0.0.0.0:3142", CacheDir: t.TempDir()}
+		if err := ValidateConfig(cfg); err != nil {
+			t.Errorf("ValidateConfig with valid config should succeed: %v", err)
+		}
+	})
+}
+
 func TestYamlConfigToConfig_PartialHostPort(t *testing.T) {
 	// Only host specified
 	yamlCfg := &YAMLConfig{}

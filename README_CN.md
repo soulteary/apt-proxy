@@ -421,7 +421,9 @@ curl -H "X-API-Key: your-api-key" http://localhost:3142/api/cache/stats
 
 ## 热重载
 
-APT Proxy 支持无需重启即可热重载发行版/镜像配置（含 distributions.yaml）：
+APT Proxy 仅支持对**发行版与镜像配置**（含 `distributions.yaml`）热重载，无需重启。**主配置**（如 `apt-proxy.yaml`：服务 host/port、缓存限制、TLS、安全、API Key 等）**不会**热重载，修改后需重启进程。
+
+重载发行版与镜像：
 
 ```bash
 # 发送 SIGHUP 信号重载配置并刷新镜像
@@ -433,6 +435,19 @@ kill -HUP $(pgrep apt-proxy)
 ```bash
 curl -X POST http://localhost:3142/api/mirrors/refresh
 ```
+
+## 可观测性与指标
+
+`/metrics` 端点暴露 Prometheus 指标。主要指标与建议告警：
+
+| 指标/范围 | 说明 | 建议告警 |
+|----------|------|----------|
+| `apt_proxy_cache_*` | 缓存命中/未命中、大小、条目数、驱逐、清理耗时 | 缓存错误率过高；缓存接近上限 |
+| `apt_proxy_cache_upstream_*` | 上游请求耗时与错误 | 上游 5xx 或超时率过高 |
+| `apt_proxy_cache_request_duration_seconds` | 按发行版与缓存命中的请求延迟 | 请求延迟 P99 超阈值 |
+| 健康检查（`/healthz`、`/readyz`） | 服务与依赖健康 | 健康检查失败 |
+
+运行测试与覆盖率：`go test -cover ./...`；生成报告：`go test -coverprofile=coverage.out ./...` 与 `go tool cover -html=coverage.out`。
 
 ## 架构
 
@@ -503,8 +518,7 @@ apt-proxy/
 │   ├── state/                # 应用状态管理
 │   └── system/               # 系统工具（磁盘、GC、文件大小）
 ├── pkg/                      # 可复用包（可被其他项目导入）
-│   ├── httpcache/            # HTTP 缓存层（含指标）
-│   └── vfs/                  # 虚拟文件系统
+│   └── httpcache/            # HTTP 缓存层（含指标，使用 github.com/soulteary/vfs-kit）
 ├── tests/                    # 集成测试
 │   └── integration/          # 端到端测试
 └── docker/, example/, docs/  # 部署和文档
@@ -519,6 +533,8 @@ git clone https://github.com/soulteary/apt-proxy.git
 cd apt-proxy
 go build -o apt-proxy ./cmd/apt-proxy
 ```
+
+与 [vfs-kit](https://github.com/soulteary/vfs-kit) 联合开发时，`go.mod` 可使用 `replace` 指向本地 `../kits/vfs-kit`；使用已发布的 vfs-kit 版本时请移除该 replace。
 
 ### 运行测试
 
@@ -584,7 +600,7 @@ http_proxy=http://192.168.33.1:3142 \
 - [lox/apt-proxy](https://github.com/lox/apt-proxy) - 原始 APT 代理实现
 - [lox/httpcache](https://github.com/lox/httpcache) - HTTP 缓存库（MIT License）
 - [djherbis/stream](https://github.com/djherbis/stream) - 流处理库（MIT License）
-- [rainycape/vfs](https://github.com/rainycape/vfs) - 虚拟文件系统库（Mozilla Public License 2.0）
+- [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) - 虚拟文件系统库（源自 rainycape/vfs，Mozilla Public License 2.0）
 
 ## 支持
 

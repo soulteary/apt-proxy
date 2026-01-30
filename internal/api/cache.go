@@ -55,7 +55,7 @@ func (h *CacheHandler) HandleCacheStats(w http.ResponseWriter, r *http.Request) 
 // HandleCachePurge clears all cached items
 func (h *CacheHandler) HandleCachePurge(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		WriteJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		WriteAppError(w, apperrors.New(apperrors.ErrMethodNotAllowed, "Method not allowed"))
 		return
 	}
 

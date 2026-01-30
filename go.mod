@@ -13,6 +13,7 @@ require (
 	github.com/soulteary/middleware-kit v1.0.0
 	github.com/soulteary/tracing-kit v1.0.0
 	github.com/soulteary/version-kit v1.0.0
+	github.com/soulteary/vfs-kit v1.0.0
 	go.opentelemetry.io/otel v1.39.0
 	golang.org/x/sys v0.40.0
 	gopkg.in/yaml.v3 v3.0.1
