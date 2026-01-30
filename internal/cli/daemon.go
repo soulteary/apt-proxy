@@ -23,7 +23,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/distro"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/proxy"
-	"github.com/soulteary/apt-proxy/pkg/httpcache"
+	httpcache "github.com/soulteary/httpcache-kit"
 	vfs "github.com/soulteary/vfs-kit"
 )
 

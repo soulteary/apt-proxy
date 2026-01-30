@@ -4,10 +4,10 @@ go 1.25.4
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.10
-	github.com/prometheus/client_golang v1.23.2
 	github.com/soulteary/cli-kit v1.2.0
 	github.com/soulteary/health-kit v1.0.0
 	github.com/soulteary/http-kit v1.0.0
+	github.com/soulteary/httpcache-kit v1.0.0
 	github.com/soulteary/logger-kit v1.0.0
 	github.com/soulteary/metrics-kit v1.0.0
 	github.com/soulteary/middleware-kit v1.0.0
@@ -36,6 +36,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect

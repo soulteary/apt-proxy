@@ -517,8 +517,6 @@ apt-proxy/
 │   │   └── stats.go          # 统计信息
 │   ├── state/                # 应用状态管理
 │   └── system/               # 系统工具（磁盘、GC、文件大小）
-├── pkg/                      # 可复用包（可被其他项目导入）
-│   └── httpcache/            # HTTP 缓存层（含指标，使用 github.com/soulteary/vfs-kit）
 ├── tests/                    # 集成测试
 │   └── integration/          # 端到端测试
 └── docker/, example/, docs/  # 部署和文档
@@ -534,7 +532,7 @@ cd apt-proxy
 go build -o apt-proxy ./cmd/apt-proxy
 ```
 
-与 [vfs-kit](https://github.com/soulteary/vfs-kit) 联合开发时，`go.mod` 可使用 `replace` 指向本地 `../kits/vfs-kit`；使用已发布的 vfs-kit 版本时请移除该 replace。
+与 [vfs-kit](https://github.com/soulteary/vfs-kit) 或 [httpcache-kit](https://github.com/soulteary/httpcache-kit) 联合开发时，`go.mod` 可使用 `replace` 指向本地目录（如 `../kits/httpcache-kit`）；使用已发布版本时请移除对应 replace。
 
 ### 运行测试
 

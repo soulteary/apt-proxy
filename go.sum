@@ -86,6 +86,8 @@ github.com/soulteary/health-kit v1.0.0 h1:wBsEwuvrOsTIfHYbkSubzqn8dKEyN7E6b2OgJG
 github.com/soulteary/health-kit v1.0.0/go.mod h1:qo5dsJMD153pVVyGFZ0H268kMqJRFJtp66d3c/dFLsY=
 github.com/soulteary/http-kit v1.0.0 h1:II1Ws2GJ1VS1kuLlpu7wrU1cINGc0ctr8yQfijpEzrA=
 github.com/soulteary/http-kit v1.0.0/go.mod h1:lgoZM0zvNxM4x0s6mujMYaaAh3Kk3nN3gi/euBI9Hfw=
+github.com/soulteary/httpcache-kit v1.0.0 h1:jiwLx3tD21/7u1iPbVIL/vnxnt8aoUFX5Y3WsyDyZHQ=
+github.com/soulteary/httpcache-kit v1.0.0/go.mod h1:IZI+ZdMpg5/508nQOH9KYocqERwYTIKYtCaM0dDZPJA=
 github.com/soulteary/logger-kit v1.0.0 h1:fL8QeTi3x7Xlz2xoRcRSYxEYXMWmnwe54iwR9udscnc=
 github.com/soulteary/logger-kit v1.0.0/go.mod h1:WtU0zitXvden6yGhI1sFVo30EnSdwviKJDzYkylvmB0=
 github.com/soulteary/metrics-kit v1.0.0 h1:4tpy1h6exgLTWgWA5H17g+l3QUCPJKpVTGyP4HnoKU0=

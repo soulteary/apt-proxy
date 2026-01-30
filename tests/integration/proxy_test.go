@@ -14,7 +14,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
-	"github.com/soulteary/apt-proxy/pkg/httpcache"
+	httpcache "github.com/soulteary/httpcache-kit"
 )
 
 // testServer wraps an httptest.Server with common test utilities.

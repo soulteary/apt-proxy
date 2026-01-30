@@ -517,8 +517,6 @@ apt-proxy/
 │   │   └── stats.go          # Statistics
 │   ├── state/                # Application state management
 │   └── system/               # System utilities (disk, gc, filesize)
-├── pkg/                      # Reusable packages (importable by others)
-│   └── httpcache/            # HTTP caching layer with metrics (uses github.com/soulteary/vfs-kit)
 ├── tests/                    # Integration tests
 │   └── integration/         # End-to-end tests
 └── docker/, example/, docs/   # Deployment and documentation
@@ -534,7 +532,7 @@ cd apt-proxy
 go build -o apt-proxy ./cmd/apt-proxy
 ```
 
-When developing alongside [vfs-kit](https://github.com/soulteary/vfs-kit), `go.mod` may use a `replace` directive pointing to a local `../kits/vfs-kit`; remove it when using a published vfs-kit version.
+When developing alongside [vfs-kit](https://github.com/soulteary/vfs-kit) or [httpcache-kit](https://github.com/soulteary/httpcache-kit), `go.mod` may use `replace` directives (e.g. `../kits/httpcache-kit`); remove them when using published versions.
 
 ### Running Tests
 

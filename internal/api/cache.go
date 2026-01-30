@@ -6,7 +6,7 @@ import (
 	logger "github.com/soulteary/logger-kit"
 
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
-	"github.com/soulteary/apt-proxy/pkg/httpcache"
+	httpcache "github.com/soulteary/httpcache-kit"
 )
 
 // CacheHandler handles cache-related API endpoints
