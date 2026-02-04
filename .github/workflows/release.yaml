@@ -8,7 +8,7 @@ on:
     tags:
       - 'v*'
 env:
-  GO_VERSION: "1.25.4"
+  GO_VERSION: "1.25"
 
 jobs:
   build:
@@ -18,12 +18,12 @@ jobs:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -31,7 +31,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
 
       - name: Cache Go modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
