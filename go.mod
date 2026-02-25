@@ -3,7 +3,7 @@ module github.com/soulteary/apt-proxy
 go 1.25.4
 
 require (
-	github.com/gofiber/fiber/v2 v2.52.11
+	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/soulteary/cli-kit v1.3.1
 	github.com/soulteary/health-kit v1.1.0
 	github.com/soulteary/http-kit v1.0.0
