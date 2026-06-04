@@ -20,9 +20,15 @@ on:
   schedule:
     - cron: '0 0 * * 0'
 
+env:
+  GO_VERSION: "1.26"
+
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Check out code
         uses: actions/checkout@v6
@@ -30,24 +36,28 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.23'
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Run govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./... || true
+          govulncheck ./...
 
       - name: Security Scan
-        uses: securego/gosec@master
+        # Pinned to gosec v2.27.1 commit SHA to mitigate supply-chain risk.
+        # Update this together with the version comment when bumping.
+        uses: securego/gosec@9e6a9843d7a4a6e3e9a8539b02612c8a4aa3f889 # v2.27.1
         with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
+          args: '-fmt sarif -out results.sarif ./...'
 
       - name: Temp sarif workaround
+        if: always()
         shell: bash
         run: |
           sed -i "/null/d" results.sarif
 
       - name: Upload SARIF file
+        if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
