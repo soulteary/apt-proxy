@@ -266,8 +266,14 @@ type YAMLConfig struct {
 
 // LoadConfigFile loads configuration from a YAML file.
 // It returns nil if the file does not exist.
+//
+// The path is operator-controlled: it comes from the --config CLI flag, the
+// APT_PROXY_CONFIG_FILE environment variable, or FindConfigFile's well-known
+// search list. Cleaning the path before reading mirrors what FindConfigFile
+// already does and keeps gosec G304 narrow to this single, audited site.
 func LoadConfigFile(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	cleaned := filepath.Clean(path)
+	data, err := os.ReadFile(cleaned) // #nosec G304 -- operator-controlled config path
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil // File doesn't exist, not an error
