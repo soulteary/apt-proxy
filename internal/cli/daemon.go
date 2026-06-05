@@ -167,7 +167,7 @@ func (s *Server) initialize() error {
 
 	if s.config.Debug {
 		s.log.Debug().Msg("debug mode enabled")
-		httpcache.DebugLogging = true
+		httpcache.SetDebugLogging(true)
 	}
 
 	// Initialize API handlers (mirrors refresh also reloads distributions config when path set)

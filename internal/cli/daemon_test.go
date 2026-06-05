@@ -299,6 +299,7 @@ func TestHealthEndpoints(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+			req.Host = "localhost"
 
 			resp, err := srv.app.Test(req)
 			if err != nil {
@@ -466,6 +467,7 @@ func TestCacheStatsAPI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+			req.Host = "localhost"
 
 			resp, err := srv.app.Test(req)
 			if err != nil {
@@ -556,6 +558,7 @@ func TestCachePurgeAPI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+			req.Host = "localhost"
 
 			resp, err := srv.app.Test(req)
 			if err != nil {
@@ -642,6 +645,7 @@ func TestCacheCleanupAPI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+			req.Host = "localhost"
 
 			resp, err := srv.app.Test(req)
 			if err != nil {
@@ -730,6 +734,7 @@ func TestMirrorsRefreshAPI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+			req.Host = "localhost"
 
 			resp, err := srv.app.Test(req)
 			if err != nil {
