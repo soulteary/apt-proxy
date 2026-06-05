@@ -16,6 +16,45 @@ func builtinMirrorURLs(mirrors []distro.UrlWithAlias) []string {
 	return out
 }
 
+// builtinDistro consolidates the per-mode built-in metadata so the switch
+// blocks below collapse into a single table-driven lookup.
+type builtinDistro struct {
+	mirrors      []distro.UrlWithAlias
+	benchmarkURL string
+	hostPattern  *regexp.Regexp
+}
+
+// builtinByMode is the single source of truth for built-in (compile-time)
+// mirror metadata, keyed by distro type. Registry-loaded data overrides this
+// at runtime.
+var builtinByMode = map[int]builtinDistro{
+	distro.TYPE_LINUX_DISTROS_UBUNTU: {
+		mirrors:      distro.BUILDIN_UBUNTU_MIRRORS,
+		benchmarkURL: distro.UBUNTU_BENCHMARK_URL,
+		hostPattern:  distro.UBUNTU_HOST_PATTERN,
+	},
+	distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS: {
+		mirrors:      distro.BUILDIN_UBUNTU_PORTS_MIRRORS,
+		benchmarkURL: distro.UBUNTU_PORTS_BENCHMARK_URL,
+		hostPattern:  distro.UBUNTU_PORTS_HOST_PATTERN,
+	},
+	distro.TYPE_LINUX_DISTROS_DEBIAN: {
+		mirrors:      distro.BUILDIN_DEBIAN_MIRRORS,
+		benchmarkURL: distro.DEBIAN_BENCHMARK_URL,
+		hostPattern:  distro.DEBIAN_HOST_PATTERN,
+	},
+	distro.TYPE_LINUX_DISTROS_CENTOS: {
+		mirrors:      distro.BUILDIN_CENTOS_MIRRORS,
+		benchmarkURL: distro.CENTOS_BENCHMARK_URL,
+		hostPattern:  distro.CENTOS_HOST_PATTERN,
+	},
+	distro.TYPE_LINUX_DISTROS_ALPINE: {
+		mirrors:      distro.BUILDIN_ALPINE_MIRRORS,
+		benchmarkURL: distro.ALPINE_BENCHMARK_URL,
+		hostPattern:  distro.ALPINE_HOST_PATTERN,
+	},
+}
+
 func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 	// Prefer registry (config-loaded) mirrors when present
 	if reg := distro.GetRegistry(); reg != nil {
@@ -29,44 +68,32 @@ func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 		}
 	}
 
-	if mode == distro.TYPE_LINUX_DISTROS_UBUNTU {
-		ubuntuMirrorsOnline, err := GetUbuntuMirrorUrlsByGeo()
+	// Ubuntu/UbuntuPorts try geo-based mirrors first, fall back to built-in.
+	if mode == distro.TYPE_LINUX_DISTROS_UBUNTU || mode == distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS {
+		online, err := GetUbuntuMirrorUrlsByGeo()
 		if err != nil {
-			return builtinMirrorURLs(distro.BUILDIN_UBUNTU_MIRRORS)
+			return builtinMirrorURLs(builtinByMode[mode].mirrors)
 		}
-		return ubuntuMirrorsOnline
-	}
-
-	if mode == distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS {
-		ubuntuPortsMirrorsOnline, err := GetUbuntuMirrorUrlsByGeo()
-		if err != nil {
-			return builtinMirrorURLs(distro.BUILDIN_UBUNTU_PORTS_MIRRORS)
+		if mode == distro.TYPE_LINUX_DISTROS_UBUNTU {
+			return online
 		}
-
-		results := make([]string, 0, len(ubuntuPortsMirrorsOnline))
-		for _, mirror := range ubuntuPortsMirrorsOnline {
-			results = append(results, strings.ReplaceAll(mirror, "/ubuntu/", "/ubuntu-ports/"))
+		// Ubuntu Ports re-uses the Ubuntu geo list with a path swap.
+		results := make([]string, 0, len(online))
+		for _, m := range online {
+			results = append(results, strings.ReplaceAll(m, "/ubuntu/", "/ubuntu-ports/"))
 		}
 		return results
 	}
 
-	if mode == distro.TYPE_LINUX_DISTROS_DEBIAN {
-		return builtinMirrorURLs(distro.BUILDIN_DEBIAN_MIRRORS)
+	// Other single-distro modes: just return their built-in list.
+	if b, ok := builtinByMode[mode]; ok {
+		return builtinMirrorURLs(b.mirrors)
 	}
 
-	if mode == distro.TYPE_LINUX_DISTROS_CENTOS {
-		return builtinMirrorURLs(distro.BUILDIN_CENTOS_MIRRORS)
+	// Fallback: aggregate all known built-in mirrors (used by ALL_DISTROS).
+	for _, b := range builtinByMode {
+		mirrors = append(mirrors, builtinMirrorURLs(b.mirrors)...)
 	}
-
-	if mode == distro.TYPE_LINUX_DISTROS_ALPINE {
-		return builtinMirrorURLs(distro.BUILDIN_ALPINE_MIRRORS)
-	}
-
-	mirrors = append(mirrors, builtinMirrorURLs(distro.BUILDIN_UBUNTU_MIRRORS)...)
-	mirrors = append(mirrors, builtinMirrorURLs(distro.BUILDIN_UBUNTU_PORTS_MIRRORS)...)
-	mirrors = append(mirrors, builtinMirrorURLs(distro.BUILDIN_DEBIAN_MIRRORS)...)
-	mirrors = append(mirrors, builtinMirrorURLs(distro.BUILDIN_CENTOS_MIRRORS)...)
-	mirrors = append(mirrors, builtinMirrorURLs(distro.BUILDIN_ALPINE_MIRRORS)...)
 	return mirrors
 }
 
@@ -132,35 +159,10 @@ func GetMirrorURLByAliases(osType int, alias string) string {
 		}
 	}
 
-	switch osType {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		for _, mirror := range distro.BUILDIN_UBUNTU_MIRRORS {
-			if mirror.Alias == alias {
-				return GetFullMirrorURL(mirror)
-			}
-		}
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		for _, mirror := range distro.BUILDIN_UBUNTU_PORTS_MIRRORS {
-			if mirror.Alias == alias {
-				return GetFullMirrorURL(mirror)
-			}
-		}
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		for _, mirror := range distro.BUILDIN_DEBIAN_MIRRORS {
-			if mirror.Alias == alias {
-				return GetFullMirrorURL(mirror)
-			}
-		}
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		for _, mirror := range distro.BUILDIN_CENTOS_MIRRORS {
-			if mirror.Alias == alias {
-				return GetFullMirrorURL(mirror)
-			}
-		}
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		for _, mirror := range distro.BUILDIN_ALPINE_MIRRORS {
-			if mirror.Alias == alias {
-				return GetFullMirrorURL(mirror)
+	if b, ok := builtinByMode[osType]; ok {
+		for _, m := range b.mirrors {
+			if m.Alias == alias {
+				return GetFullMirrorURL(m)
 			}
 		}
 	}
@@ -173,17 +175,8 @@ func GetPredefinedConfiguration(proxyMode int) (string, *regexp.Regexp) {
 			return d.BenchmarkURL, d.URLPattern
 		}
 	}
-	switch proxyMode {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
-		return distro.UBUNTU_BENCHMARK_URL, distro.UBUNTU_HOST_PATTERN
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		return distro.UBUNTU_PORTS_BENCHMARK_URL, distro.UBUNTU_PORTS_HOST_PATTERN
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
-		return distro.DEBIAN_BENCHMARK_URL, distro.DEBIAN_HOST_PATTERN
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
-		return distro.CENTOS_BENCHMARK_URL, distro.CENTOS_HOST_PATTERN
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
-		return distro.ALPINE_BENCHMARK_URL, distro.ALPINE_HOST_PATTERN
+	if b, ok := builtinByMode[proxyMode]; ok {
+		return b.benchmarkURL, b.hostPattern
 	}
 	return "", nil
 }

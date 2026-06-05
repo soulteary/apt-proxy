@@ -52,10 +52,11 @@ const (
 // Backward compatibility wrapper for internal function
 var allowedModes = config.GetAllowedModes()
 
-// ParseFlags parses command-line flags and returns a Config.
-// This is a wrapper around config.ParseFlags for backward compatibility.
+// ParseFlags parses command-line flags and (when present) loads configuration
+// from a YAML file. Priority: CLI > ENV > Config File > Default.
+// Wrapper around config.ParseFlagsWithConfigFile, preserving the legacy entry name.
 func ParseFlags() (*Config, error) {
-	return config.ParseFlags()
+	return config.ParseFlagsWithConfigFile()
 }
 
 // ValidateConfig validates the configuration.
@@ -67,4 +68,30 @@ func ValidateConfig(cfg *Config) error {
 // modeToInt converts mode string to int for backward compatibility in tests
 func modeToInt(mode string) int {
 	return config.ModeToInt(mode)
+}
+
+// Build metadata, set by SetBuildInfo from the main package at startup.
+var (
+	buildVersion = "dev"
+	buildCommit  = "none"
+	buildDate    = "unknown"
+)
+
+// SetBuildInfo records the binary's build metadata so the daemon can log it.
+// Called by main during startup with values injected via -ldflags.
+func SetBuildInfo(version, commit, date string) {
+	if version != "" {
+		buildVersion = version
+	}
+	if commit != "" {
+		buildCommit = commit
+	}
+	if date != "" {
+		buildDate = date
+	}
+}
+
+// BuildInfo returns the recorded build metadata.
+func BuildInfo() (version, commit, date string) {
+	return buildVersion, buildCommit, buildDate
 }

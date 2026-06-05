@@ -130,8 +130,13 @@ func (s *Server) initialize() error {
 		vfs.LogCloseError = func(err error) { s.log.Error().Err(err).Msg("vfs: error closing file") }
 	}
 
-	// Initialize version info
-	s.versionInfo = version.Default()
+	// Initialize version info using ldflags-injected build metadata when set,
+	// otherwise fall back to the version-kit defaults.
+	if v, c, d := BuildInfo(); v != "dev" || c != "none" || d != "unknown" {
+		s.versionInfo = version.New(v, c, d)
+	} else {
+		s.versionInfo = version.Default()
+	}
 
 	// Initialize cache with configuration
 	cacheConfig := s.buildCacheConfig()
@@ -174,7 +179,13 @@ func (s *Server) initialize() error {
 	s.cacheHandler = api.NewCacheHandler(s.cache, s.log)
 	s.mirrorsHandler = api.NewMirrorsHandler(s.log, func() {
 		distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
-		proxy.RefreshMirrors()
+		// Prefer the per-instance refresh path; falls back to the package
+		// global only if proxy isn't initialized yet (shouldn't happen here).
+		if s.proxy != nil {
+			s.proxy.RefreshMirrors()
+		} else {
+			proxy.RefreshMirrors()
+		}
 	})
 
 	// Initialize API authentication middleware
@@ -184,7 +195,11 @@ func (s *Server) initialize() error {
 	})
 
 	// Initialize API rate limit (per IP per minute; 0 = disabled)
-	s.rateLimitMiddleware = api.NewRateLimitMiddleware(s.config.Security.APIRateLimitPerMinute, s.log)
+	s.rateLimitMiddleware = api.NewRateLimitMiddleware(
+		s.config.Security.APIRateLimitPerMinute,
+		s.log,
+		s.config.Security.TrustedProxies...,
+	)
 
 	// Create Fiber app with all routes
 	s.app = s.createFiberApp()
@@ -387,7 +402,11 @@ func (s *Server) reload() {
 	s.log.Info().Msg("received SIGHUP, reloading configuration...")
 
 	distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
-	proxy.RefreshMirrors()
+	if s.proxy != nil {
+		s.proxy.RefreshMirrors()
+	} else {
+		proxy.RefreshMirrors()
+	}
 
 	s.log.Info().Msg("configuration reload complete")
 }
@@ -424,27 +443,35 @@ func (s *Server) shutdown() error {
 // Daemon is the main entry point for starting the application daemon.
 // It validates the configuration, creates and starts the server, and handles
 // any startup errors. This function blocks until the server shuts down.
-func Daemon(flags *config.Config) {
-	// Use default logger for initial validation errors
+// Returns an error so the caller can decide how to exit; callers should not
+// use log.Fatal here because that bypasses tracing flushers and signal-driven
+// cleanup paths inside Server.
+func Daemon(flags *config.Config) error {
 	log := logger.Default()
 
 	if flags == nil {
-		log.Fatal().Msg("configuration cannot be nil")
+		return errNilConfig
 	}
 
 	if err := config.ValidateConfig(flags); err != nil {
-		log.Fatal().Err(err).Msg("invalid configuration")
+		return apperrors.Wrap(apperrors.ErrConfigInvalid, "invalid configuration", err)
 	}
 
-	// Use the provided configuration directly (no need to copy)
 	srv, err := NewServer(flags)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create server")
+		return wrapServerError("failed to create server", err)
+	}
+
+	// Surface a Warn when API auth is configured-off so operators noticing
+	// "/api/* is wide open" in audits aren't surprised.
+	if srv.authMiddleware != nil && !srv.authMiddleware.IsEnabled() {
+		log.Warn().Msg("API authentication is disabled (no API key configured)")
 	}
 
 	if err := srv.Start(); err != nil {
-		log.Fatal().Err(err).Msg("server error")
+		return wrapError("server error", err)
 	}
+	return nil
 }
 
 // Error handling helpers using the unified error system

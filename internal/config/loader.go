@@ -86,6 +86,16 @@ func defineFlags(flags *flag.FlagSet) {
 
 	// Security: API rate limit (0 = disabled)
 	flags.Int("api-rate-limit", DefaultAPIRateLimitPerMinute, "API requests per IP per minute (0=disabled)")
+	// Security: explicit toggle for API authentication.
+	// If APIKey is set this is auto-enabled; flag/ENV lets users force it off
+	// or enable a placeholder for forward-compatible deployments.
+	flags.Bool("enable-api-auth", false, "explicitly enable API authentication middleware")
+	// Security: API key for protected endpoints (also auto-enables auth)
+	flags.String("api-key", "", "API key for protected endpoints")
+	// Security: trusted proxies for honoring X-Forwarded-For (comma-separated CIDRs)
+	flags.String("trusted-proxies", "", "comma-separated CIDRs whose X-Forwarded-For is trusted by the API rate-limiter")
+	// Configuration file (only honored by ParseFlagsWithConfigFile)
+	flags.String("config", "", "path to YAML configuration file")
 
 	// Upstream: keep-alive to mirrors (default true)
 	flags.Bool("upstream-keep-alive", true, "enable HTTP keep-alive to upstream mirrors")
@@ -110,7 +120,7 @@ func ParseFlags() (*Config, error) {
 	}
 
 	// Build CLI configuration with defaults
-	config := buildCLIConfig(flags, DefaultHost, DefaultPort, DefaultCacheDir, DefaultCacheMaxSizeGB, DefaultCacheTTLHours, DefaultCacheCleanupIntervalMin)
+	config, _ := buildCLIConfig(flags, DefaultHost, DefaultPort, DefaultCacheDir, DefaultCacheMaxSizeGB, DefaultCacheTTLHours, DefaultCacheCleanupIntervalMin)
 
 	// Set mode (buildCLIConfig may have set it, but we ensure it's set here with validated value)
 	config.Mode = ModeToInt(modeName)
@@ -244,9 +254,10 @@ type YAMLConfig struct {
 	} `yaml:"tls"`
 
 	Security struct {
-		APIKey                string `yaml:"api_key"`
-		EnableAPIAuth         bool   `yaml:"enable_api_auth"`
-		APIRateLimitPerMinute int    `yaml:"api_rate_limit_per_minute"`
+		APIKey                string   `yaml:"api_key"`
+		EnableAPIAuth         bool     `yaml:"enable_api_auth"`
+		APIRateLimitPerMinute int      `yaml:"api_rate_limit_per_minute"`
+		TrustedProxies        []string `yaml:"trusted_proxies"`
 	} `yaml:"security"`
 
 	Mode                string `yaml:"mode"`
@@ -301,6 +312,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			APIKey:                yamlCfg.Security.APIKey,
 			EnableAPIAuth:         yamlCfg.Security.EnableAPIAuth,
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
+			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
 		},
 		DistributionsConfigPath: yamlCfg.DistributionsConfig,
 	}
@@ -373,6 +385,145 @@ func FindConfigFile() string {
 	}
 
 	return ""
+}
+
+// cliExplicit tracks which fields were explicitly set on the CLI / via ENV.
+// This lets MergeConfigsWithExplicit distinguish "user wrote false/0" from
+// "field defaulted to false/0", which the legacy MergeConfigs cannot.
+type cliExplicit struct {
+	Debug                 bool
+	CacheDir              bool
+	Mode                  bool
+	Listen                bool
+	UbuntuMirror          bool
+	UbuntuPortsMirror     bool
+	DebianMirror          bool
+	CentOSMirror          bool
+	AlpineMirror          bool
+	CacheMaxSize          bool
+	CacheTTL              bool
+	CacheCleanupInterval  bool
+	TLSEnabled            bool
+	TLSCertFile           bool
+	TLSKeyFile            bool
+	APIKey                bool
+	EnableAPIAuth         bool
+	APIRateLimitPerMinute bool
+	TrustedProxies        bool
+	UpstreamKeepAlive     bool
+	DistributionsConfig   bool
+}
+
+// flagOrEnvSet reports whether a CLI flag or its environment variable was
+// explicitly provided. We can't simply consult flag.Visit because the
+// configutil.Resolve* helpers fall back to ENV without flagging the flag
+// as visited; checking both sources mirrors what the resolver does.
+func flagOrEnvSet(flags *flag.FlagSet, name, env string) bool {
+	if flags != nil {
+		var seen bool
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name == name {
+				seen = true
+			}
+		})
+		if seen {
+			return true
+		}
+	}
+	if env != "" {
+		if _, ok := os.LookupEnv(env); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// MergeConfigsWithExplicit is like MergeConfigs but uses the explicit mask to
+// decide whether a zero/empty value in `override` should overwrite `base`.
+// Pass nil to fall back to MergeConfigs' permissive zero-value handling.
+func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
+	if ex == nil {
+		return MergeConfigs(base, override)
+	}
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+
+	result := *base
+
+	if ex.Debug {
+		result.Debug = override.Debug
+	}
+	if ex.CacheDir && override.CacheDir != "" {
+		result.CacheDir = override.CacheDir
+	}
+	if ex.Mode {
+		result.Mode = override.Mode
+	}
+	if ex.Listen && override.Listen != "" {
+		result.Listen = override.Listen
+	}
+
+	if ex.UbuntuMirror {
+		result.Mirrors.Ubuntu = override.Mirrors.Ubuntu
+	}
+	if ex.UbuntuPortsMirror {
+		result.Mirrors.UbuntuPorts = override.Mirrors.UbuntuPorts
+	}
+	if ex.DebianMirror {
+		result.Mirrors.Debian = override.Mirrors.Debian
+	}
+	if ex.CentOSMirror {
+		result.Mirrors.CentOS = override.Mirrors.CentOS
+	}
+	if ex.AlpineMirror {
+		result.Mirrors.Alpine = override.Mirrors.Alpine
+	}
+
+	if ex.CacheMaxSize {
+		result.Cache.MaxSize = override.Cache.MaxSize
+	}
+	if ex.CacheTTL {
+		result.Cache.TTL = override.Cache.TTL
+	}
+	if ex.CacheCleanupInterval {
+		result.Cache.CleanupInterval = override.Cache.CleanupInterval
+	}
+
+	if ex.TLSEnabled {
+		result.TLS.Enabled = override.TLS.Enabled
+	}
+	if ex.TLSCertFile && override.TLS.CertFile != "" {
+		result.TLS.CertFile = override.TLS.CertFile
+	}
+	if ex.TLSKeyFile && override.TLS.KeyFile != "" {
+		result.TLS.KeyFile = override.TLS.KeyFile
+	}
+
+	if ex.APIKey && override.Security.APIKey != "" {
+		result.Security.APIKey = override.Security.APIKey
+	}
+	if ex.EnableAPIAuth || ex.APIKey {
+		// Setting an API key implies enabling auth (preserves legacy behaviour).
+		result.Security.EnableAPIAuth = override.Security.EnableAPIAuth
+	}
+	if ex.APIRateLimitPerMinute {
+		result.Security.APIRateLimitPerMinute = override.Security.APIRateLimitPerMinute
+	}
+	if ex.TrustedProxies {
+		result.Security.TrustedProxies = append([]string(nil), override.Security.TrustedProxies...)
+	}
+	if ex.UpstreamKeepAlive {
+		result.UpstreamKeepAlive = override.UpstreamKeepAlive
+	}
+	if ex.DistributionsConfig && override.DistributionsConfigPath != "" {
+		result.DistributionsConfigPath = override.DistributionsConfigPath
+	}
+
+	return &result
 }
 
 // MergeConfigs merges two configurations, with values from 'override' taking precedence.
@@ -450,6 +601,9 @@ func MergeConfigs(base, override *Config) *Config {
 	if override.Security.APIRateLimitPerMinute > 0 {
 		result.Security.APIRateLimitPerMinute = override.Security.APIRateLimitPerMinute
 	}
+	if len(override.Security.TrustedProxies) > 0 {
+		result.Security.TrustedProxies = append([]string(nil), override.Security.TrustedProxies...)
+	}
 	if override.DistributionsConfigPath != "" {
 		result.DistributionsConfigPath = override.DistributionsConfigPath
 	}
@@ -464,12 +618,6 @@ func MergeConfigs(base, override *Config) *Config {
 func ParseFlagsWithConfigFile() (*Config, error) {
 	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
 	defineFlags(flags)
-
-	// Config file flag
-	flags.String("config", "", "path to YAML configuration file")
-
-	// Security configuration flags
-	flags.String("api-key", "", "API key for protected endpoints")
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
@@ -490,10 +638,11 @@ func ParseFlagsWithConfigFile() (*Config, error) {
 	}
 
 	// Build CLI/ENV configuration
-	cliConfig := buildCLIConfig(flags, "", "", "", 0, 0, 0)
+	cliConfig, ex := buildCLIConfig(flags, "", "", "", 0, 0, 0)
 
-	// Merge configurations: file config as base, CLI/ENV as override
-	config := MergeConfigs(fileConfig, cliConfig)
+	// Merge configurations: file config as base, CLI/ENV as override (honoring
+	// the explicit-set mask so users can override file/defaults with false/0).
+	config := MergeConfigsWithExplicit(fileConfig, cliConfig, ex)
 
 	// Apply defaults for any remaining unset values
 	config = applyDefaults(config)
@@ -508,7 +657,35 @@ func ParseFlagsWithConfigFile() (*Config, error) {
 
 // buildCLIConfig builds a Config from CLI flags and environment variables.
 // Default values are used when flags/env vars are not set.
-func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheDir string, defaultCacheMaxSizeGB int64, defaultCacheTTLHours, defaultCacheCleanupIntervalMin int) *Config {
+// The returned cliExplicit mask records which fields were explicitly set
+// (CLI flag or ENV) so MergeConfigsWithExplicit can honor false/0 overrides.
+func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheDir string, defaultCacheMaxSizeGB int64, defaultCacheTTLHours, defaultCacheCleanupIntervalMin int) (*Config, *cliExplicit) {
+	ex := &cliExplicit{
+		Debug:                 flagOrEnvSet(flags, "debug", EnvDebug),
+		CacheDir:              flagOrEnvSet(flags, "cachedir", EnvCacheDir),
+		Mode:                  flagOrEnvSet(flags, "mode", EnvMode),
+		UbuntuMirror:          flagOrEnvSet(flags, "ubuntu", EnvUbuntu),
+		UbuntuPortsMirror:     flagOrEnvSet(flags, "ubuntu-ports", EnvUbuntuPorts),
+		DebianMirror:          flagOrEnvSet(flags, "debian", EnvDebian),
+		CentOSMirror:          flagOrEnvSet(flags, "centos", EnvCentOS),
+		AlpineMirror:          flagOrEnvSet(flags, "alpine", EnvAlpine),
+		CacheMaxSize:          flagOrEnvSet(flags, "cache-max-size", EnvCacheMaxSize),
+		CacheTTL:              flagOrEnvSet(flags, "cache-ttl", EnvCacheTTL),
+		CacheCleanupInterval:  flagOrEnvSet(flags, "cache-cleanup-interval", EnvCacheCleanupInterval),
+		TLSEnabled:            flagOrEnvSet(flags, "tls", EnvTLSEnabled),
+		TLSCertFile:           flagOrEnvSet(flags, "tls-cert", EnvTLSCertFile),
+		TLSKeyFile:            flagOrEnvSet(flags, "tls-key", EnvTLSKeyFile),
+		APIKey:                flagOrEnvSet(flags, "api-key", EnvAPIKey),
+		EnableAPIAuth:         flagOrEnvSet(flags, "enable-api-auth", EnvEnableAPIAuth),
+		APIRateLimitPerMinute: flagOrEnvSet(flags, "api-rate-limit", EnvAPIRateLimitPerMinute),
+		TrustedProxies:        flagOrEnvSet(flags, "trusted-proxies", EnvTrustedProxies),
+		UpstreamKeepAlive:     flagOrEnvSet(flags, "upstream-keep-alive", EnvUpstreamKeepAlive),
+		DistributionsConfig:   flagOrEnvSet(flags, "distributions-config", EnvDistributionsConfig),
+	}
+	hostSet := flagOrEnvSet(flags, "host", EnvHost)
+	portSet := flagOrEnvSet(flags, "port", EnvPort)
+	ex.Listen = hostSet || portSet
+
 	host := configutil.ResolveString(flags, "host", EnvHost, defaultHost, true)
 	port := configutil.ResolveString(flags, "port", EnvPort, defaultPort, true)
 	debug := configutil.ResolveBool(flags, "debug", EnvDebug, false)
@@ -539,12 +716,24 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 
 	// Resolve security configurations
 	apiKey := configutil.ResolveString(flags, "api-key", EnvAPIKey, "", true)
-	enableAPIAuth := configutil.ResolveBool(flags, "api-key", EnvEnableAPIAuth, false)
+	// Use the dedicated bool flag/ENV for explicit toggle; previously this
+	// erroneously reused the "api-key" String flag name which never produced
+	// a usable bool value. Setting APIKey still implies enable=true below.
+	enableAPIAuth := configutil.ResolveBool(flags, "enable-api-auth", EnvEnableAPIAuth, false)
 	if apiKey != "" {
 		enableAPIAuth = true
 	}
 	apiRateLimitPerMinute := configutil.ResolveInt(flags, "api-rate-limit", EnvAPIRateLimitPerMinute, DefaultAPIRateLimitPerMinute, true)
 	upstreamKeepAlive := configutil.ResolveBool(flags, "upstream-keep-alive", EnvUpstreamKeepAlive, true)
+	trustedProxiesRaw := configutil.ResolveString(flags, "trusted-proxies", EnvTrustedProxies, "", true)
+	var trustedProxies []string
+	if trustedProxiesRaw != "" {
+		for _, p := range strings.Split(trustedProxiesRaw, ",") {
+			if v := strings.TrimSpace(p); v != "" {
+				trustedProxies = append(trustedProxies, v)
+			}
+		}
+	}
 
 	config := &Config{
 		Debug:             debug,
@@ -571,6 +760,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 			APIKey:                apiKey,
 			EnableAPIAuth:         enableAPIAuth,
 			APIRateLimitPerMinute: apiRateLimitPerMinute,
+			TrustedProxies:        trustedProxies,
 		},
 		DistributionsConfigPath: distributionsConfig,
 	}
@@ -596,10 +786,8 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 		}
 	}
 
-	return config
+	return config, ex
 }
-
-// applyDefaults applies default values to any unset configuration fields.
 func applyDefaults(config *Config) *Config {
 	if config == nil {
 		config = &Config{}

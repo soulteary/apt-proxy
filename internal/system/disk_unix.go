@@ -9,15 +9,22 @@ import (
 )
 
 // DiskAvailable returns the number of bytes available to the current user
-// in the current working directory's filesystem. Unix-only.
-func DiskAvailable() (uint64, error) {
-	var stat unix.Statfs_t
-	wd, err := os.Getwd()
-	if err != nil {
-		return 0, err
+// in the filesystem hosting the given path. When path is empty it falls
+// back to the current working directory (legacy behaviour). Unix-only.
+func DiskAvailable(path ...string) (uint64, error) {
+	target := ""
+	if len(path) > 0 && path[0] != "" {
+		target = path[0]
 	}
-	err = unix.Statfs(wd, &stat)
-	if err != nil {
+	if target == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return 0, err
+		}
+		target = wd
+	}
+	var stat unix.Statfs_t
+	if err := unix.Statfs(target, &stat); err != nil {
 		return 0, err
 	}
 	return uint64(stat.Bavail) * uint64(stat.Bsize), nil

@@ -137,6 +137,75 @@ func TestRewriteRequestByMode(t *testing.T) {
 	RewriteRequestByMode(req, rewriters, distro.TYPE_LINUX_DISTROS_UBUNTU)
 }
 
+// TestRewriteRequestByModePathPrefix ensures both Ubuntu and Debian
+// rewriters preserve the mirror's path prefix and append the matched suffix.
+// This guards against a regression where the Debian branch silently dropped
+// the mirror path prefix.
+func TestRewriteRequestByModePathPrefix(t *testing.T) {
+	cases := []struct {
+		name      string
+		mirror    string
+		mode      int
+		setMirror func(string)
+		reset     func()
+		path      string
+		wantHost  string
+		wantPath  string
+	}{
+		{
+			name:      "ubuntu with sub-path mirror",
+			mirror:    "http://mirror.example.com/repo/ubuntu/",
+			mode:      distro.TYPE_LINUX_DISTROS_UBUNTU,
+			setMirror: state.SetUbuntuMirror,
+			reset:     state.ResetUbuntuMirror,
+			path:      "/ubuntu/dists/jammy/Release",
+			wantHost:  "mirror.example.com",
+			wantPath:  "/repo/ubuntu/dists/jammy/Release",
+		},
+		{
+			name:      "debian with sub-path mirror",
+			mirror:    "http://mirror.example.com/repo/debian/",
+			mode:      distro.TYPE_LINUX_DISTROS_DEBIAN,
+			setMirror: state.SetDebianMirror,
+			reset:     state.ResetDebianMirror,
+			path:      "/debian/dists/bookworm/Release",
+			wantHost:  "mirror.example.com",
+			wantPath:  "/repo/debian/dists/bookworm/Release",
+		},
+		{
+			name:      "debian-security routed via security mirror",
+			mirror:    "http://security.example.com/debian-security/",
+			mode:      distro.TYPE_LINUX_DISTROS_DEBIAN,
+			setMirror: state.SetDebianMirror,
+			reset:     state.ResetDebianMirror,
+			path:      "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
+			wantHost:  "security.example.com",
+			wantPath:  "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.setMirror(tc.mirror)
+			defer tc.reset()
+
+			rewriters := CreateNewRewriters(tc.mode)
+			req, err := http.NewRequest("GET", "http://localhost"+tc.path, nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			RewriteRequestByMode(req, rewriters, tc.mode)
+
+			if req.URL.Host != tc.wantHost {
+				t.Errorf("Host = %q, want %q", req.URL.Host, tc.wantHost)
+			}
+			if req.URL.Path != tc.wantPath {
+				t.Errorf("Path = %q, want %q", req.URL.Path, tc.wantPath)
+			}
+		})
+	}
+}
+
 func TestRewriteRequestByModeNilRewriters(t *testing.T) {
 	req, _ := http.NewRequest("GET", "http://localhost/ubuntu/dists/jammy/Release", nil)
 	RewriteRequestByMode(req, nil, distro.TYPE_LINUX_DISTROS_UBUNTU)

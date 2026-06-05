@@ -1,3 +1,5 @@
+//go:build integration
+
 // Package integration provides end-to-end tests for apt-proxy functionality.
 package integration
 

@@ -45,12 +45,6 @@ type MirrorsRefreshResponse struct {
 	DurationMs int64  `json:"duration_ms"`
 }
 
-// ErrorResponse holds an error message for JSON responses
-type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message,omitempty"`
-}
-
 // WriteJSON writes a JSON response with proper encoding
 func WriteJSON(w http.ResponseWriter, statusCode int, data interface{}) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -58,11 +52,6 @@ func WriteJSON(w http.ResponseWriter, statusCode int, data interface{}) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
-}
-
-// WriteJSONError writes a JSON error response (plain message; for backward compatibility).
-func WriteJSONError(w http.ResponseWriter, statusCode int, errMsg string) {
-	_ = WriteJSON(w, statusCode, ErrorResponse{Error: errMsg})
 }
 
 // WriteAppError writes a structured AppError as HTTP JSON (code + message) for API consistency.

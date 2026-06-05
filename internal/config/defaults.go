@@ -27,6 +27,7 @@ const (
 	EnvAPIKey                = "APT_PROXY_API_KEY"
 	EnvEnableAPIAuth         = "APT_PROXY_ENABLE_API_AUTH"
 	EnvAPIRateLimitPerMinute = "APT_PROXY_API_RATE_LIMIT_PER_MINUTE"
+	EnvTrustedProxies        = "APT_PROXY_TRUSTED_PROXIES"
 
 	// Configuration file environment variable
 	EnvConfigFile = "APT_PROXY_CONFIG_FILE"

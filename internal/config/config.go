@@ -27,6 +27,10 @@ type SecurityConfig struct {
 	EnableAPIAuth bool `yaml:"enable_api_auth"`
 	// APIRateLimitPerMinute limits API requests per IP per minute (0 = disabled). Default 60.
 	APIRateLimitPerMinute int `yaml:"api_rate_limit_per_minute"`
+	// TrustedProxies is the list of CIDR networks (e.g. "10.0.0.0/8") whose
+	// X-Forwarded-For header is honored for the API rate-limit / IP-based
+	// audit fields. Leave empty to ignore XFF entirely (default secure).
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 // TLSConfig holds TLS/HTTPS configuration

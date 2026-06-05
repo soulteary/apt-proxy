@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strings"
 	"sync"
 
 	logger "github.com/soulteary/logger-kit"
@@ -262,11 +261,6 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	}
 
 	uri := r.URL.String()
-	if !rewriter.pattern.MatchString(uri) {
-		return
-	}
-
-	r.Header.Add("Content-Location", uri)
 	matches := rewriter.pattern.FindStringSubmatch(uri)
 	if len(matches) == 0 {
 		return
@@ -275,26 +269,13 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	queryRaw := matches[len(matches)-1]
 	unescapedQuery, err := url.PathUnescape(queryRaw)
 	if err != nil {
+		logger.Default().Debug().Err(err).Str("query", queryRaw).Msg("path unescape failed, using raw value")
 		unescapedQuery = queryRaw
 	}
 
 	r.URL.Scheme = rewriter.mirror.Scheme
 	r.URL.Host = rewriter.mirror.Host
-	if mode == distro.TYPE_LINUX_DISTROS_DEBIAN {
-		slugs_query := strings.Split(r.URL.Path, "/")
-		slugs_mirror := strings.Split(rewriter.mirror.Path, "/")
-		slugs_mirror[0] = slugs_query[0]
-		r.URL.Path = strings.Join(slugs_query, "/")
-		return
-	}
-	// Use templates for path construction
-	path, err := mirrors.BuildPathWithQuery(rewriter.mirror.Path, unescapedQuery)
-	if err != nil {
-		// Fallback to concatenation if template fails
-		r.URL.Path = rewriter.mirror.Path + unescapedQuery
-	} else {
-		r.URL.Path = path
-	}
+	r.URL.Path = rewriter.mirror.Path + unescapedQuery
 }
 
 // MatchingRule finds a matching rule for the given path

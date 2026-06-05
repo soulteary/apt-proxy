@@ -7,45 +7,48 @@ on:
       - 'main'
     tags:
       - 'v*'
+
+permissions:
+  contents: read
+
 env:
   GO_VERSION: "1.26"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # GoReleaser needs write access on tag pushes
+      packages: write   # in case images are published to GHCR
+      id-token: write   # for OIDC / SBOM signing
     env:
       GO111MODULE: on
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@53851d14592bedcffcf25ea515637cff71ef929a # v3.3.0
 
-      - name: Cache Go modules
-        uses: actions/cache@v5
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
 
       - name: Run go vet
         run: go vet ./...
 
       - name: Tests with coverage
         run: |
-          go mod tidy
-          go test -v -coverprofile=coverage.out -covermode=atomic ./...
-          go tool cover -func=coverage.out
+          go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+          go tool cover -func=coverage.out | tail -n 1
 
       - name: Check coverage threshold
         run: |
@@ -55,27 +58,22 @@ jobs:
             echo "Failed to extract coverage percentage"
             exit 1
           fi
-          # Check if coverage is below threshold (80%)
           THRESHOLD=80
-          if [ $(echo "$COVERAGE < $THRESHOLD" | bc -l) -eq 1 ]; then
-            echo "Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
-            # Warning only, don't fail the build for now
-            echo "::warning::Coverage is below ${THRESHOLD}%"
+          if awk -v c="$COVERAGE" -v t="$THRESHOLD" 'BEGIN { exit !(c < t) }'; then
+            echo "::warning::Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
           else
             echo "Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"
           fi
 
-      # Login against a Docker registry except on PR
-      # https://github.com/docker/login-action
       - name: Login to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/')
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6.3.0
         if: success() && startsWith(github.ref, 'refs/tags/')
         with:
           version: latest

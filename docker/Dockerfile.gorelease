@@ -1,8 +1,14 @@
-FROM debian:bullseye as certs
-RUN apt update && apt install -y ca-certificates
+# Distroless static base ships ca-certificates + tzdata and runs as nonroot uid 65532.
+# The image is rebuilt by GoReleaser per arch; the binary is provided by the goreleaser context.
+FROM gcr.io/distroless/static-debian12:nonroot
 
-FROM scratch
-COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+LABEL org.opencontainers.image.source="https://github.com/soulteary/apt-proxy"
+
 COPY apt-proxy /usr/bin/apt-proxy
+
+USER nonroot:nonroot
+WORKDIR /var/cache/apt-proxy
+
 EXPOSE 3142/tcp
 ENTRYPOINT ["/usr/bin/apt-proxy"]
+CMD ["--cachedir", "/var/cache/apt-proxy"]

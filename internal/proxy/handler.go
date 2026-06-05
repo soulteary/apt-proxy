@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"regexp"
+	"sync"
 	"time"
 
 	logger "github.com/soulteary/logger-kit"
@@ -44,6 +45,11 @@ var (
 	defaultTransport *http.Transport
 	// retryableTransport wraps defaultTransport with retry logic and tracing
 	retryableTransport *RetryableTransport
+	// rewritersMu serializes the package-level rewriters pointer swap.
+	// RewriteRequestByMode reads the value of `rewriters` while holding it as
+	// a parameter, so this lock only protects writers (init / refresh) racing
+	// each other (e.g. SIGHUP + /api/mirrors/refresh).
+	rewritersMu sync.Mutex
 )
 
 func init() {
@@ -79,6 +85,12 @@ type PackageStruct struct {
 	Rules    []distro.Rule  // Caching rules for different package types
 	CacheDir string         // Cache directory path for statistics
 	log      *logger.Logger // Structured logger
+	// rewriters is the per-instance URL rewriter set. It mirrors the package
+	// global so existing tests/utilities keep working, but ServeHTTP prefers
+	// the instance field; concurrent Servers in the same process can hold
+	// independent rewriters this way.
+	rewriters *URLRewriters
+	mode      int
 }
 
 // responseWriter wraps http.ResponseWriter to inject cache control headers
@@ -91,11 +103,16 @@ type responseWriter struct {
 // createPackageStruct initializes a PackageStruct with the given rewriter factory.
 func createPackageStruct(cacheDir string, log *logger.Logger, rewriterFactory func(int) *URLRewriters) *PackageStruct {
 	mode := state.GetProxyMode()
+	rewritersMu.Lock()
 	rewriters = rewriterFactory(mode)
+	current := rewriters
+	rewritersMu.Unlock()
 	return &PackageStruct{
-		Rules:    GetRewriteRulesByMode(mode),
-		CacheDir: cacheDir,
-		log:      log,
+		Rules:     GetRewriteRulesByMode(mode),
+		CacheDir:  cacheDir,
+		log:       log,
+		rewriters: current,
+		mode:      mode,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
 			Transport: retryableTransport,
@@ -119,8 +136,8 @@ func CreatePackageStructRouterAsync(cacheDir string, log *logger.Logger) *Packag
 // HandleHomePage serves the home page with statistics
 func HandleHomePage(rw http.ResponseWriter, r *http.Request, cacheDir string) {
 	tpl, status := RenderInternalUrls("/", cacheDir)
-	rw.WriteHeader(status)
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	rw.WriteHeader(status)
 	if _, err := io.WriteString(rw, tpl); err != nil {
 		logger.Error().Err(err).Msg("Error rendering home page")
 	}
@@ -210,7 +227,11 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *distro.Rule) {
 		return
 	}
 	before := r.URL.String()
-	RewriteRequestByMode(r, rewriters, rule.OS)
+	rw := ap.rewriters
+	if rw == nil {
+		rw = rewriters
+	}
+	RewriteRequestByMode(r, rw, rule.OS)
 
 	if r.URL != nil {
 		r.Host = r.URL.Host
@@ -219,6 +240,17 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *distro.Rule) {
 			Str("to", r.URL.String()).
 			Msg("rewrote request URL")
 	}
+}
+
+// RefreshMirrors refreshes this PackageStruct's mirror configuration.
+// Use this method on a PackageStruct instance instead of the package-level
+// proxy.RefreshMirrors() to avoid touching the global state shared with
+// other instances or tests.
+func (ap *PackageStruct) RefreshMirrors() {
+	if ap == nil || ap.rewriters == nil {
+		return
+	}
+	RefreshRewriters(ap.rewriters, ap.mode)
 }
 
 // WriteHeader implements http.ResponseWriter interface. It injects cache control
@@ -239,8 +271,15 @@ func (rw *responseWriter) shouldSetCacheControl(status int) bool {
 }
 
 // RefreshMirrors refreshes the mirror configurations for all distributions.
-// This is typically called in response to a SIGHUP signal for hot reload.
+// This is typically called in response to a SIGHUP signal for hot reload,
+// and from the /api/mirrors/refresh endpoint. The mutex serializes concurrent
+// refreshes (the rewriter pointer swap inside RefreshRewriters has its own
+// finer-grained lock; this outer lock prevents two refresh runs from racing
+// to clear the benchmark cache and re-elect mirrors at the same time).
 func RefreshMirrors() {
 	mode := state.GetProxyMode()
-	RefreshRewriters(rewriters, mode)
+	rewritersMu.Lock()
+	current := rewriters
+	rewritersMu.Unlock()
+	RefreshRewriters(current, mode)
 }

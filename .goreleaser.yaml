@@ -1,15 +1,28 @@
+version: 2
+
 project_name: apt-proxy
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
 
 builds:
   - <<: &build_defaults
       env:
         - CGO_ENABLED=0
+      flags:
+        - -trimpath
       ldflags:
-        - -w -s -X "github.com/soulteary/apt-proxy/internal/cli.Version={{ .Tag }}"
+        - -s -w
+        - -X "main.version={{ .Version }}"
+        - -X "main.commit={{ .FullCommit }}"
+        - -X "main.date={{ .Date }}"
       main: ./cmd/apt-proxy
+      mod_timestamp: '{{ .CommitTimestamp }}'
     id: macos
-    goos: [ darwin ]
-    goarch: [ amd64, arm64 ]
+    goos: [darwin]
+    goarch: [amd64, arm64]
 
   - <<: *build_defaults
     id: linux
@@ -19,8 +32,82 @@ builds:
       - "7"
       - "6"
 
-dockers:
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
 
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+sboms:
+  - id: archive
+    artifacts: archive
+  - id: source
+    artifacts: source
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - 'Merge pull request'
+      - 'Merge branch'
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Others
+      order: 999
+
+nfpms:
+  - id: packages
+    package_name: apt-proxy
+    vendor: soulteary
+    homepage: https://github.com/soulteary/apt-proxy
+    maintainer: soulteary <soulteary@gmail.com>
+    description: Caching HTTP proxy for APT/YUM/Alpine package mirrors.
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/apt-proxy/LICENSE
+        file_info:
+          mode: 0644
+
+dockers:
   - image_templates:
       - "soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-amd64"
@@ -37,7 +124,7 @@ dockers:
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.licenses=Apache-v2"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
 
   - image_templates:
       - "soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
@@ -57,7 +144,7 @@ dockers:
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.licenses=Apache-v2"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
 
   - image_templates:
       - "soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
@@ -77,7 +164,7 @@ dockers:
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.licenses=Apache-v2"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
 
 docker_manifests:
   - name_template: "soulteary/apt-proxy:{{ .Tag }}"
@@ -85,11 +172,17 @@ docker_manifests:
       - "soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
-    skip_push: "false"
 
   - name_template: "soulteary/apt-proxy:latest"
     image_templates:
       - "soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
-    skip_push: "false"
+
+release:
+  github:
+    owner: soulteary
+    name: apt-proxy
+  draft: false
+  prerelease: auto
+  mode: append

@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -274,32 +275,86 @@ func TestWrapFunc(t *testing.T) {
 	}
 }
 
-// TestAuthResponseWriter tests the AuthResponseWriter type.
-func TestAuthResponseWriter(t *testing.T) {
-	rr := httptest.NewRecorder()
-	arw := &AuthResponseWriter{ResponseWriter: rr}
+// TestAuthMiddlewareBearerCaseInsensitive ensures the Authorization scheme
+// match is case-insensitive (RFC 7235 §2.1).
+func TestAuthMiddlewareBearerCaseInsensitive(t *testing.T) {
+	middleware := NewAuthMiddleware(AuthConfig{APIKey: "secret"})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	wrapped := middleware.Wrap(handler)
 
-	// Test WriteHeader
-	arw.WriteHeader(http.StatusCreated)
-	if arw.status != http.StatusCreated {
-		t.Errorf("expected status %d, got %d", http.StatusCreated, arw.status)
+	cases := []string{
+		"Bearer secret",
+		"bearer secret",
+		"BEARER secret",
+		"BeArEr secret",
 	}
-	if !arw.written {
-		t.Error("expected written to be true after WriteHeader")
+	for _, h := range cases {
+		t.Run(h, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+			req.Header.Set("Authorization", h)
+			rr := httptest.NewRecorder()
+			wrapped.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Errorf("Authorization=%q expected 200, got %d", h, rr.Code)
+			}
+		})
 	}
+}
 
-	// Reset for Write test
-	rr2 := httptest.NewRecorder()
-	arw2 := &AuthResponseWriter{ResponseWriter: rr2}
+// TestAuthMiddlewareWWWAuthenticate ensures 401 responses include a
+// WWW-Authenticate hint so HTTP clients know how to authenticate.
+func TestAuthMiddlewareWWWAuthenticate(t *testing.T) {
+	middleware := NewAuthMiddleware(AuthConfig{APIKey: "secret"})
+	wrapped := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	n, err := arw2.Write([]byte("test"))
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if n != 4 {
-		t.Errorf("expected 4 bytes written, got %d", n)
-	}
-	if !arw2.written {
-		t.Error("expected written to be true after Write")
+	t.Run("missing", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+		rr := httptest.NewRecorder()
+		wrapped.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401, got %d", rr.Code)
+		}
+		if got := rr.Header().Get("WWW-Authenticate"); got == "" {
+			t.Errorf("expected WWW-Authenticate header to be set, got empty")
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+		req.Header.Set("X-API-Key", "wrong")
+		rr := httptest.NewRecorder()
+		wrapped.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401, got %d", rr.Code)
+		}
+		got := rr.Header().Get("WWW-Authenticate")
+		if got == "" || !strings.Contains(got, "invalid_token") {
+			t.Errorf("expected WWW-Authenticate with invalid_token hint, got %q", got)
+		}
+	})
+}
+
+// TestAuthMiddlewareDifferentLengthKeys ensures keys of differing lengths are
+// rejected (and the comparison goes through the fixed-length digest path).
+func TestAuthMiddlewareDifferentLengthKeys(t *testing.T) {
+	middleware := NewAuthMiddleware(AuthConfig{APIKey: "the-real-key-12345"})
+	wrapped := middleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, k := range []string{"x", "the-real-key-1234", "the-real-key-123456", ""} {
+		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+		if k != "" {
+			req.Header.Set("X-API-Key", k)
+		}
+		rr := httptest.NewRecorder()
+		wrapped.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("key %q expected 401, got %d", k, rr.Code)
+		}
 	}
 }

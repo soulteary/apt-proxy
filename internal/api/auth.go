@@ -2,6 +2,7 @@
 package api
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"net/http"
 	"strings"
@@ -32,6 +33,11 @@ type AuthConfig struct {
 // AuthMiddleware provides API key authentication for protected endpoints.
 type AuthMiddleware struct {
 	config AuthConfig
+	// expectedHash is the SHA-256 hash of the configured API key. We compare
+	// the SHA-256 of the incoming key against this digest with ConstantTimeCompare,
+	// so the comparison runs over a fixed-length input regardless of the
+	// attacker-controlled key length (avoids leaking length via timing).
+	expectedHash [sha256.Size]byte
 }
 
 // NewAuthMiddleware creates a new AuthMiddleware with the provided configuration.
@@ -40,9 +46,11 @@ func NewAuthMiddleware(config AuthConfig) *AuthMiddleware {
 	if config.HeaderName == "" {
 		config.HeaderName = "X-API-Key"
 	}
-	return &AuthMiddleware{
-		config: config,
+	m := &AuthMiddleware{config: config}
+	if config.APIKey != "" {
+		m.expectedHash = sha256.Sum256([]byte(config.APIKey))
 	}
+	return m
 }
 
 // Wrap wraps an http.Handler with API key authentication.
@@ -59,13 +67,17 @@ func (m *AuthMiddleware) Wrap(next http.Handler) http.Handler {
 
 		if key == "" {
 			m.logAuthFailure(r, "missing API key")
+			w.Header().Set("WWW-Authenticate", `Bearer realm="apt-proxy"`)
 			WriteAppError(w, apperrors.AuthError(apperrors.ErrAuthRequired, "API key required"))
 			return
 		}
 
-		// Use constant-time comparison to prevent timing attacks
+		// Use constant-time SHA-256 digest comparison to prevent timing attacks
+		// (digests are fixed-length so the comparison length doesn't depend on
+		// attacker input).
 		if !m.validateAPIKey(key) {
 			m.logAuthFailure(r, "invalid API key")
+			w.Header().Set("WWW-Authenticate", `Bearer realm="apt-proxy", error="invalid_token"`)
 			WriteAppError(w, apperrors.AuthError(apperrors.ErrAuthInvalid, "Invalid API key"))
 			return
 		}
@@ -81,6 +93,7 @@ func (m *AuthMiddleware) WrapFunc(next http.HandlerFunc) http.HandlerFunc {
 
 // extractAPIKey extracts the API key from the request.
 // It checks the configured header first, then the query parameter if allowed.
+// Bearer scheme matching is case-insensitive per RFC 7235.
 func (m *AuthMiddleware) extractAPIKey(r *http.Request) string {
 	// Check header first
 	key := r.Header.Get(m.config.HeaderName)
@@ -88,10 +101,18 @@ func (m *AuthMiddleware) extractAPIKey(r *http.Request) string {
 		return strings.TrimSpace(key)
 	}
 
-	// Check Authorization header with Bearer token
+	// Check Authorization header with Bearer token (RFC 7235: scheme is
+	// case-insensitive, e.g. "Bearer", "bearer", "BEARER").
 	authHeader := r.Header.Get("Authorization")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	if authHeader != "" {
+		// Split into scheme + credential without allocating a slice; index of
+		// the first space.
+		if idx := strings.IndexByte(authHeader, ' '); idx > 0 {
+			scheme := authHeader[:idx]
+			if strings.EqualFold(scheme, "Bearer") {
+				return strings.TrimSpace(authHeader[idx+1:])
+			}
+		}
 	}
 
 	// Check query parameter if allowed
@@ -105,9 +126,13 @@ func (m *AuthMiddleware) extractAPIKey(r *http.Request) string {
 	return ""
 }
 
-// validateAPIKey validates the provided API key using constant-time comparison.
+// validateAPIKey validates the provided API key using SHA-256 + constant-time
+// comparison. Hashing first ensures the comparison runs over a fixed-length
+// digest rather than a length controlled by the request, so timing cannot
+// reveal the configured key's length.
 func (m *AuthMiddleware) validateAPIKey(key string) bool {
-	return subtle.ConstantTimeCompare([]byte(key), []byte(m.config.APIKey)) == 1
+	got := sha256.Sum256([]byte(key))
+	return subtle.ConstantTimeCompare(got[:], m.expectedHash[:]) == 1
 }
 
 // logAuthFailure logs an authentication failure event.
@@ -134,24 +159,4 @@ func RequireAuth(apiKey string, next http.HandlerFunc) http.HandlerFunc {
 		APIKey: apiKey,
 	})
 	return middleware.WrapFunc(next)
-}
-
-// AuthResponseWriter wraps http.ResponseWriter to track if a response has been written.
-type AuthResponseWriter struct {
-	http.ResponseWriter
-	written bool
-	status  int
-}
-
-// WriteHeader captures the status code and marks the response as written.
-func (w *AuthResponseWriter) WriteHeader(status int) {
-	w.status = status
-	w.written = true
-	w.ResponseWriter.WriteHeader(status)
-}
-
-// Write marks the response as written and writes the data.
-func (w *AuthResponseWriter) Write(data []byte) (int, error) {
-	w.written = true
-	return w.ResponseWriter.Write(data)
 }

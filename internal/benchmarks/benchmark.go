@@ -163,7 +163,15 @@ func singleBenchmark(ctx context.Context, client *http.Client, url string) (time
 	return time.Since(start), nil
 }
 
-// GetTheFastestMirror finds the fastest responding mirror from the provided list
+// MaxBenchmarkConcurrency caps how many mirror benchmarks run in parallel.
+// Mirror lists can have 50+ entries; spawning that many concurrent TCP
+// connections wastes resources and can trip rate limits on shared CDNs.
+const MaxBenchmarkConcurrency = 8
+
+// GetTheFastestMirror finds the fastest responding mirror from the provided list.
+// Concurrency is capped at MaxBenchmarkConcurrency. Once `maxResults` valid
+// results are collected, the parent context is cancelled so in-flight
+// benchmarks abort promptly instead of running to completion.
 func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	log := logger.Default()
 	ctx, cancel := context.WithTimeout(context.Background(), BenchmarkDetectTimeout)
@@ -178,11 +186,21 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 
 	log.Info().Int("count", len(mirrors)).Msg("starting benchmark for mirrors")
 
-	// Launch benchmarks in parallel
+	// Concurrency-limit semaphore. When ctx is cancelled (e.g. enough results
+	// were collected), workers that haven't started yet bail out cheaply.
+	sem := make(chan struct{}, MaxBenchmarkConcurrency)
+
 	for _, url := range mirrors {
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+
 			duration, err := Benchmark(ctx, u, testURL, BenchmarkMaxTries)
 			if err != nil {
 				errs <- err
@@ -192,18 +210,18 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 		}(url)
 	}
 
-	// Close results channel when all goroutines complete
 	go func() {
 		wg.Wait()
 		close(results)
 		close(errs)
 	}()
 
-	// Collect and sort results
 	var collectedResults Results
 	for result := range results {
 		collectedResults = append(collectedResults, result)
 		if len(collectedResults) >= maxResults {
+			// Signal the remaining workers to stop ASAP.
+			cancel()
 			break
 		}
 	}
@@ -224,13 +242,6 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	log.Info().Int("valid_results", len(collectedResults)).Msg("completed benchmark")
 
 	return collectedResults[0].URL, nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // GetTheFastestMirrorWithCache finds the fastest mirror, using cache if available.

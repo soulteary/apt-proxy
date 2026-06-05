@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"sync"
 
+	logger "github.com/soulteary/logger-kit"
+
 	"github.com/soulteary/apt-proxy/internal/distro"
 	mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
 )
@@ -41,6 +43,11 @@ func (m *MirrorState) Set(input string) {
 
 	url, err := url.Parse(mirror)
 	if err != nil {
+		logger.Default().Warn().
+			Err(err).
+			Int("dist_type", m.distType).
+			Str("input", input).
+			Msg("invalid mirror URL, clearing state")
 		m.url = nil
 		return
 	}
