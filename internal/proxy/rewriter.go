@@ -36,23 +36,23 @@ type URLRewriters struct {
 // Adding a new distro: append to distroModesOrder, add modeRules entry, add case in rewriterField.
 var (
 	distroModesOrder = []int{
-		distro.TYPE_LINUX_DISTROS_UBUNTU,
-		distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS,
-		distro.TYPE_LINUX_DISTROS_DEBIAN,
-		distro.TYPE_LINUX_DISTROS_CENTOS,
-		distro.TYPE_LINUX_DISTROS_ALPINE,
+		distro.TypeUbuntu,
+		distro.TypeUbuntuPorts,
+		distro.TypeDebian,
+		distro.TypeCentOS,
+		distro.TypeAlpine,
 	}
 	modeRules = map[int][]distro.Rule{
-		distro.TYPE_LINUX_DISTROS_UBUNTU:       distro.UBUNTU_DEFAULT_CACHE_RULES,
-		distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS: distro.UBUNTU_PORTS_DEFAULT_CACHE_RULES,
-		distro.TYPE_LINUX_DISTROS_DEBIAN:       distro.DEBIAN_DEFAULT_CACHE_RULES,
-		distro.TYPE_LINUX_DISTROS_CENTOS:       distro.CENTOS_DEFAULT_CACHE_RULES,
-		distro.TYPE_LINUX_DISTROS_ALPINE:       distro.ALPINE_DEFAULT_CACHE_RULES,
+		distro.TypeUbuntu:      distro.UbuntuDefaultCacheRules,
+		distro.TypeUbuntuPorts: distro.UbuntuPortsDefaultCacheRules,
+		distro.TypeDebian:      distro.DebianDefaultCacheRules,
+		distro.TypeCentOS:      distro.CentosDefaultCacheRules,
+		distro.TypeAlpine:      distro.AlpineDefaultCacheRules,
 	}
 )
 
 func modesToInit(mode int) []int {
-	if mode == distro.TYPE_LINUX_ALL_DISTROS {
+	if mode == distro.TypeAllDistros {
 		return distroModesOrder
 	}
 	return []int{mode}
@@ -65,19 +65,19 @@ type rewriterConfigEntry struct {
 }
 
 var rewriterConfigByMode = map[int]rewriterConfigEntry{
-	distro.TYPE_LINUX_DISTROS_UBUNTU:       {state.GetUbuntuMirror, "Ubuntu"},
-	distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS: {state.GetUbuntuPortsMirror, "Ubuntu Ports"},
-	distro.TYPE_LINUX_DISTROS_DEBIAN:       {state.GetDebianMirror, "Debian"},
-	distro.TYPE_LINUX_DISTROS_CENTOS:       {state.GetCentOSMirror, "CentOS"},
-	distro.TYPE_LINUX_DISTROS_ALPINE:       {state.GetAlpineMirror, "Alpine"},
+	distro.TypeUbuntu:      {state.GetUbuntuMirror, "Ubuntu"},
+	distro.TypeUbuntuPorts: {state.GetUbuntuPortsMirror, "Ubuntu Ports"},
+	distro.TypeDebian:      {state.GetDebianMirror, "Debian"},
+	distro.TypeCentOS:      {state.GetCentOSMirror, "CentOS"},
+	distro.TypeAlpine:      {state.GetAlpineMirror, "Alpine"},
 }
 
 var rewriterFieldByMode = map[int]func(*URLRewriters) **URLRewriter{
-	distro.TYPE_LINUX_DISTROS_UBUNTU:       func(r *URLRewriters) **URLRewriter { return &r.Ubuntu },
-	distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS: func(r *URLRewriters) **URLRewriter { return &r.UbuntuPorts },
-	distro.TYPE_LINUX_DISTROS_DEBIAN:       func(r *URLRewriters) **URLRewriter { return &r.Debian },
-	distro.TYPE_LINUX_DISTROS_CENTOS:       func(r *URLRewriters) **URLRewriter { return &r.Centos },
-	distro.TYPE_LINUX_DISTROS_ALPINE:       func(r *URLRewriters) **URLRewriter { return &r.Alpine },
+	distro.TypeUbuntu:      func(r *URLRewriters) **URLRewriter { return &r.Ubuntu },
+	distro.TypeUbuntuPorts: func(r *URLRewriters) **URLRewriter { return &r.UbuntuPorts },
+	distro.TypeDebian:      func(r *URLRewriters) **URLRewriter { return &r.Debian },
+	distro.TypeCentOS:      func(r *URLRewriters) **URLRewriter { return &r.Centos },
+	distro.TypeAlpine:      func(r *URLRewriters) **URLRewriter { return &r.Alpine },
 }
 
 func rewriterField(r *URLRewriters, mode int) **URLRewriter {

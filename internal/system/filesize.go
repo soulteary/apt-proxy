@@ -3,7 +3,6 @@ package system
 import (
 	"fmt"
 	"io/fs"
-	"math"
 	"path/filepath"
 )
 
@@ -25,20 +24,10 @@ func DirSize(path string) (uint64, error) {
 		size += info.Size()
 		return nil
 	})
-	return uint64(size), err
-}
-
-func fileSizeRound(val float64, roundOn float64, places int) float64 {
-	var round float64
-	pow := math.Pow(10, float64(places))
-	digit := pow * val
-	_, div := math.Modf(digit)
-	if div >= roundOn {
-		round = math.Ceil(digit)
-	} else {
-		round = math.Floor(digit)
+	if size < 0 {
+		size = 0
 	}
-	return round / pow
+	return uint64(size), err
 }
 
 // ByteCountDecimal formats b as human-readable size (1000-based: kB, MB, …).

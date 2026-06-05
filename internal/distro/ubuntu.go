@@ -5,15 +5,15 @@ import (
 )
 
 const (
-	UBUNTU_GEO_MIRROR_API = "http://mirrors.ubuntu.com/mirrors.txt"
-	UBUNTU_BENCHMARK_URL  = "dists/noble/main/binary-amd64/Release"
+	UbuntuGeoMirrorAPI = "http://mirrors.ubuntu.com/mirrors.txt"
+	UbuntuBenchmarkURL = "dists/noble/main/binary-amd64/Release"
 )
 
-var UBUNTU_HOST_PATTERN = regexp.MustCompile(`/ubuntu/(.+)$`)
+var UbuntuHostPattern = regexp.MustCompile(`/ubuntu/(.+)$`)
 
 // http://mirrors.ubuntu.com/mirrors.txt 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol
-var UBUNTU_OFFICIAL_MIRRORS = []string{
+var UbuntuOfficialMirrors = []string{
 	"mirrors.cn99.com/ubuntu/",
 	"mirrors.tuna.tsinghua.edu.cn/ubuntu/",
 	"mirrors.cnnic.cn/ubuntu/",
@@ -40,22 +40,22 @@ var UBUNTU_OFFICIAL_MIRRORS = []string{
 	"http://cn.archive.ubuntu.com/ubuntu/",
 }
 
-var UBUNTU_CUSTOM_MIRRORS = []string{
+var UbuntuCustomMirrors = []string{
 	"mirrors.163.com/ubuntu/",
 }
 
-var BUILDIN_UBUNTU_MIRRORS = GenerateBuildInList(UBUNTU_OFFICIAL_MIRRORS, UBUNTU_CUSTOM_MIRRORS)
+var BuiltinUbuntuMirrors = GenerateBuildInList(UbuntuOfficialMirrors, UbuntuCustomMirrors)
 
-var UBUNTU_DEFAULT_CACHE_RULES = []Rule{
-	{Pattern: regexp.MustCompile(`deb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`udeb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`InRelease$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`DiffIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`PackagesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`Packages\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`SourcesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`Sources\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`Release(\.gpg)?$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`Translation-(en|fr)\.(gz|bz2|bzip2|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
-	{Pattern: regexp.MustCompile(`\/by-hash\/`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU},
+var UbuntuDefaultCacheRules = []Rule{
+	{Pattern: regexp.MustCompile(`deb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`udeb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`InRelease$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`DiffIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`PackagesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`Packages\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`SourcesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`Sources\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`Release(\.gpg)?$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`Translation-(en|fr)\.(gz|bz2|bzip2|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
+	{Pattern: regexp.MustCompile(`\/by-hash\/`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntu},
 }

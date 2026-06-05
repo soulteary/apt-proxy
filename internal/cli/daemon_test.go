@@ -59,7 +59,7 @@ func TestNewServer(t *testing.T) {
 			cfg: &config.Config{
 				Debug:    false,
 				CacheDir: tmpDir,
-				Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+				Mode:     distro.TypeAllDistros,
 				Listen:   "127.0.0.1:0",
 			},
 			wantErr: false,
@@ -69,7 +69,7 @@ func TestNewServer(t *testing.T) {
 			cfg: &config.Config{
 				Debug:    true,
 				CacheDir: tmpDir,
-				Mode:     distro.TYPE_LINUX_DISTROS_UBUNTU,
+				Mode:     distro.TypeUbuntu,
 				Listen:   "127.0.0.1:0",
 			},
 			wantErr: false,
@@ -106,7 +106,7 @@ func TestServerInitialize(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -151,7 +151,7 @@ func TestServerCreateRouter(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -180,7 +180,7 @@ func TestServerStartAndShutdown(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0", // Use port 0 to get a random available port
 	}
 
@@ -239,7 +239,7 @@ func TestCacheDirCreation(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: cacheDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -273,7 +273,7 @@ func TestHealthEndpoints(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -316,25 +316,7 @@ func TestHealthEndpoints(t *testing.T) {
 	}
 }
 
-// responseRecorder is a simple http.ResponseWriter for testing
-type responseRecorder struct {
-	headers    http.Header
-	body       []byte
-	statusCode int
-}
-
-func (rr *responseRecorder) Header() http.Header {
-	return rr.headers
-}
-
-func (rr *responseRecorder) Write(b []byte) (int, error) {
-	rr.body = append(rr.body, b...)
-	return len(b), nil
-}
-
-func (rr *responseRecorder) WriteHeader(statusCode int) {
-	rr.statusCode = statusCode
-}
+// responseRecorder removed: unused in tests.
 
 func TestMirrorConfig(t *testing.T) {
 	// Setup mock mirrors to avoid network requests
@@ -351,7 +333,7 @@ func TestMirrorConfig(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 		Mirrors: config.MirrorConfig{
 			Ubuntu:      "https://mirrors.example.com/ubuntu/",
@@ -387,7 +369,7 @@ func TestServerReload(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -425,7 +407,7 @@ func TestCacheStatsAPI(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -516,7 +498,7 @@ func TestCachePurgeAPI(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -603,7 +585,7 @@ func TestCacheCleanupAPI(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 
@@ -692,7 +674,7 @@ func TestMirrorsRefreshAPI(t *testing.T) {
 	cfg := &config.Config{
 		Debug:    false,
 		CacheDir: tmpDir,
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
 	}
 

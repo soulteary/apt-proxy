@@ -33,11 +33,11 @@ func getHostPatternMap() map[*regexp.Regexp][]distro.Rule {
 }
 
 var defaultHostPatternMap = map[*regexp.Regexp][]distro.Rule{
-	distro.UBUNTU_HOST_PATTERN:       distro.UBUNTU_DEFAULT_CACHE_RULES,
-	distro.UBUNTU_PORTS_HOST_PATTERN: distro.UBUNTU_PORTS_DEFAULT_CACHE_RULES,
-	distro.DEBIAN_HOST_PATTERN:       distro.DEBIAN_DEFAULT_CACHE_RULES,
-	distro.CENTOS_HOST_PATTERN:       distro.CENTOS_DEFAULT_CACHE_RULES,
-	distro.ALPINE_HOST_PATTERN:       distro.ALPINE_DEFAULT_CACHE_RULES,
+	distro.UbuntuHostPattern:      distro.UbuntuDefaultCacheRules,
+	distro.UbuntuPortsHostPattern: distro.UbuntuPortsDefaultCacheRules,
+	distro.DebianHostPattern:      distro.DebianDefaultCacheRules,
+	distro.CentosHostPattern:      distro.CentosDefaultCacheRules,
+	distro.AlpineHostPattern:      distro.AlpineDefaultCacheRules,
 }
 
 var (

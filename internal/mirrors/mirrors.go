@@ -7,8 +7,8 @@ import (
 	"github.com/soulteary/apt-proxy/internal/distro"
 )
 
-// builtinMirrorURLs converts distro UrlWithAlias list to full URL strings (single source for built-in mirrors).
-func builtinMirrorURLs(mirrors []distro.UrlWithAlias) []string {
+// builtinMirrorURLs converts distro URLWithAlias list to full URL strings (single source for built-in mirrors).
+func builtinMirrorURLs(mirrors []distro.URLWithAlias) []string {
 	out := make([]string, 0, len(mirrors))
 	for _, m := range mirrors {
 		out = append(out, GetFullMirrorURL(m))
@@ -19,7 +19,7 @@ func builtinMirrorURLs(mirrors []distro.UrlWithAlias) []string {
 // builtinDistro consolidates the per-mode built-in metadata so the switch
 // blocks below collapse into a single table-driven lookup.
 type builtinDistro struct {
-	mirrors      []distro.UrlWithAlias
+	mirrors      []distro.URLWithAlias
 	benchmarkURL string
 	hostPattern  *regexp.Regexp
 }
@@ -28,30 +28,30 @@ type builtinDistro struct {
 // mirror metadata, keyed by distro type. Registry-loaded data overrides this
 // at runtime.
 var builtinByMode = map[int]builtinDistro{
-	distro.TYPE_LINUX_DISTROS_UBUNTU: {
-		mirrors:      distro.BUILDIN_UBUNTU_MIRRORS,
-		benchmarkURL: distro.UBUNTU_BENCHMARK_URL,
-		hostPattern:  distro.UBUNTU_HOST_PATTERN,
+	distro.TypeUbuntu: {
+		mirrors:      distro.BuiltinUbuntuMirrors,
+		benchmarkURL: distro.UbuntuBenchmarkURL,
+		hostPattern:  distro.UbuntuHostPattern,
 	},
-	distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS: {
-		mirrors:      distro.BUILDIN_UBUNTU_PORTS_MIRRORS,
-		benchmarkURL: distro.UBUNTU_PORTS_BENCHMARK_URL,
-		hostPattern:  distro.UBUNTU_PORTS_HOST_PATTERN,
+	distro.TypeUbuntuPorts: {
+		mirrors:      distro.BuiltinUbuntuPortsMirrors,
+		benchmarkURL: distro.UbuntuPortsBenchmarkURL,
+		hostPattern:  distro.UbuntuPortsHostPattern,
 	},
-	distro.TYPE_LINUX_DISTROS_DEBIAN: {
-		mirrors:      distro.BUILDIN_DEBIAN_MIRRORS,
-		benchmarkURL: distro.DEBIAN_BENCHMARK_URL,
-		hostPattern:  distro.DEBIAN_HOST_PATTERN,
+	distro.TypeDebian: {
+		mirrors:      distro.BuiltinDebianMirrors,
+		benchmarkURL: distro.DebianBenchmarkURL,
+		hostPattern:  distro.DebianHostPattern,
 	},
-	distro.TYPE_LINUX_DISTROS_CENTOS: {
-		mirrors:      distro.BUILDIN_CENTOS_MIRRORS,
-		benchmarkURL: distro.CENTOS_BENCHMARK_URL,
-		hostPattern:  distro.CENTOS_HOST_PATTERN,
+	distro.TypeCentOS: {
+		mirrors:      distro.BuiltinCentosMirrors,
+		benchmarkURL: distro.CentosBenchmarkURL,
+		hostPattern:  distro.CentosHostPattern,
 	},
-	distro.TYPE_LINUX_DISTROS_ALPINE: {
-		mirrors:      distro.BUILDIN_ALPINE_MIRRORS,
-		benchmarkURL: distro.ALPINE_BENCHMARK_URL,
-		hostPattern:  distro.ALPINE_HOST_PATTERN,
+	distro.TypeAlpine: {
+		mirrors:      distro.BuiltinAlpineMirrors,
+		benchmarkURL: distro.AlpineBenchmarkURL,
+		hostPattern:  distro.AlpineHostPattern,
 	},
 }
 
@@ -69,12 +69,12 @@ func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 	}
 
 	// Ubuntu/UbuntuPorts try geo-based mirrors first, fall back to built-in.
-	if mode == distro.TYPE_LINUX_DISTROS_UBUNTU || mode == distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS {
+	if mode == distro.TypeUbuntu || mode == distro.TypeUbuntuPorts {
 		online, err := GetUbuntuMirrorUrlsByGeo()
 		if err != nil {
 			return builtinMirrorURLs(builtinByMode[mode].mirrors)
 		}
-		if mode == distro.TYPE_LINUX_DISTROS_UBUNTU {
+		if mode == distro.TypeUbuntu {
 			return online
 		}
 		// Ubuntu Ports re-uses the Ubuntu geo list with a path swap.
@@ -97,8 +97,8 @@ func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 	return mirrors
 }
 
-func GetFullMirrorURL(mirror distro.UrlWithAlias) string {
-	if mirror.Http {
+func GetFullMirrorURL(mirror distro.URLWithAlias) string {
+	if mirror.HTTP {
 		if strings.HasPrefix(mirror.URL, "http://") {
 			return mirror.URL
 		}
@@ -109,7 +109,7 @@ func GetFullMirrorURL(mirror distro.UrlWithAlias) string {
 		}
 		return url
 	}
-	if mirror.Https {
+	if mirror.HTTPS {
 		if strings.HasPrefix(mirror.URL, "https://") {
 			return mirror.URL
 		}

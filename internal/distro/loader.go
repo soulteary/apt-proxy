@@ -66,8 +66,9 @@ func (l *Loader) Load() (*DistributionsConfig, error) {
 		}
 
 		for _, path := range defaultPaths {
-			if _, err := os.Stat(path); err == nil {
-				l.configPath = path
+			cleaned := filepath.Clean(path)
+			if _, err := os.Stat(cleaned); err == nil { // #nosec G304 -- well-known config search paths
+				l.configPath = cleaned
 				break
 			}
 		}

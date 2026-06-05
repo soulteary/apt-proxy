@@ -22,7 +22,7 @@ func TestCreatePackageStructRouter(t *testing.T) {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	state.SetProxyMode(distro.TYPE_LINUX_ALL_DISTROS)
+	state.SetProxyMode(distro.TypeAllDistros)
 
 	log := logger.Default()
 	ps := CreatePackageStructRouter(tmpDir, log)
@@ -48,7 +48,7 @@ func TestPackageStructServeHTTP(t *testing.T) {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	state.SetProxyMode(distro.TYPE_LINUX_ALL_DISTROS)
+	state.SetProxyMode(distro.TypeAllDistros)
 
 	log := logger.Default()
 	ps := CreatePackageStructRouter(tmpDir, log)
@@ -127,9 +127,9 @@ func TestGetInternalResType(t *testing.T) {
 		url      string
 		wantType int
 	}{
-		{"/", TYPE_HOME},
-		{"/_/ping/", TYPE_PING},
-		{"/unknown", TYPE_NOT_FOUND},
+		{"/", TypeHome},
+		{"/_/ping/", TypePing},
+		{"/unknown", TypeNotFound},
 	}
 
 	for _, tt := range tests {
@@ -194,7 +194,7 @@ func TestRefreshMirrors(t *testing.T) {
 	setupTestMirrors()
 	defer cleanupTestMirrors()
 
-	state.SetProxyMode(distro.TYPE_LINUX_ALL_DISTROS)
+	state.SetProxyMode(distro.TypeAllDistros)
 
 	// Should not panic
 	RefreshMirrors()

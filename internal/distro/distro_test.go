@@ -38,29 +38,29 @@ func TestGenerateAliasFromURL(t *testing.T) {
 
 func TestGenerateBuildInMirorItem(t *testing.T) {
 	mirror := distro.GenerateBuildInMirorItem("http://mirrors.tuna.tsinghua.edu.cn/ubuntu/", true)
-	if (mirror.Http != true || mirror.Https != false) || mirror.Official != true {
+	if (mirror.HTTP != true || mirror.HTTPS != false) || mirror.Official != true {
 		t.Fatal("generate build-in mirror item failed")
 	}
 	mirror = distro.GenerateBuildInMirorItem("https://mirrors.tuna.tsinghua.edu.cn/ubuntu/", false)
-	if (mirror.Http != false || mirror.Https != true) || mirror.Official != false {
+	if (mirror.HTTP != false || mirror.HTTPS != true) || mirror.Official != false {
 		t.Fatal("generate build-in mirror item failed")
 	}
 }
 
 func TestGenerateBuildInList(t *testing.T) {
-	mirrors := distro.GenerateBuildInList(distro.UBUNTU_OFFICIAL_MIRRORS, distro.UBUNTU_CUSTOM_MIRRORS)
+	mirrors := distro.GenerateBuildInList(distro.UbuntuOfficialMirrors, distro.UbuntuCustomMirrors)
 
 	count := 0
-	for _, url := range distro.UBUNTU_OFFICIAL_MIRRORS {
+	for _, url := range distro.UbuntuOfficialMirrors {
 		if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-			count += 1
+			count++
 		} else {
 			count += 2
 		}
 	}
-	for _, url := range distro.UBUNTU_CUSTOM_MIRRORS {
+	for _, url := range distro.UbuntuCustomMirrors {
 		if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-			count += 1
+			count++
 		} else {
 			count += 2
 		}
@@ -75,7 +75,7 @@ func TestReloadDistributionsConfig_NonExistentPath(t *testing.T) {
 	// Reload with non-existent path: registry should keep only built-in distributions
 	distro.ReloadDistributionsConfig("/nonexistent/distributions.yaml")
 	reg := distro.GetRegistry()
-	for _, id := range []string{distro.LINUX_DISTROS_UBUNTU, distro.LINUX_DISTROS_DEBIAN, distro.LINUX_DISTROS_CENTOS, distro.LINUX_DISTROS_ALPINE} {
+	for _, id := range []string{distro.DistroUbuntu, distro.DistroDebian, distro.DistroCentOS, distro.DistroAlpine} {
 		if _, ok := reg.GetByID(id); !ok {
 			t.Errorf("expected built-in distribution %q to be registered", id)
 		}

@@ -21,12 +21,12 @@ import (
 var (
 	// allowedModes defines the valid mode values for proxy operation
 	allowedModes = []string{
-		distro.LINUX_ALL_DISTROS,
-		distro.LINUX_DISTROS_UBUNTU,
-		distro.LINUX_DISTROS_UBUNTU_PORTS,
-		distro.LINUX_DISTROS_DEBIAN,
-		distro.LINUX_DISTROS_CENTOS,
-		distro.LINUX_DISTROS_ALPINE,
+		distro.DistroAll,
+		distro.DistroUbuntu,
+		distro.DistroUbuntuPorts,
+		distro.DistroDebian,
+		distro.DistroCentOS,
+		distro.DistroAlpine,
 	}
 )
 
@@ -39,18 +39,18 @@ func GetAllowedModes() []string {
 // This function should only be called after mode validation via configutil.ResolveEnum.
 func ModeToInt(mode string) int {
 	switch mode {
-	case distro.LINUX_DISTROS_UBUNTU:
-		return distro.TYPE_LINUX_DISTROS_UBUNTU
-	case distro.LINUX_DISTROS_UBUNTU_PORTS:
-		return distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS
-	case distro.LINUX_DISTROS_DEBIAN:
-		return distro.TYPE_LINUX_DISTROS_DEBIAN
-	case distro.LINUX_DISTROS_CENTOS:
-		return distro.TYPE_LINUX_DISTROS_CENTOS
-	case distro.LINUX_DISTROS_ALPINE:
-		return distro.TYPE_LINUX_DISTROS_ALPINE
+	case distro.DistroUbuntu:
+		return distro.TypeUbuntu
+	case distro.DistroUbuntuPorts:
+		return distro.TypeUbuntuPorts
+	case distro.DistroDebian:
+		return distro.TypeDebian
+	case distro.DistroCentOS:
+		return distro.TypeCentOS
+	case distro.DistroAlpine:
+		return distro.TypeAlpine
 	default:
-		return distro.TYPE_LINUX_ALL_DISTROS
+		return distro.TypeAllDistros
 	}
 }
 
@@ -60,7 +60,7 @@ func defineFlags(flags *flag.FlagSet) {
 	// Define flags (for CLI compatibility and help text)
 	flags.String("host", DefaultHost, "the host to bind to")
 	flags.String("port", DefaultPort, "the port to bind to")
-	flags.String("mode", distro.LINUX_ALL_DISTROS,
+	flags.String("mode", distro.DistroAll,
 		"select the mode of system to cache: all / ubuntu / ubuntu-ports / debian / centos / alpine")
 	flags.Bool("debug", false, "whether to output debugging logging")
 	flags.String("cachedir", DefaultCacheDir, "the dir to store cache data in")
@@ -114,7 +114,7 @@ func ParseFlags() (*Config, error) {
 	}
 
 	// Validate and resolve mode using enum validation
-	modeName, err := configutil.ResolveEnum(flags, "mode", EnvMode, distro.LINUX_ALL_DISTROS, allowedModes, false)
+	modeName, err := configutil.ResolveEnum(flags, "mode", EnvMode, distro.DistroAll, allowedModes, false)
 	if err != nil {
 		return nil, fmt.Errorf("invalid mode: %w", err)
 	}
@@ -192,12 +192,12 @@ func ValidateConfig(config *Config) error {
 	}
 
 	// Ensure cache directory exists and is writable
-	if err := os.MkdirAll(config.CacheDir, 0755); err != nil {
+	if err := os.MkdirAll(config.CacheDir, 0750); err != nil {
 		return fmt.Errorf("cache directory %q cannot be created: %w", config.CacheDir, err)
 	}
 	// Check writable by creating a temp file
 	testFile := filepath.Join(config.CacheDir, ".apt-proxy-write-test")
-	if err := os.WriteFile(testFile, nil, 0644); err != nil {
+	if err := os.WriteFile(testFile, nil, 0600); err != nil {
 		return fmt.Errorf("cache directory %q is not writable: %w", config.CacheDir, err)
 	}
 	_ = os.Remove(testFile)
@@ -358,8 +358,9 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 func FindConfigFile() string {
 	// Check environment variable first
 	if envPath := os.Getenv(EnvConfigFile); envPath != "" {
-		if _, err := os.Stat(envPath); err == nil {
-			return envPath
+		cleaned := filepath.Clean(envPath)
+		if _, err := os.Stat(cleaned); err == nil { // #nosec G304 -- operator-controlled config path
+			return cleaned
 		}
 	}
 
@@ -379,8 +380,9 @@ func FindConfigFile() string {
 	}
 
 	for _, path := range searchPaths {
-		if _, err := os.Stat(path); err == nil {
-			return path
+		cleaned := filepath.Clean(path)
+		if _, err := os.Stat(cleaned); err == nil { // #nosec G304 -- well-known config search paths
+			return cleaned
 		}
 	}
 
@@ -807,7 +809,7 @@ func applyDefaults(config *Config) *Config {
 	}
 
 	if config.Mode == 0 {
-		config.Mode = distro.TYPE_LINUX_ALL_DISTROS
+		config.Mode = distro.TypeAllDistros
 	}
 
 	// Apply cache defaults

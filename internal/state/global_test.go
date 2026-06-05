@@ -38,9 +38,9 @@ func TestAppStateProxyMode(t *testing.T) {
 	}
 
 	// Set and get mode
-	state.SetProxyMode(distro.TYPE_LINUX_DISTROS_UBUNTU)
-	if mode := state.GetProxyMode(); mode != distro.TYPE_LINUX_DISTROS_UBUNTU {
-		t.Errorf("GetProxyMode() = %d, want %d", mode, distro.TYPE_LINUX_DISTROS_UBUNTU)
+	state.SetProxyMode(distro.TypeUbuntu)
+	if mode := state.GetProxyMode(); mode != distro.TypeUbuntu {
+		t.Errorf("GetProxyMode() = %d, want %d", mode, distro.TypeUbuntu)
 	}
 }
 
@@ -51,11 +51,11 @@ func TestAppStateSetMirror(t *testing.T) {
 		distType int
 		url      string
 	}{
-		{distro.TYPE_LINUX_DISTROS_UBUNTU, "https://mirrors.example.com/ubuntu/"},
-		{distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS, "https://mirrors.example.com/ubuntu-ports/"},
-		{distro.TYPE_LINUX_DISTROS_DEBIAN, "https://mirrors.example.com/debian/"},
-		{distro.TYPE_LINUX_DISTROS_CENTOS, "https://mirrors.example.com/centos/"},
-		{distro.TYPE_LINUX_DISTROS_ALPINE, "https://mirrors.example.com/alpine/"},
+		{distro.TypeUbuntu, "https://mirrors.example.com/ubuntu/"},
+		{distro.TypeUbuntuPorts, "https://mirrors.example.com/ubuntu-ports/"},
+		{distro.TypeDebian, "https://mirrors.example.com/debian/"},
+		{distro.TypeCentOS, "https://mirrors.example.com/centos/"},
+		{distro.TypeAlpine, "https://mirrors.example.com/alpine/"},
 	}
 
 	for _, tt := range tests {
@@ -75,25 +75,25 @@ func TestAppStateResetAll(t *testing.T) {
 	state := NewAppState()
 
 	// Set all mirrors
-	state.SetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU, "https://example.com/ubuntu/")
-	state.SetMirror(distro.TYPE_LINUX_DISTROS_DEBIAN, "https://example.com/debian/")
+	state.SetMirror(distro.TypeUbuntu, "https://example.com/ubuntu/")
+	state.SetMirror(distro.TypeDebian, "https://example.com/debian/")
 
 	// Reset all
 	state.ResetAll()
 
 	// Verify all are nil
-	if state.GetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU) != nil {
+	if state.GetMirror(distro.TypeUbuntu) != nil {
 		t.Error("Ubuntu mirror should be nil after ResetAll")
 	}
-	if state.GetMirror(distro.TYPE_LINUX_DISTROS_DEBIAN) != nil {
+	if state.GetMirror(distro.TypeDebian) != nil {
 		t.Error("Debian mirror should be nil after ResetAll")
 	}
 }
 
 func TestAppStateClone(t *testing.T) {
 	original := NewAppState()
-	original.SetProxyMode(distro.TYPE_LINUX_DISTROS_UBUNTU)
-	original.SetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU, "https://original.example.com/ubuntu/")
+	original.SetProxyMode(distro.TypeUbuntu)
+	original.SetMirror(distro.TypeUbuntu, "https://original.example.com/ubuntu/")
 
 	clone := original.Clone()
 
@@ -102,26 +102,26 @@ func TestAppStateClone(t *testing.T) {
 		t.Errorf("Clone proxy mode = %d, want %d", clone.GetProxyMode(), original.GetProxyMode())
 	}
 
-	originalMirror := original.GetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU)
-	cloneMirror := clone.GetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU)
+	originalMirror := original.GetMirror(distro.TypeUbuntu)
+	cloneMirror := clone.GetMirror(distro.TypeUbuntu)
 	if cloneMirror.String() != originalMirror.String() {
 		t.Errorf("Clone mirror = %q, want %q", cloneMirror.String(), originalMirror.String())
 	}
 
 	// Modify clone and verify original is unchanged
-	clone.SetProxyMode(distro.TYPE_LINUX_DISTROS_DEBIAN)
-	clone.SetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU, "https://clone.example.com/ubuntu/")
+	clone.SetProxyMode(distro.TypeDebian)
+	clone.SetMirror(distro.TypeUbuntu, "https://clone.example.com/ubuntu/")
 
-	if original.GetProxyMode() != distro.TYPE_LINUX_DISTROS_UBUNTU {
+	if original.GetProxyMode() != distro.TypeUbuntu {
 		t.Error("Original proxy mode was modified when clone was changed")
 	}
-	if original.GetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU).String() != "https://original.example.com/ubuntu/" {
+	if original.GetMirror(distro.TypeUbuntu).String() != "https://original.example.com/ubuntu/" {
 		t.Error("Original mirror was modified when clone was changed")
 	}
 }
 
 func TestMirrorStateSetAndGet(t *testing.T) {
-	mirror := NewMirrorState(distro.TYPE_LINUX_DISTROS_UBUNTU)
+	mirror := NewMirrorState(distro.TypeUbuntu)
 
 	// Initially nil
 	if mirror.Get() != nil {
@@ -145,7 +145,7 @@ func TestMirrorStateSetAndGet(t *testing.T) {
 }
 
 func TestMirrorStateReset(t *testing.T) {
-	mirror := NewMirrorState(distro.TYPE_LINUX_DISTROS_UBUNTU)
+	mirror := NewMirrorState(distro.TypeUbuntu)
 	mirror.Set("https://mirrors.example.com/ubuntu/")
 	mirror.Reset()
 
@@ -155,7 +155,7 @@ func TestMirrorStateReset(t *testing.T) {
 }
 
 func TestMirrorStateClone(t *testing.T) {
-	original := NewMirrorState(distro.TYPE_LINUX_DISTROS_UBUNTU)
+	original := NewMirrorState(distro.TypeUbuntu)
 	original.Set("https://original.example.com/ubuntu/")
 
 	clone := original.Clone()
@@ -180,9 +180,9 @@ func TestBackwardCompatibility(t *testing.T) {
 	ResetDebianMirror()
 
 	// Test SetProxyMode and GetProxyMode
-	SetProxyMode(distro.TYPE_LINUX_DISTROS_DEBIAN)
-	if mode := GetProxyMode(); mode != distro.TYPE_LINUX_DISTROS_DEBIAN {
-		t.Errorf("GetProxyMode() = %d, want %d", mode, distro.TYPE_LINUX_DISTROS_DEBIAN)
+	SetProxyMode(distro.TypeDebian)
+	if mode := GetProxyMode(); mode != distro.TypeDebian {
+		t.Errorf("GetProxyMode() = %d, want %d", mode, distro.TypeDebian)
 	}
 
 	// Test mirror convenience functions
@@ -254,8 +254,8 @@ func TestConcurrentAccess(t *testing.T) {
 	// Concurrent mirror operations
 	go func() {
 		for i := 0; i < 100; i++ {
-			state.SetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU, "https://example.com/")
-			_ = state.GetMirror(distro.TYPE_LINUX_DISTROS_UBUNTU)
+			state.SetMirror(distro.TypeUbuntu, "https://example.com/")
+			_ = state.GetMirror(distro.TypeUbuntu)
 		}
 		done <- true
 	}()

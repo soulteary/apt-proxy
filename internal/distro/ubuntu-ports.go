@@ -5,15 +5,15 @@ import (
 )
 
 const (
-	UBUNTU_PORTS_GEO_MIRROR_API = "http://mirrors.ubuntu.com/mirrors.txt"
-	UBUNTU_PORTS_BENCHMARK_URL  = "dists/noble/InRelease/Release"
+	UbuntuPortsGeoMirrorAPI = "http://mirrors.ubuntu.com/mirrors.txt"
+	UbuntuPortsBenchmarkURL = "dists/noble/InRelease/Release"
 )
 
-var UBUNTU_PORTS_HOST_PATTERN = regexp.MustCompile(`/ubuntu-ports/(.+)$`)
+var UbuntuPortsHostPattern = regexp.MustCompile(`/ubuntu-ports/(.+)$`)
 
 // http://mirrors.ubuntu.com/mirrors.txt 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol
-var UBUNTU_PORTS_OFFICIAL_MIRRORS = []string{
+var UbuntuPortsOfficialMirrors = []string{
 	"mirrors.cn99.com/ubuntu-ports/",
 	"mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/",
 	"mirrors.cnnic.cn/ubuntu-ports/",
@@ -40,22 +40,22 @@ var UBUNTU_PORTS_OFFICIAL_MIRRORS = []string{
 	"http://cn.archive.ubuntu.com/ubuntu-ports/",
 }
 
-var UBUNTU_PORTS_CUSTOM_MIRRORS = []string{
+var UbuntuPortsCustomMirrors = []string{
 	"mirrors.163.com/ubuntu-ports/",
 }
 
-var BUILDIN_UBUNTU_PORTS_MIRRORS = GenerateBuildInList(UBUNTU_PORTS_OFFICIAL_MIRRORS, UBUNTU_PORTS_CUSTOM_MIRRORS)
+var BuiltinUbuntuPortsMirrors = GenerateBuildInList(UbuntuPortsOfficialMirrors, UbuntuPortsCustomMirrors)
 
-var UBUNTU_PORTS_DEFAULT_CACHE_RULES = []Rule{
-	{Pattern: regexp.MustCompile(`deb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`udeb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`InRelease$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`DiffIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`PackagesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`Packages\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`SourcesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`Sources\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`Release(\.gpg)?$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`Translation-(en|fr)\.(gz|bz2|bzip2|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
-	{Pattern: regexp.MustCompile(`\/by-hash\/`), CacheControl: `max-age=3600`, Rewrite: true, OS: TYPE_LINUX_DISTROS_UBUNTU_PORTS},
+var UbuntuPortsDefaultCacheRules = []Rule{
+	{Pattern: regexp.MustCompile(`deb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`udeb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`InRelease$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`DiffIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`PackagesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`Packages\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`SourcesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`Sources\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`Release(\.gpg)?$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`Translation-(en|fr)\.(gz|bz2|bzip2|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
+	{Pattern: regexp.MustCompile(`\/by-hash\/`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
 }

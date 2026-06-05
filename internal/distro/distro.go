@@ -13,38 +13,38 @@ import (
 
 // Distribution name constants
 const (
-	LINUX_ALL_DISTROS          string = "all"
-	LINUX_DISTROS_UBUNTU       string = "ubuntu"
-	LINUX_DISTROS_UBUNTU_PORTS string = "ubuntu-ports"
-	LINUX_DISTROS_DEBIAN       string = "debian"
-	LINUX_DISTROS_CENTOS       string = "centos"
-	LINUX_DISTROS_ALPINE       string = "alpine"
+	DistroAll         string = "all"
+	DistroUbuntu      string = "ubuntu"
+	DistroUbuntuPorts string = "ubuntu-ports"
+	DistroDebian      string = "debian"
+	DistroCentOS      string = "centos"
+	DistroAlpine      string = "alpine"
 )
 
 // Distribution type constants
 const (
-	TYPE_LINUX_ALL_DISTROS          int = 0
-	TYPE_LINUX_DISTROS_UBUNTU       int = 1
-	TYPE_LINUX_DISTROS_UBUNTU_PORTS int = 2
-	TYPE_LINUX_DISTROS_DEBIAN       int = 3
-	TYPE_LINUX_DISTROS_CENTOS       int = 4
-	TYPE_LINUX_DISTROS_ALPINE       int = 5
+	TypeAllDistros  int = 0
+	TypeUbuntu      int = 1
+	TypeUbuntuPorts int = 2
+	TypeDebian      int = 3
+	TypeCentOS      int = 4
+	TypeAlpine      int = 5
 )
 
 // DistributionName returns the distribution ID string for the given type.
 // Returns empty string for unknown types.
 func DistributionName(distType int) string {
 	switch distType {
-	case TYPE_LINUX_DISTROS_UBUNTU:
-		return LINUX_DISTROS_UBUNTU
-	case TYPE_LINUX_DISTROS_UBUNTU_PORTS:
-		return LINUX_DISTROS_UBUNTU_PORTS
-	case TYPE_LINUX_DISTROS_DEBIAN:
-		return LINUX_DISTROS_DEBIAN
-	case TYPE_LINUX_DISTROS_CENTOS:
-		return LINUX_DISTROS_CENTOS
-	case TYPE_LINUX_DISTROS_ALPINE:
-		return LINUX_DISTROS_ALPINE
+	case TypeUbuntu:
+		return DistroUbuntu
+	case TypeUbuntuPorts:
+		return DistroUbuntuPorts
+	case TypeDebian:
+		return DistroDebian
+	case TypeCentOS:
+		return DistroCentOS
+	case TypeAlpine:
+		return DistroAlpine
 	default:
 		return ""
 	}
@@ -63,12 +63,12 @@ func (r *Rule) String() string {
 		r.Pattern.String(), r.CacheControl, r.Rewrite)
 }
 
-// UrlWithAlias represents a mirror URL with its alias and metadata
-type UrlWithAlias struct {
+// URLWithAlias represents a mirror URL with its alias and metadata
+type URLWithAlias struct {
 	URL       string
 	Alias     string
-	Http      bool
-	Https     bool
+	HTTP      bool
+	HTTPS     bool
 	Official  bool
 	Bandwidth int64
 }
@@ -88,18 +88,18 @@ func GenerateAliasFromURL(url string) string {
 	return buf.String()
 }
 
-// GenerateBuildInMirorItem creates a UrlWithAlias from a URL
-func GenerateBuildInMirorItem(url string, official bool) UrlWithAlias {
-	var mirror UrlWithAlias
+// GenerateBuildInMirorItem creates a URLWithAlias from a URL
+func GenerateBuildInMirorItem(url string, official bool) URLWithAlias {
+	var mirror URLWithAlias
 	mirror.Official = official
 	mirror.Alias = GenerateAliasFromURL(url)
 
 	if strings.HasPrefix(url, "http://") {
-		mirror.Http = true
-		mirror.Https = false
+		mirror.HTTP = true
+		mirror.HTTPS = false
 	} else if strings.HasPrefix(url, "https://") {
-		mirror.Http = false
-		mirror.Https = true
+		mirror.HTTP = false
+		mirror.HTTPS = true
 	}
 	mirror.URL = url
 	mirror.Bandwidth = 0
@@ -144,7 +144,7 @@ func buildHTTPSURL(url string) (string, error) {
 }
 
 // GenerateBuildInList generates a list of mirror URLs with aliases
-func GenerateBuildInList(officialList []string, customList []string) (mirrors []UrlWithAlias) {
+func GenerateBuildInList(officialList []string, customList []string) (mirrors []URLWithAlias) {
 	for _, url := range officialList {
 		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			httpURL, err := buildHTTPURL(url)

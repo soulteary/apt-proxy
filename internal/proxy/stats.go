@@ -13,14 +13,14 @@ import (
 )
 
 const (
-	INTERNAL_PAGE_HOME string = "/"
-	INTERNAL_PAGE_PING string = "/_/ping/"
+	InternalPageHome string = "/"
+	InternalPagePing string = "/_/ping/"
 )
 
 const (
-	TYPE_NOT_FOUND int = 0
-	TYPE_HOME      int = 1
-	TYPE_PING      int = 2
+	TypeNotFound int = 0
+	TypeHome     int = 1
+	TypePing     int = 2
 )
 
 func IsInternalUrls(url string) bool {
@@ -29,18 +29,18 @@ func IsInternalUrls(url string) bool {
 }
 
 func GetInternalResType(url string) int {
-	if url == INTERNAL_PAGE_HOME {
-		return TYPE_HOME
+	if url == InternalPageHome {
+		return TypeHome
 	}
 
-	if url == INTERNAL_PAGE_PING {
-		return TYPE_PING
+	if url == InternalPagePing {
+		return TypePing
 	}
 
-	return TYPE_NOT_FOUND
+	return TypeNotFound
 }
 
-const LABEL_NO_VALID_VALUE = "N/A"
+const LabelNoValidValue = "N/A"
 
 // homeStatsTTL is the freshness window for the cached home-page stats.
 // The home page can be hit by liveness probes / dashboards on tight loops;
@@ -64,12 +64,12 @@ var (
 )
 
 func computeHomeStats(cacheDir string) *homeStatsSnapshot {
-	cacheSizeLabel := LABEL_NO_VALID_VALUE
+	cacheSizeLabel := LabelNoValidValue
 	if cacheSize, err := system.DirSize(cacheDir); err == nil {
 		cacheSizeLabel = system.ByteCountDecimal(cacheSize)
 	}
 
-	filesNumberLabel := LABEL_NO_VALID_VALUE
+	filesNumberLabel := LabelNoValidValue
 	cacheMetaDir := filepath.Join(cacheDir, "header", "v1")
 	if _, err := os.Stat(cacheMetaDir); !os.IsNotExist(err) {
 		if files, err := os.ReadDir(cacheMetaDir); err == nil {
@@ -77,7 +77,7 @@ func computeHomeStats(cacheDir string) *homeStatsSnapshot {
 		}
 	}
 
-	diskAvailableLabel := LABEL_NO_VALID_VALUE
+	diskAvailableLabel := LabelNoValidValue
 	// Probe the volume hosting the cache directory. Fallback to the working
 	// directory only when the cache directory cannot be statted (e.g. before
 	// it has been created).
@@ -113,19 +113,12 @@ func getHomeStats(cacheDir string) *homeStatsSnapshot {
 	return homeStatsCache
 }
 
-// resetHomeStatsCache clears the cached snapshot. Exposed for tests.
-func resetHomeStatsCache() {
-	homeStatsMu.Lock()
-	homeStatsCache = nil
-	homeStatsMu.Unlock()
-}
-
 func RenderInternalUrls(url string, cacheDir string) (string, int) {
 	switch GetInternalResType(url) {
-	case TYPE_HOME:
+	case TypeHome:
 		s := getHomeStats(cacheDir)
 		return GetBaseTemplate(s.cacheSizeLabel, s.filesNumberLabel, s.diskAvailable, s.memoryUsage, s.goroutine), 200
-	case TYPE_PING:
+	case TypePing:
 		return "pong", http.StatusOK
 	}
 	return "Not Found", http.StatusNotFound

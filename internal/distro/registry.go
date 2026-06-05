@@ -23,7 +23,7 @@ type RegisteredDistribution struct {
 	BenchmarkURL string
 	GeoMirrorAPI string
 	CacheRules   []Rule
-	Mirrors      []UrlWithAlias
+	Mirrors      []URLWithAlias
 	Aliases      map[string]string
 }
 
@@ -147,64 +147,66 @@ func (r *Registry) Clear() {
 	r.types = make(map[int]string)
 }
 
-// registerBuiltinDistributions registers the built-in distributions
+// registerBuiltinDistributions registers the built-in distributions.
+// Built-in entries are guaranteed to satisfy Register's invariants
+// (non-empty ID, non-zero Type, no conflicts on a freshly-cleared registry),
+// so any error here would indicate a programmer mistake. We surface it via
+// panic during initialization rather than silently dropping registrations.
 func registerBuiltinDistributions(reg *Registry) {
-	// Register Ubuntu
-	reg.Register(&RegisteredDistribution{
-		ID:           LINUX_DISTROS_UBUNTU,
-		Name:         "Ubuntu",
-		Type:         TYPE_LINUX_DISTROS_UBUNTU,
-		URLPattern:   UBUNTU_HOST_PATTERN,
-		BenchmarkURL: UBUNTU_BENCHMARK_URL,
-		GeoMirrorAPI: UBUNTU_GEO_MIRROR_API,
-		CacheRules:   UBUNTU_DEFAULT_CACHE_RULES,
-		Mirrors:      BUILDIN_UBUNTU_MIRRORS,
-	})
-
-	// Register Ubuntu Ports
-	reg.Register(&RegisteredDistribution{
-		ID:           LINUX_DISTROS_UBUNTU_PORTS,
-		Name:         "Ubuntu Ports",
-		Type:         TYPE_LINUX_DISTROS_UBUNTU_PORTS,
-		URLPattern:   UBUNTU_PORTS_HOST_PATTERN,
-		BenchmarkURL: UBUNTU_PORTS_BENCHMARK_URL,
-		GeoMirrorAPI: UBUNTU_PORTS_GEO_MIRROR_API,
-		CacheRules:   UBUNTU_PORTS_DEFAULT_CACHE_RULES,
-		Mirrors:      BUILDIN_UBUNTU_PORTS_MIRRORS,
-	})
-
-	// Register Debian
-	reg.Register(&RegisteredDistribution{
-		ID:           LINUX_DISTROS_DEBIAN,
-		Name:         "Debian",
-		Type:         TYPE_LINUX_DISTROS_DEBIAN,
-		URLPattern:   DEBIAN_HOST_PATTERN,
-		BenchmarkURL: DEBIAN_BENCHMARK_URL,
-		CacheRules:   DEBIAN_DEFAULT_CACHE_RULES,
-		Mirrors:      BUILDIN_DEBIAN_MIRRORS,
-	})
-
-	// Register CentOS
-	reg.Register(&RegisteredDistribution{
-		ID:           LINUX_DISTROS_CENTOS,
-		Name:         "CentOS",
-		Type:         TYPE_LINUX_DISTROS_CENTOS,
-		URLPattern:   CENTOS_HOST_PATTERN,
-		BenchmarkURL: CENTOS_BENCHMARK_URL,
-		CacheRules:   CENTOS_DEFAULT_CACHE_RULES,
-		Mirrors:      BUILDIN_CENTOS_MIRRORS,
-	})
-
-	// Register Alpine
-	reg.Register(&RegisteredDistribution{
-		ID:           LINUX_DISTROS_ALPINE,
-		Name:         "Alpine Linux",
-		Type:         TYPE_LINUX_DISTROS_ALPINE,
-		URLPattern:   ALPINE_HOST_PATTERN,
-		BenchmarkURL: ALPINE_BENCHMARK_URL,
-		CacheRules:   ALPINE_DEFAULT_CACHE_RULES,
-		Mirrors:      BUILDIN_ALPINE_MIRRORS,
-	})
+	builtins := []*RegisteredDistribution{
+		{
+			ID:           DistroUbuntu,
+			Name:         "Ubuntu",
+			Type:         TypeUbuntu,
+			URLPattern:   UbuntuHostPattern,
+			BenchmarkURL: UbuntuBenchmarkURL,
+			GeoMirrorAPI: UbuntuGeoMirrorAPI,
+			CacheRules:   UbuntuDefaultCacheRules,
+			Mirrors:      BuiltinUbuntuMirrors,
+		},
+		{
+			ID:           DistroUbuntuPorts,
+			Name:         "Ubuntu Ports",
+			Type:         TypeUbuntuPorts,
+			URLPattern:   UbuntuPortsHostPattern,
+			BenchmarkURL: UbuntuPortsBenchmarkURL,
+			GeoMirrorAPI: UbuntuPortsGeoMirrorAPI,
+			CacheRules:   UbuntuPortsDefaultCacheRules,
+			Mirrors:      BuiltinUbuntuPortsMirrors,
+		},
+		{
+			ID:           DistroDebian,
+			Name:         "Debian",
+			Type:         TypeDebian,
+			URLPattern:   DebianHostPattern,
+			BenchmarkURL: DebianBenchmarkURL,
+			CacheRules:   DebianDefaultCacheRules,
+			Mirrors:      BuiltinDebianMirrors,
+		},
+		{
+			ID:           DistroCentOS,
+			Name:         "CentOS",
+			Type:         TypeCentOS,
+			URLPattern:   CentosHostPattern,
+			BenchmarkURL: CentosBenchmarkURL,
+			CacheRules:   CentosDefaultCacheRules,
+			Mirrors:      BuiltinCentosMirrors,
+		},
+		{
+			ID:           DistroAlpine,
+			Name:         "Alpine Linux",
+			Type:         TypeAlpine,
+			URLPattern:   AlpineHostPattern,
+			BenchmarkURL: AlpineBenchmarkURL,
+			CacheRules:   AlpineDefaultCacheRules,
+			Mirrors:      BuiltinAlpineMirrors,
+		},
+	}
+	for _, d := range builtins {
+		if err := reg.Register(d); err != nil {
+			panic(fmt.Sprintf("distro: failed to register built-in %q: %v", d.ID, err))
+		}
+	}
 }
 
 // LoadFromConfig loads distributions from a DistributionConfig and registers them
@@ -232,7 +234,7 @@ func (r *Registry) LoadFromConfig(config *DistributionConfig) error {
 	}
 
 	// Convert mirrors
-	mirrors := make([]UrlWithAlias, 0)
+	mirrors := make([]URLWithAlias, 0)
 	for _, url := range config.Mirrors.Official {
 		mirror := GenerateBuildInMirorItem(url, true)
 		mirrors = append(mirrors, mirror)

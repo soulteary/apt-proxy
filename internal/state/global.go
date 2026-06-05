@@ -98,11 +98,11 @@ type AppState struct {
 // NewAppState creates a new AppState instance with initialized mirror states
 func NewAppState() *AppState {
 	return &AppState{
-		Ubuntu:      NewMirrorState(distro.TYPE_LINUX_DISTROS_UBUNTU),
-		UbuntuPorts: NewMirrorState(distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS),
-		Debian:      NewMirrorState(distro.TYPE_LINUX_DISTROS_DEBIAN),
-		CentOS:      NewMirrorState(distro.TYPE_LINUX_DISTROS_CENTOS),
-		Alpine:      NewMirrorState(distro.TYPE_LINUX_DISTROS_ALPINE),
+		Ubuntu:      NewMirrorState(distro.TypeUbuntu),
+		UbuntuPorts: NewMirrorState(distro.TypeUbuntuPorts),
+		Debian:      NewMirrorState(distro.TypeDebian),
+		CentOS:      NewMirrorState(distro.TypeCentOS),
+		Alpine:      NewMirrorState(distro.TypeAlpine),
 	}
 }
 
@@ -123,15 +123,15 @@ func (s *AppState) GetProxyMode() int {
 // SetMirror sets the mirror URL for a specific distribution
 func (s *AppState) SetMirror(distType int, input string) {
 	switch distType {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
+	case distro.TypeUbuntu:
 		s.Ubuntu.Set(input)
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+	case distro.TypeUbuntuPorts:
 		s.UbuntuPorts.Set(input)
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
+	case distro.TypeDebian:
 		s.Debian.Set(input)
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
+	case distro.TypeCentOS:
 		s.CentOS.Set(input)
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
+	case distro.TypeAlpine:
 		s.Alpine.Set(input)
 	}
 }
@@ -139,15 +139,15 @@ func (s *AppState) SetMirror(distType int, input string) {
 // GetMirror returns the mirror URL for a specific distribution
 func (s *AppState) GetMirror(distType int) *url.URL {
 	switch distType {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
+	case distro.TypeUbuntu:
 		return s.Ubuntu.Get()
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+	case distro.TypeUbuntuPorts:
 		return s.UbuntuPorts.Get()
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
+	case distro.TypeDebian:
 		return s.Debian.Get()
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
+	case distro.TypeCentOS:
 		return s.CentOS.Get()
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
+	case distro.TypeAlpine:
 		return s.Alpine.Get()
 	default:
 		return nil
@@ -241,15 +241,15 @@ func GetProxyMode() int {
 // that accesses mirrors directly. They delegate to the global AppState.
 var (
 	// UbuntuMirror provides backward compatible access to Ubuntu mirror state
-	UbuntuMirror = &mirrorProxy{distType: distro.TYPE_LINUX_DISTROS_UBUNTU}
+	UbuntuMirror = &mirrorProxy{distType: distro.TypeUbuntu}
 	// UbuntuPortsMirror provides backward compatible access to Ubuntu Ports mirror state
-	UbuntuPortsMirror = &mirrorProxy{distType: distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS}
+	UbuntuPortsMirror = &mirrorProxy{distType: distro.TypeUbuntuPorts}
 	// DebianMirror provides backward compatible access to Debian mirror state
-	DebianMirror = &mirrorProxy{distType: distro.TYPE_LINUX_DISTROS_DEBIAN}
+	DebianMirror = &mirrorProxy{distType: distro.TypeDebian}
 	// CentOSMirror provides backward compatible access to CentOS mirror state
-	CentOSMirror = &mirrorProxy{distType: distro.TYPE_LINUX_DISTROS_CENTOS}
+	CentOSMirror = &mirrorProxy{distType: distro.TypeCentOS}
 	// AlpineMirror provides backward compatible access to Alpine mirror state
-	AlpineMirror = &mirrorProxy{distType: distro.TYPE_LINUX_DISTROS_ALPINE}
+	AlpineMirror = &mirrorProxy{distType: distro.TypeAlpine}
 )
 
 // mirrorProxy provides a proxy to the global state's mirror states
@@ -270,15 +270,15 @@ func (p *mirrorProxy) Get() *url.URL {
 func (p *mirrorProxy) Reset() {
 	initGlobalState()
 	switch p.distType {
-	case distro.TYPE_LINUX_DISTROS_UBUNTU:
+	case distro.TypeUbuntu:
 		globalState.Ubuntu.Reset()
-	case distro.TYPE_LINUX_DISTROS_UBUNTU_PORTS:
+	case distro.TypeUbuntuPorts:
 		globalState.UbuntuPorts.Reset()
-	case distro.TYPE_LINUX_DISTROS_DEBIAN:
+	case distro.TypeDebian:
 		globalState.Debian.Reset()
-	case distro.TYPE_LINUX_DISTROS_CENTOS:
+	case distro.TypeCentOS:
 		globalState.CentOS.Reset()
-	case distro.TYPE_LINUX_DISTROS_ALPINE:
+	case distro.TypeAlpine:
 		globalState.Alpine.Reset()
 	}
 }

@@ -26,7 +26,7 @@ func GetUbuntuMirrorUrlsByGeo() (mirrors []string, err error) {
 // GetUbuntuMirrorUrlsByGeoCtx fetches Ubuntu's mirror list honoring the
 // caller-provided context for cancellation/deadline.
 func GetUbuntuMirrorUrlsByGeoCtx(ctx context.Context) (mirrors []string, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, distro.UBUNTU_GEO_MIRROR_API, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, distro.UbuntuGeoMirrorAPI, nil)
 	if err != nil {
 		return mirrors, err
 	}

@@ -29,7 +29,7 @@ func BenchmarkURLRewrite(b *testing.B) {
 		state.ResetAlpineMirror()
 	}()
 
-	rewriters := CreateNewRewriters(distro.TYPE_LINUX_ALL_DISTROS)
+	rewriters := CreateNewRewriters(distro.TypeAllDistros)
 	if rewriters == nil {
 		b.Fatal("CreateNewRewriters() returned nil")
 	}
@@ -40,14 +40,14 @@ func BenchmarkURLRewrite(b *testing.B) {
 		urlPath string
 		matches bool
 	}{
-		{"UbuntuMatch", distro.TYPE_LINUX_DISTROS_UBUNTU, "/ubuntu/dists/jammy/main/binary-amd64/Packages", true},
-		{"UbuntuNoMatch", distro.TYPE_LINUX_DISTROS_UBUNTU, "/other/path", false},
-		{"DebianMatch", distro.TYPE_LINUX_DISTROS_DEBIAN, "/debian/dists/bullseye/main/binary-amd64/Packages", true},
-		{"DebianNoMatch", distro.TYPE_LINUX_DISTROS_DEBIAN, "/other/path", false},
-		{"CentOSMatch", distro.TYPE_LINUX_DISTROS_CENTOS, "/centos/7/os/x86_64/Packages/package.rpm", true},
-		{"CentOSNoMatch", distro.TYPE_LINUX_DISTROS_CENTOS, "/other/path", false},
-		{"AlpineMatch", distro.TYPE_LINUX_DISTROS_ALPINE, "/alpine/v3.18/main/x86_64/APKINDEX.tar.gz", true},
-		{"AlpineNoMatch", distro.TYPE_LINUX_DISTROS_ALPINE, "/other/path", false},
+		{"UbuntuMatch", distro.TypeUbuntu, "/ubuntu/dists/jammy/main/binary-amd64/Packages", true},
+		{"UbuntuNoMatch", distro.TypeUbuntu, "/other/path", false},
+		{"DebianMatch", distro.TypeDebian, "/debian/dists/bullseye/main/binary-amd64/Packages", true},
+		{"DebianNoMatch", distro.TypeDebian, "/other/path", false},
+		{"CentOSMatch", distro.TypeCentOS, "/centos/7/os/x86_64/Packages/package.rpm", true},
+		{"CentOSNoMatch", distro.TypeCentOS, "/other/path", false},
+		{"AlpineMatch", distro.TypeAlpine, "/alpine/v3.18/main/x86_64/APKINDEX.tar.gz", true},
+		{"AlpineNoMatch", distro.TypeAlpine, "/other/path", false},
 	}
 
 	for _, tc := range testCases {
@@ -89,7 +89,7 @@ func BenchmarkURLRewriteWithQuery(b *testing.B) {
 		state.ResetAlpineMirror()
 	}()
 
-	rewriters := CreateNewRewriters(distro.TYPE_LINUX_DISTROS_UBUNTU)
+	rewriters := CreateNewRewriters(distro.TypeUbuntu)
 	if rewriters == nil {
 		b.Fatal("CreateNewRewriters() returned nil")
 	}
@@ -118,6 +118,6 @@ func BenchmarkURLRewriteWithQuery(b *testing.B) {
 			Header: make(http.Header),
 		}
 
-		RewriteRequestByMode(req, rewriters, distro.TYPE_LINUX_DISTROS_UBUNTU)
+		RewriteRequestByMode(req, rewriters, distro.TypeUbuntu)
 	}
 }
