@@ -295,9 +295,15 @@ func (s *Server) createFiberApp() *fiber.App {
 	app.Use(logger.FiberMiddleware(logCfg))
 
 	// Health check endpoints (Fiber native)
-	app.Get("/healthz", health.FiberHandler(s.healthAggregator))
+	// We deliberately use a local handler instead of health.FiberHandler /
+	// health.FiberReadinessHandler: the upstream helpers feed the fasthttp
+	// *RequestCtx into context.WithTimeout, which spawns a propagateCancel
+	// goroutine that races with fiber/fasthttp's ShutdownWithContext during
+	// graceful shutdown (see internal/cli/health.go). Liveness has no
+	// aggregator and is safe to use as-is.
+	app.Get("/healthz", fiberHealthHandler(s.healthAggregator))
 	app.Get("/livez", health.FiberLivenessHandler("apt-proxy"))
-	app.Get("/readyz", health.FiberReadinessHandler(s.healthAggregator))
+	app.Get("/readyz", fiberHealthHandler(s.healthAggregator))
 
 	// Version endpoint (Fiber native)
 	app.Get("/version", version.FiberHandler(version.HandlerConfig{
