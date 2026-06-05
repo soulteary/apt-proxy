@@ -65,7 +65,7 @@ func TestDaemonE2E(t *testing.T) {
 	cacheDir := t.TempDir()
 	cfg := &config.Config{
 		Listen:   net.JoinHostPort(host, port),
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		Debug:    false,
 		CacheDir: cacheDir,
 		Cache: config.CacheConfig{
@@ -131,7 +131,7 @@ func TestDaemonE2EHealthCheckPersists(t *testing.T) {
 
 	cfg := &config.Config{
 		Listen:   net.JoinHostPort(host, port),
-		Mode:     distro.TYPE_LINUX_ALL_DISTROS,
+		Mode:     distro.TypeAllDistros,
 		CacheDir: cacheDir,
 		Cache: config.CacheConfig{
 			MaxSizeGB:          1,
