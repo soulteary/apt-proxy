@@ -16,7 +16,7 @@ RUN go build -trimpath \
     -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.commit=${COMMIT}' -X 'main.date=${DATE}'" \
     -o /out/apt-proxy ./cmd/apt-proxy
 
-FROM alpine:3.21
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates tzdata wget && \
     addgroup -g 1000 aptproxy && \
     adduser -D -u 1000 -G aptproxy aptproxy
