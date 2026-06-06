@@ -24,8 +24,8 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
 - **Drop-in Replacement**: Compatible with [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) configurations
 - **Zero Configuration**: Works out of the box with sensible defaults
-- **Observability**: Built-in health checks, Prometheus metrics, and structured logging
-- **Cache Management**: REST API for cache statistics, purging, and cleanup
+- **Observability**: Built-in health checks, Prometheus metrics, structured logging, and optional OpenTelemetry tracing
+- **Cache Management**: REST API for cache statistics, purging, and cleanup, with API-key authentication and per-IP rate limiting
 
 ## Supported Platforms
 
@@ -176,6 +176,18 @@ distributions:
 
 After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to hot-reload without restart.
 
+**Field reference:**
+
+- `id` — unique identifier used in URL paths (`/<id>/...`).
+- `name` — human-readable display name.
+- `type` — integer distro type: `1` Ubuntu, `2` UbuntuPorts, `3` Debian, `4` CentOS, `5` Alpine. `0` is reserved for "all".
+- `url_pattern` — regex matched against the request path; the captured group is appended to the upstream mirror.
+- `benchmark_url` — relative path probed during mirror benchmarking.
+- `geo_mirror_api` — optional URL returning a list of geo-located mirrors (Ubuntu-style `mirrors.txt`).
+- `cache_rules[]` — per-pattern cache directives. `cache_control` overrides response `Cache-Control` for matched paths (only applied to `200`/`404` responses); `rewrite: true` enables URL rewriting for that pattern.
+- `mirrors.official` / `mirrors.custom` — mirror host lists. Aliases of the form `cn:<name>` are auto-generated from each mirror's host (e.g. `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`).
+- `aliases` — explicit name-to-mirror mapping that overrides/augments the auto-generated aliases.
+
 **Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases`. The repo includes an example at `config/distributions.yaml` that you can extend.
 
 ### Custom Mirror Selection
@@ -287,12 +299,16 @@ View all available options:
 | `-cache-max-size` | Maximum cache size in GB (0 to disable) | `10` |
 | `-cache-ttl` | Cache TTL in hours (0 to disable) | `168` (7 days) |
 | `-cache-cleanup-interval` | Cache cleanup interval in minutes | `60` |
-| `-tls` | Enable TLS/HTTPS | `false` |
+| `-tls` | Enable TLS/HTTPS (requires `-tls-cert` and `-tls-key`) | `false` |
 | `-tls-cert` | Path to TLS certificate file | |
 | `-tls-key` | Path to TLS private key file | |
-| `-api-key` | API key for protected endpoints | |
+| `-api-key` | API key for protected endpoints (auto-enables auth when set) | |
+| `-enable-api-auth` | Explicitly enable/disable API authentication middleware | `false` (auto `true` when `-api-key` is set) |
+| `-api-rate-limit` | API requests per IP per minute (`0` to disable) | `60` |
+| `-trusted-proxies` | Comma-separated CIDRs whose `X-Forwarded-For` is honored by rate limiter and auth | |
+| `-upstream-keep-alive` | Enable HTTP keep-alive to upstream mirrors (CLI/ENV only; not configurable via YAML) | `true` |
 | `-config` | Path to YAML configuration file | |
-| `-debug` | Enable verbose debug logging | `false` |
+| `-debug` | Enable verbose debug logging (also dumps request headers/body to logs) | `false` |
 
 **Example with Custom Configuration:**
 
@@ -306,6 +322,70 @@ View all available options:
   --cache-max-size=20 \
   --debug
 ```
+
+### Environment Variables
+
+Every CLI flag has an equivalent environment variable. Plus a few extras for logging and tracing.
+
+**Server / Mode**
+
+| Variable | Equivalent flag | Description |
+|----------|-----------------|-------------|
+| `APT_PROXY_HOST` | `-host` | Network interface to bind to |
+| `APT_PROXY_PORT` | `-port` | Port to listen on |
+| `APT_PROXY_MODE` | `-mode` | Distribution mode (`all`/`ubuntu`/`ubuntu-ports`/`debian`/`centos`/`alpine`) |
+| `APT_PROXY_DEBUG` | `-debug` | Enable verbose debug logging |
+| `APT_PROXY_UBUNTU` | `-ubuntu` | Ubuntu mirror URL or shortcut |
+| `APT_PROXY_UBUNTU_PORTS` | `-ubuntu-ports` | Ubuntu Ports mirror URL or shortcut |
+| `APT_PROXY_DEBIAN` | `-debian` | Debian mirror URL or shortcut |
+| `APT_PROXY_CENTOS` | `-centos` | CentOS mirror URL or shortcut |
+| `APT_PROXY_ALPINE` | `-alpine` | Alpine mirror URL or shortcut |
+| `APT_PROXY_UPSTREAM_KEEP_ALIVE` | `-upstream-keep-alive` | HTTP keep-alive to upstream mirrors |
+
+**Cache**
+
+| Variable | Equivalent flag | Description |
+|----------|-----------------|-------------|
+| `APT_PROXY_CACHEDIR` | `-cachedir` | Cache directory |
+| `APT_PROXY_CACHE_MAX_SIZE` | `-cache-max-size` | Maximum cache size in GB (`0` disables) |
+| `APT_PROXY_CACHE_TTL` | `-cache-ttl` | Cache TTL in hours (`0` disables) |
+| `APT_PROXY_CACHE_CLEANUP_INTERVAL` | `-cache-cleanup-interval` | Cache cleanup interval in minutes (`0` disables) |
+
+**TLS**
+
+| Variable | Equivalent flag | Description |
+|----------|-----------------|-------------|
+| `APT_PROXY_TLS_ENABLED` | `-tls` | Enable TLS/HTTPS |
+| `APT_PROXY_TLS_CERT` | `-tls-cert` | Path to TLS certificate |
+| `APT_PROXY_TLS_KEY` | `-tls-key` | Path to TLS private key |
+
+**Security (API)**
+
+| Variable | Equivalent flag | Description |
+|----------|-----------------|-------------|
+| `APT_PROXY_API_KEY` | `-api-key` | API key for protected endpoints |
+| `APT_PROXY_ENABLE_API_AUTH` | `-enable-api-auth` | Explicit toggle for API auth middleware |
+| `APT_PROXY_API_RATE_LIMIT_PER_MINUTE` | `-api-rate-limit` | API requests per IP per minute (`0` disables) |
+| `APT_PROXY_TRUSTED_PROXIES` | `-trusted-proxies` | Comma-separated trusted proxy CIDRs |
+
+**Configuration files**
+
+| Variable | Equivalent flag | Description |
+|----------|-----------------|-------------|
+| `APT_PROXY_CONFIG_FILE` | `-config` | Path to `apt-proxy.yaml` |
+| `APT_PROXY_DISTRIBUTIONS_CONFIG` | `-distributions-config` | Path to `distributions.yaml` |
+
+**Logging & Tracing** (no CLI equivalent)
+
+| Variable | Description |
+|----------|-------------|
+| `APT_PROXY_LOG_LEVEL` | Log level: `debug` / `info` / `warn` / `error`. `--debug` forces `debug`. |
+| `APT_PROXY_LOG_FORMAT` | Log format: `json` / `console` / `auto` (auto-detects based on TTY). |
+| `LOG_LEVEL` | Legacy alias; only used when `APT_PROXY_LOG_LEVEL` is unset. |
+| `LOG_FORMAT` | Legacy alias; only used when `APT_PROXY_LOG_FORMAT` is unset. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | When set, enables OpenTelemetry tracing and exports spans via OTLP to this endpoint. Spans are flushed on graceful shutdown. |
+
+**Configuration Priority:** CLI flags > Environment variables > Config file > Default values
 
 ### YAML Configuration File
 
@@ -325,7 +405,10 @@ cache:
 
 mirrors:
   ubuntu: cn:tsinghua
+  ubuntu_ports: ""
   debian: cn:ustc
+  centos: ""
+  alpine: ""
 
 tls:
   enabled: false
@@ -333,13 +416,22 @@ tls:
   key_file: /etc/ssl/private/apt-proxy.key
 
 security:
-  api_key: ${APT_PROXY_API_KEY}  # Supports environment variable expansion
+  api_key: ${APT_PROXY_API_KEY}        # supports ${VAR} and ${VAR:-default} expansion
   enable_api_auth: true
+  api_rate_limit_per_minute: 60        # 0 disables; default 60
+  trusted_proxies:                     # CIDRs whose X-Forwarded-For is trusted
+    - 10.0.0.0/8
+    - 192.168.0.0/16
 
 mode: all
+
+# Optional: external distributions/mirrors config (hot-reloadable)
+distributions_config: ./config/distributions.yaml
 ```
 
-**Configuration Priority:** CLI flags > Environment variables > Config file > Default values
+**Environment variable expansion in YAML:** values support `${VAR}` and `${VAR:-default}` forms. Bare `$VAR` is **not** expanded. An undefined `${VAR}` is left as-is (instead of becoming empty) so that typos surface loudly.
+
+**Note:** `upstream_keep_alive` is **not** read from YAML — configure it via `--upstream-keep-alive` or `APT_PROXY_UPSTREAM_KEEP_ALIVE`. Likewise, only the human-friendly cache fields shown above (`dir`, `max_size_gb`, `ttl_hours`, `cleanup_interval_min`) are valid; raw byte/duration fields are internal representations.
 
 **Config file search paths (in order):**
 1. Path specified via `-config` flag or `APT_PROXY_CONFIG_FILE` environment variable
@@ -365,11 +457,13 @@ APT Proxy provides REST API endpoints for monitoring and management:
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /healthz` | Comprehensive health check |
-| `GET /livez` | Kubernetes liveness probe |
-| `GET /readyz` | Kubernetes readiness probe |
-| `GET /version` | Version information |
+| `GET /healthz` | Aggregated health check (cache, dependencies) |
+| `GET /livez` | Kubernetes liveness probe (lightweight, no dependencies) |
+| `GET /readyz` | Kubernetes readiness probe (currently shares the same aggregator as `/healthz`) |
+| `GET /version` | Version information (also available via `X-Version` response header on every response) |
 | `GET /metrics` | Prometheus metrics |
+| `ALL /_/ping`, `ALL /_/ping/*` | Cheap reachability probe; always returns `pong` |
+| `GET /` | Internal status page (HTML) showing routes, mirrors, and cache stats |
 
 ### Cache Management (Protected)
 
@@ -387,7 +481,7 @@ APT Proxy provides REST API endpoints for monitoring and management:
 
 ### API Authentication
 
-When an API key is configured, all management endpoints require authentication. Provide the API key using one of these methods:
+When an API key is configured, all `/api/*` endpoints require authentication. Setting `--api-key` (or `APT_PROXY_API_KEY`) implicitly enables auth; pass `--enable-api-auth=false` to force-disable it. Provide the API key using one of these methods:
 
 1. **X-API-Key Header** (recommended):
    ```bash
@@ -398,6 +492,20 @@ When an API key is configured, all management endpoints require authentication. 
    ```bash
    curl -H "Authorization: Bearer your-api-key" http://localhost:3142/api/cache/stats
    ```
+
+### API Rate Limiting
+
+All `/api/*` endpoints are subject to per-IP rate limiting. The default budget is **60 requests per IP per minute** (sliding 1-minute window); set `--api-rate-limit=0` to disable. When the limit is exceeded the server responds with HTTP `429 Too Many Requests` and a JSON body whose error code is `ErrRateLimited`.
+
+By default the client IP is taken from `RemoteAddr`. To honor `X-Forwarded-For` (e.g. behind nginx, ALB, or a cloud LB), pass the **trusted proxy CIDRs** via `--trusted-proxies=10.0.0.0/8,192.168.0.0/16` (or `APT_PROXY_TRUSTED_PROXIES`). Only requests originating from those CIDRs will have their `X-Forwarded-For` parsed; otherwise it is ignored to prevent spoofing.
+
+### Response Headers
+
+The server attaches the following headers to every response:
+
+- `X-Version`, `X-Build-*` — version and build metadata (also available at `GET /version`).
+- Standard security headers (e.g. `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security` when TLS is on).
+- `X-Cache: HIT` / `MISS` / `SKIP` on proxy responses (used by the request logger to classify traffic).
 
 **Example: Get Cache Statistics (with authentication)**
 
@@ -436,18 +544,39 @@ Or use the API:
 curl -X POST http://localhost:3142/api/mirrors/refresh
 ```
 
-## Observability and Metrics
+Both paths are equivalent: they reload `distributions.yaml` and re-run mirror selection. SIGHUP signals are debounced (consecutive signals within ~500ms are coalesced) and queued (at most one extra reload is scheduled while a reload is in progress), so it is safe to invoke them rapidly from scripts.
+
+## Observability
+
+### Metrics
 
 The `/metrics` endpoint exposes Prometheus metrics. Key metrics and suggested alerts:
 
 | Metric / area | Description | Suggested alert |
 |---------------|-------------|-----------------|
-| `apt_proxy_cache_*` | Cache hits, misses, size, item count, evictions, cleanup duration | Cache error rate high; cache size near limit |
-| `apt_proxy_cache_upstream_*` | Upstream request duration and errors | Upstream 5xx or timeout rate high |
-| `apt_proxy_cache_request_duration_seconds` | Request latency by distro and cache hit | Request latency P99 above threshold |
-| Health (`/healthz`, `/readyz`) | Service and dependency health | Health check failing |
+| `apt_proxy_cache_hits_total` / `apt_proxy_cache_misses_total` | Cache hits and misses | Hit ratio drops sharply |
+| `apt_proxy_cache_size_bytes` / `apt_proxy_cache_items` | Current cache footprint | Cache size near `--cache-max-size` limit |
+| `apt_proxy_cache_evictions_total` | LRU evictions due to size limit | Sustained eviction rate (cache too small) |
+| `apt_proxy_cache_cleanup_duration_seconds` | Periodic cleanup duration | Cleanup taking too long |
+| `apt_proxy_cache_upstream_request_duration_seconds{method,status}` | Upstream request latency by method/status | P99 above threshold |
+| `apt_proxy_cache_upstream_errors_total` | Upstream fetch errors | Error rate spike |
+| Health (`/healthz`, `/readyz`) | Service and dependency health | Probes failing |
 
-Run tests with coverage: `go test -cover ./...`; generate report with `go test -coverprofile=coverage.out ./...` and `go tool cover -html=coverage.out`.
+Exact labels and additional series are emitted by the underlying [httpcache-kit](https://github.com/soulteary/httpcache-kit); scrape `/metrics` to enumerate them.
+
+### Logging
+
+Logging is structured (JSON or console) and configured purely via environment variables:
+
+- `APT_PROXY_LOG_LEVEL` — `debug` / `info` / `warn` / `error` (default `info`). `LOG_LEVEL` is honored as a legacy fallback.
+- `APT_PROXY_LOG_FORMAT` — `json` / `console` / `auto` (default `auto`, picks `console` when stdout is a TTY). `LOG_FORMAT` is honored as a legacy fallback.
+- `--debug` / `APT_PROXY_DEBUG=true` forces `debug` level **and** dumps request headers and bodies into access logs — use only for troubleshooting.
+
+Each request log carries `request_id`, `cache` (`HIT`/`MISS`/`SKIP`/empty), and the response `size`. The probe paths `/healthz`, `/livez`, and `/readyz` are excluded from access logs to keep them quiet.
+
+### Distributed Tracing (OpenTelemetry)
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` to your OTLP collector (e.g. `http://otel-collector:4317`) to enable OpenTelemetry tracing. The exporter is wired up automatically; spans are flushed during graceful shutdown. Tracing is disabled when the variable is unset.
 
 ## Architecture
 
@@ -488,38 +617,54 @@ apt-proxy/
 │   └── apt-proxy/            # Application entrypoint
 │       └── main.go           # Main entry point
 ├── internal/                 # Private application code
-│   ├── api/                  # REST API handlers
+│   ├── api/                  # REST API handlers and middlewares
 │   │   ├── auth.go           # API authentication middleware
 │   │   ├── cache.go          # Cache management endpoints
 │   │   ├── mirrors.go        # Mirror management endpoints
+│   │   ├── ratelimit.go      # Per-IP rate limiting middleware
+│   │   ├── clientip.go       # Client IP extraction (X-Forwarded-For + trusted proxies)
 │   │   └── response.go       # Response utilities
 │   ├── benchmarks/           # Mirror benchmarking (sync & async)
 │   ├── cli/                  # CLI and daemon management
-│   │   ├── cli.go            # Configuration parsing & re-exports
-│   │   └── daemon.go         # Server lifecycle management
+│   │   ├── cli.go            # Entrypoint, version wiring
+│   │   ├── daemon.go         # Server lifecycle, routing, signal handling
+│   │   └── health.go         # Custom Fiber health handler (race-safe shutdown)
 │   ├── config/               # Configuration management
 │   │   ├── config.go         # Configuration structures
-│   │   ├── defaults.go       # Default values
-│   │   └── loader.go         # Configuration loading (CLI, ENV, YAML)
-│   ├── distro/               # Distribution definitions
+│   │   ├── defaults.go       # Default values and env var keys
+│   │   ├── loader.go         # Config loading orchestration
+│   │   ├── loader_flags.go   # CLI flag parsing
+│   │   ├── loader_yaml.go    # YAML loading + ${VAR}/${VAR:-default} expansion
+│   │   ├── loader_merge.go   # CLI/ENV/file/defaults merging with explicit-flag tracking
+│   │   ├── loader_search.go  # Config file search paths
+│   │   └── loader_validate.go# Validation (paths, TLS files, cache writability)
+│   ├── distro/               # Distribution definitions and registry
 │   │   ├── distro.go         # Common types and utilities
+│   │   ├── registry.go       # Built-in distro registry
+│   │   ├── loader.go         # distributions.yaml loader and search paths
+│   │   ├── rules.go          # Cache rule helpers
 │   │   ├── ubuntu.go         # Ubuntu configuration
+│   │   ├── ubuntu-ports.go   # Ubuntu Ports configuration
 │   │   ├── debian.go         # Debian configuration
 │   │   ├── centos.go         # CentOS configuration
 │   │   └── alpine.go         # Alpine configuration
 │   ├── errors/               # Unified error handling
 │   │   └── errors.go         # Error codes and types
 │   ├── mirrors/              # Mirror management
+│   │   ├── mirrors.go        # Mirror list resolution
+│   │   ├── ubuntu.go         # Ubuntu geo-mirror discovery
+│   │   └── templates.go      # URL templating helpers
 │   ├── proxy/                # Core proxy functionality
 │   │   ├── handler.go        # HTTP request handling
 │   │   ├── rewriter.go       # URL rewriting
+│   │   ├── transport.go      # Upstream HTTP transport (keep-alive, timeouts)
 │   │   ├── page.go           # Home page rendering
 │   │   └── stats.go          # Statistics
 │   ├── state/                # Application state management
 │   └── system/               # System utilities (disk, gc, filesize)
 ├── tests/                    # Integration tests
-│   └── integration/         # End-to-end tests
-└── docker/, example/, docs/   # Deployment and documentation
+│   └── integration/          # End-to-end tests
+└── config/, docker/, example/ # Sample configs, deployment, and docs
 ```
 
 ## Development
