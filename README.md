@@ -7,18 +7,22 @@
 </p>
 
 <p align="center">
-  <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
+  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
 </p>
 
 > A lightweight **APT Cache Proxy** - just over 2MB in size!
 
 <p align="center">
-  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
+  <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
 </p>
 
 ## Overview
 
 APT Proxy is a lightweight, high-performance caching proxy for package managers. It accelerates package downloads by caching frequently used packages locally, dramatically reducing download times for subsequent installations. Whether you're managing multiple servers, building Docker images, or working in bandwidth-constrained environments, APT Proxy helps you save time and bandwidth.
+
+<p align="center">
+  <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
+</p>
 
 ### Key Features
 

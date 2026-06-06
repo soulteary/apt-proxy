@@ -7,18 +7,22 @@
 </p>
 
 <p align="center">
-  <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
+  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
 </p>
 
 > 一个轻量级的 APT 缓存代理 - 仅仅只有 2MB 大小！
 
 <p align="center">
-  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
+  <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
 </p>
 
 ## 概述
 
 APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
+
+<p align="center">
+  <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
+</p>
 
 ### 核心特性
 
