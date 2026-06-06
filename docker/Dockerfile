@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine3.23 AS builder
+FROM golang:1.26.4-alpine3.23 AS builder
 RUN apk add --no-cache ca-certificates tzdata git
 ARG TZ=Asia/Shanghai
 ENV TZ=${TZ}
