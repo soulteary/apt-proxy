@@ -271,7 +271,7 @@ func TestCreateRewriterWithSpecifiedMirror(t *testing.T) {
 	reg := newTestRegistry()
 	st.SetMirror(distro.TypeUbuntu, "http://custom.mirror.com/ubuntu/")
 
-	rewriter := createRewriter(distro.TypeUbuntu, st, reg)
+	rewriter := createRewriter(distro.TypeUbuntu, st, reg, nil)
 	if rewriter == nil {
 		t.Fatal("createRewriter() returned nil")
 	}

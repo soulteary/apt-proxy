@@ -26,14 +26,10 @@ package integration
 //   - independent caches: purging A doesn't move B's stats
 //   - independent API keys: each server only honours its own
 //   - concurrent traffic + RefreshMirrors does not corrupt either
-//
-// What we *intentionally* document (a known cross-Server coupling
-// that should not regress silently):
-//   - internal/benchmarks holds a package-level cache; calling
-//     RefreshMirrors on either Server clears it for both. This is
-//     fine in production (one process == one Server) but the test
-//     pins the behaviour so future per-Server cache work has an
-//     anchor to flip.
+//   - independent benchmark engines: a refresh on A no longer flushes B's
+//     mirror selection cache (this used to be a documented coupling
+//     pinned by TestMultiServerBenchmarkCacheIsShared; that test has
+//     been flipped to TestMultiServerBenchmarkCacheIsIsolated below)
 
 import (
 	"encoding/json"
@@ -256,45 +252,72 @@ func TestMultiServerProxyRouting(t *testing.T) {
 	}
 }
 
-// TestMultiServerBenchmarkCacheIsShared documents (and pins) the one
-// remaining shared global between Server instances: the package-level
-// benchmarks cache. Either Server's RefreshMirrors clears it for both.
-//
-// This test is a deliberate "expected behaviour" pin; if it ever
-// starts failing, that means someone has lifted the package-level
-// cache (good!) and this test should be removed at the same time.
-func TestMultiServerBenchmarkCacheIsShared(t *testing.T) {
+// TestMultiServerBenchmarkCacheIsIsolated asserts the per-Server
+// benchmarks.Engine isolation: refreshing on Server A clears only A's
+// mirror selection cache, not B's. This is the inverse of the previous
+// TestMultiServerBenchmarkCacheIsShared, which pinned the (now removed)
+// package-level cache as a documented coupling.
+func TestMultiServerBenchmarkCacheIsIsolated(t *testing.T) {
 	srvA := newTestServer(t, &testServerOptions{apiKey: "keyA", mirrorPrefix: "http://serverA.example.com"})
 	defer srvA.cleanup()
 	srvB := newTestServer(t, &testServerOptions{apiKey: "keyB", mirrorPrefix: "http://serverB.example.com"})
 	defer srvB.cleanup()
 
-	cache := benchmarks.GetBenchmarkCache()
+	cacheA := srvA.proxy.BenchmarkEngine().Cache()
+	cacheB := srvB.proxy.BenchmarkEngine().Cache()
 
-	// Seed the global cache with two distinct entries (one per Server's
-	// proxy mode key). distro.TypeAllDistros is what newTestServer uses,
-	// so use a different mode key for the second entry to avoid clobber.
-	cache.SetCachedResult(distro.TypeAllDistros, "http://shared-seed.example.com", time.Hour)
-	cache.SetCachedResult(distro.TypeDebian, "http://shared-seed-debian.example.com", time.Hour)
-
-	if _, ok := cache.GetCachedResult(distro.TypeAllDistros); !ok {
-		t.Fatal("seed: TypeAllDistros entry missing right after SetCachedResult")
+	if cacheA == cacheB {
+		t.Fatal("expected per-Server benchmark caches, both proxies share one instance")
 	}
 
-	// Refresh on Server A must wipe the global cache.
+	// Seed both engines with distinct entries.
+	cacheA.SetCachedResult(distro.TypeAllDistros, "http://seed-A.example.com", time.Hour)
+	cacheB.SetCachedResult(distro.TypeAllDistros, "http://seed-B.example.com", time.Hour)
+	cacheB.SetCachedResult(distro.TypeDebian, "http://seed-B-debian.example.com", time.Hour)
+
+	if got, ok := cacheA.GetCachedResult(distro.TypeAllDistros); !ok || got != "http://seed-A.example.com" {
+		t.Fatalf("seed A: GetCachedResult = (%q, %v)", got, ok)
+	}
+	if got, ok := cacheB.GetCachedResult(distro.TypeAllDistros); !ok || got != "http://seed-B.example.com" {
+		t.Fatalf("seed B: GetCachedResult = (%q, %v)", got, ok)
+	}
+
+	// Refresh on Server A wipes A's cache.
 	srvA.proxy.RefreshMirrors()
 
-	if _, ok := cache.GetCachedResult(distro.TypeAllDistros); ok {
-		t.Error("expected RefreshMirrors on A to clear shared benchmarks cache, but TypeAllDistros entry survived")
-	}
-	if _, ok := cache.GetCachedResult(distro.TypeDebian); ok {
-		t.Error("expected RefreshMirrors on A to clear shared benchmarks cache, but TypeDebian entry survived")
+	if _, ok := cacheA.GetCachedResult(distro.TypeAllDistros); ok {
+		t.Error("expected RefreshMirrors on A to clear A's benchmark cache")
 	}
 
-	// Re-seed and verify B clears it too.
-	cache.SetCachedResult(distro.TypeAllDistros, "http://shared-seed-2.example.com", time.Hour)
+	// B's cache must be untouched: this is the isolation we just bought.
+	if got, ok := cacheB.GetCachedResult(distro.TypeAllDistros); !ok || got != "http://seed-B.example.com" {
+		t.Errorf("RefreshMirrors on A leaked into B's cache (TypeAllDistros): got=(%q, %v), want=(\"http://seed-B.example.com\", true)", got, ok)
+	}
+	if got, ok := cacheB.GetCachedResult(distro.TypeDebian); !ok || got != "http://seed-B-debian.example.com" {
+		t.Errorf("RefreshMirrors on A leaked into B's cache (TypeDebian): got=(%q, %v)", got, ok)
+	}
+
+	// And the inverse: refreshing B leaves A's freshly-empty cache empty
+	// (no entries to leak from A) but more importantly clears only B.
+	cacheA.SetCachedResult(distro.TypeAllDistros, "http://reseed-A.example.com", time.Hour)
 	srvB.proxy.RefreshMirrors()
-	if _, ok := cache.GetCachedResult(distro.TypeAllDistros); ok {
-		t.Error("expected RefreshMirrors on B to clear shared benchmarks cache, but TypeAllDistros entry survived")
+
+	if _, ok := cacheB.GetCachedResult(distro.TypeAllDistros); ok {
+		t.Error("expected RefreshMirrors on B to clear B's benchmark cache")
+	}
+	if got, ok := cacheA.GetCachedResult(distro.TypeAllDistros); !ok || got != "http://reseed-A.example.com" {
+		t.Errorf("RefreshMirrors on B leaked into A's cache: got=(%q, %v), want=(\"http://reseed-A.example.com\", true)", got, ok)
+	}
+
+	// Sanity: neither Server's engine should be the package-level Default
+	// engine. If they were, the isolation would only hold by accident.
+	if srvA.proxy.BenchmarkEngine() == benchmarks.Default() {
+		t.Error("Server A is using the package-level Default engine; expected a private one")
+	}
+	if srvB.proxy.BenchmarkEngine() == benchmarks.Default() {
+		t.Error("Server B is using the package-level Default engine; expected a private one")
+	}
+	if srvA.proxy.BenchmarkEngine() == srvB.proxy.BenchmarkEngine() {
+		t.Error("Server A and B share an engine; expected one engine per Server")
 	}
 }

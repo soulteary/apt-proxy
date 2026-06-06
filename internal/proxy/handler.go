@@ -27,6 +27,7 @@ import (
 	logger "github.com/soulteary/logger-kit"
 	tracing "github.com/soulteary/tracing-kit"
 
+	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
@@ -125,6 +126,12 @@ type PackageStruct struct {
 	// finer-grained locking for the per-mirror pointer swap.
 	rewriters *URLRewriters
 
+	// bench is this PackageStruct's private benchmark engine. Each Server
+	// owns one so RefreshMirrors on Server A no longer flushes Server B's
+	// mirror selection cache (the long-standing cross-Server coupling
+	// previously pinned by tests/integration/multi_server_test.go).
+	bench *benchmarks.Engine
+
 	// transport is the upstream HTTP transport (with retry+tracing wrapping)
 	// used by the underlying ReverseProxy.
 	transport http.RoundTripper
@@ -175,7 +182,8 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 	}
 
 	mode := opts.Mode
-	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async)
+	bench := benchmarks.NewEngine()
+	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async, bench)
 
 	ps := &PackageStruct{
 		Rules:     GetRewriteRulesByMode(opts.Registry, mode),
@@ -185,6 +193,7 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		registry:  opts.Registry,
 		mode:      mode,
 		rewriters: rewriters,
+		bench:     bench,
 		transport: transport,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
@@ -195,11 +204,11 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 }
 
 // newRewriters chooses the sync/async constructor based on opts.Async.
-func newRewriters(mode int, st *state.AppState, reg *distro.Registry, async bool) *URLRewriters {
+func newRewriters(mode int, st *state.AppState, reg *distro.Registry, async bool, bench *benchmarks.Engine) *URLRewriters {
 	if async {
-		return CreateNewRewritersAsync(mode, st, reg)
+		return CreateNewRewritersAsyncWithEngine(mode, st, reg, bench)
 	}
-	return CreateNewRewriters(mode, st, reg)
+	return CreateNewRewritersWithEngine(mode, st, reg, bench)
 }
 
 // HandleHomePage serves the home page with statistics
@@ -365,6 +374,12 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *distro.Rule) {
 // has its own finer-grained lock; this outer lock prevents two refresh
 // runs from racing to clear the benchmark cache and re-elect mirrors at
 // the same time).
+//
+// Cache-isolation note: this clears only this PackageStruct's private
+// benchmarks.Engine cache, so a refresh on one Server no longer affects
+// any other Server's mirror selection. (Historically the engine was a
+// package-level singleton; that coupling was removed in favour of the
+// per-Server engine field above.)
 func (ap *PackageStruct) RefreshMirrors() {
 	if ap == nil || ap.rewriters == nil {
 		return
@@ -372,7 +387,17 @@ func (ap *PackageStruct) RefreshMirrors() {
 	ap.refreshMu.Lock()
 	defer ap.refreshMu.Unlock()
 	ap.invalidateHostPatterns()
-	RefreshRewriters(ap.rewriters, ap.mode, ap.state, ap.registry)
+	RefreshRewritersWithEngine(ap.rewriters, ap.mode, ap.state, ap.registry, ap.bench)
+}
+
+// BenchmarkEngine exposes this PackageStruct's private benchmark engine.
+// Callers (tests, debug endpoints) should prefer this over
+// benchmarks.Default() so they observe the same cache the Server uses.
+func (ap *PackageStruct) BenchmarkEngine() *benchmarks.Engine {
+	if ap == nil {
+		return nil
+	}
+	return ap.bench
 }
 
 // WriteHeader implements http.ResponseWriter interface. It injects cache control

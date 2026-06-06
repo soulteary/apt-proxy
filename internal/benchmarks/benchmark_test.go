@@ -18,6 +18,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -191,9 +192,7 @@ func TestMin(t *testing.T) {
 // Tests for BenchmarkCache
 
 func TestBenchmarkCache(t *testing.T) {
-	cache := &BenchmarkCache{
-		results: make(map[int]CachedResult),
-	}
+	cache := NewBenchmarkCache()
 
 	// Test GetCachedResult with no cache
 	_, ok := cache.GetCachedResult(1)
@@ -220,9 +219,7 @@ func TestBenchmarkCache(t *testing.T) {
 }
 
 func TestCachedResultExpiration(t *testing.T) {
-	cache := &BenchmarkCache{
-		results: make(map[int]CachedResult),
-	}
+	cache := NewBenchmarkCache()
 
 	// Set with very short TTL
 	cache.SetCachedResult(1, "http://mirror.example.com", 1*time.Millisecond)
@@ -401,5 +398,136 @@ func TestCachedResultIsExpired(t *testing.T) {
 	}
 	if !result.IsExpired() {
 		t.Error("CachedResult should be expired")
+	}
+}
+
+// TestEngineIsolation pins the post-refactor invariant: two Engine
+// instances must not share their cache. ClearCache on one engine is
+// invisible to the other. This is what enables per-Server cache
+// isolation in PackageStruct.
+func TestEngineIsolation(t *testing.T) {
+	a := NewEngine()
+	b := NewEngine()
+
+	if a == b {
+		t.Fatal("NewEngine() returned the same pointer twice")
+	}
+	if a.Cache() == b.Cache() {
+		t.Fatal("two engines share the same cache pointer")
+	}
+
+	a.Cache().SetCachedResult(1, "http://a.example.com", time.Hour)
+	b.Cache().SetCachedResult(1, "http://b.example.com", time.Hour)
+
+	if got, ok := a.Cache().GetCachedResult(1); !ok || got != "http://a.example.com" {
+		t.Errorf("engine a: GetCachedResult(1) = (%q, %v), want (%q, true)", got, ok, "http://a.example.com")
+	}
+	if got, ok := b.Cache().GetCachedResult(1); !ok || got != "http://b.example.com" {
+		t.Errorf("engine b: GetCachedResult(1) = (%q, %v), want (%q, true)", got, ok, "http://b.example.com")
+	}
+
+	a.ClearCache()
+
+	if _, ok := a.Cache().GetCachedResult(1); ok {
+		t.Error("ClearCache on engine a did not drop a's entry")
+	}
+	if got, ok := b.Cache().GetCachedResult(1); !ok || got != "http://b.example.com" {
+		t.Errorf("ClearCache on a leaked into b: got (%q, %v)", got, ok)
+	}
+}
+
+// TestEngineIsolationFromDefault makes sure constructed engines are
+// independent from the process-wide Default() engine that backs the
+// legacy package-level helpers.
+func TestEngineIsolationFromDefault(t *testing.T) {
+	// Snapshot the default engine into a clean state for the duration
+	// of this test so we can make assertions about leak-direction.
+	Default().ClearCache()
+	defer Default().ClearCache()
+
+	private := NewEngine()
+	if private == Default() {
+		t.Fatal("NewEngine() returned the Default() engine")
+	}
+
+	// Seeding through the package-level helper writes to Default().
+	GetBenchmarkCache().SetCachedResult(7, "http://default.example.com", time.Hour)
+	if _, ok := private.Cache().GetCachedResult(7); ok {
+		t.Error("package-level seed leaked into a fresh private engine")
+	}
+
+	// And vice versa.
+	private.Cache().SetCachedResult(8, "http://private.example.com", time.Hour)
+	if _, ok := GetBenchmarkCache().GetCachedResult(8); ok {
+		t.Error("private seed leaked back into the Default() engine")
+	}
+
+	// Clearing the private engine must not touch Default().
+	private.ClearCache()
+	if got, ok := GetBenchmarkCache().GetCachedResult(7); !ok || got != "http://default.example.com" {
+		t.Errorf("private.ClearCache() flushed Default(): got (%q, %v)", got, ok)
+	}
+}
+
+// TestEngineAsyncSingleflight pins the dedup invariant on the async
+// path: N concurrent GetTheFastestMirrorAsync calls for the same
+// distType must collapse into a single upstream probe via the engine's
+// singleflight group, just like the sync GetTheFastestMirrorWithCache
+// path. Every caller's callback must still fire with the same result.
+func TestEngineAsyncSingleflight(t *testing.T) {
+	var probeCount atomic.Int64
+	// gate blocks the upstream handler until we've queued up all the
+	// async calls. Without the gate the first call could finish (and
+	// populate the cache) before the others reach singleflight.Do.
+	gate := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-gate
+		probeCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer server.Close()
+
+	engine := NewEngine()
+	mirrors := []string{server.URL}
+
+	const callers = 5
+	results := make(chan AsyncBenchmarkResult, callers)
+	for i := 0; i < callers; i++ {
+		engine.GetTheFastestMirrorAsync(42, mirrors, "/probe", func(r AsyncBenchmarkResult) {
+			results <- r
+		})
+	}
+
+	// Give all goroutines a moment to enqueue into singleflight before
+	// we let the upstream respond. 50ms is generous on CI; if it's not
+	// enough the test would be conservative (more probes, not fewer)
+	// so it can still fail loudly when the dedup actually breaks.
+	time.Sleep(50 * time.Millisecond)
+	close(gate)
+
+	collected := 0
+	deadline := time.After(10 * time.Second)
+	for collected < callers {
+		select {
+		case r := <-results:
+			if r.Error != nil {
+				t.Fatalf("async benchmark failed: %v", r.Error)
+			}
+			if r.FastestMirror != server.URL {
+				t.Errorf("FastestMirror = %q, want %q", r.FastestMirror, server.URL)
+			}
+			collected++
+		case <-deadline:
+			t.Fatalf("timed out after collecting %d/%d results", collected, callers)
+		}
+	}
+
+	// The whole point: even though we issued `callers` async benchmark
+	// requests, the upstream must have been probed at most BenchmarkMaxTries
+	// times (i.e. exactly one Engine.Benchmark execution). Anything more
+	// means singleflight is not actually deduplicating async callers.
+	if got := probeCount.Load(); got > int64(BenchmarkMaxTries) {
+		t.Errorf("upstream was probed %d times for %d async callers; expected at most %d (singleflight dedup broken)", got, callers, BenchmarkMaxTries)
 	}
 }

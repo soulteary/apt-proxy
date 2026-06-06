@@ -35,6 +35,11 @@ type BenchmarkCache struct {
 	results map[int]CachedResult
 }
 
+// NewBenchmarkCache returns a fresh, empty cache.
+func NewBenchmarkCache() *BenchmarkCache {
+	return &BenchmarkCache{results: make(map[int]CachedResult)}
+}
+
 // CachedResult represents a cached benchmark result with expiration.
 type CachedResult struct {
 	FastestMirror string
@@ -45,11 +50,6 @@ type CachedResult struct {
 // IsExpired returns true if the cached result has expired.
 func (c CachedResult) IsExpired() bool {
 	return time.Since(c.CachedAt) > c.TTL
-}
-
-// defaultCache is the global benchmark cache instance.
-var defaultCache = &BenchmarkCache{
-	results: make(map[int]CachedResult),
 }
 
 // DefaultCacheTTL is the default time-to-live for cached benchmark results.
@@ -103,11 +103,17 @@ const (
 	BenchmarkDetectTimeout = 30 * time.Second  // for select fast mirror
 )
 
-var (
-	// benchmarkClient is a shared HTTP client for all benchmark operations.
-	// Using a shared client with connection pooling improves performance
-	// by reusing TCP connections and reducing handshake overhead.
-	benchmarkClient = &http.Client{
+// MaxBenchmarkConcurrency caps how many mirror benchmarks run in parallel.
+// Mirror lists can have 50+ entries; spawning that many concurrent TCP
+// connections wastes resources and can trip rate limits on shared CDNs.
+const MaxBenchmarkConcurrency = 8
+
+// newBenchmarkClient builds the shared HTTP client used by an Engine. The
+// settings (connection pool, timeouts) are kept on a fresh client per Engine
+// so two engines do not share TCP connection state or mutate each other's
+// transport.
+func newBenchmarkClient() *http.Client {
+	return &http.Client{
 		Timeout: BenchmarkMaxTimeout,
 		Transport: &http.Transport{
 			MaxIdleConns:        100,
@@ -118,7 +124,49 @@ var (
 			ResponseHeaderTimeout: 30 * time.Second,
 		},
 	}
-)
+}
+
+// Engine encapsulates everything that used to live as package-level state:
+// the result cache, the singleflight group that collapses concurrent
+// cache-miss requests, and the HTTP client used to probe mirrors.
+//
+// Each Server should construct its own Engine via NewEngine so a refresh on
+// one Server does not flush another Server's mirror selection cache. The
+// package-level helpers (GetTheFastestMirror, ClearBenchmarkCache, ...) are
+// thin wrappers around a process-wide Default() Engine, kept for backward
+// compatibility with existing tests and any single-Server callers.
+type Engine struct {
+	cache  *BenchmarkCache
+	group  singleflight.Group
+	client *http.Client
+}
+
+// NewEngine returns a fresh, independent Engine. Use one per Server.
+func NewEngine() *Engine {
+	return &Engine{
+		cache:  NewBenchmarkCache(),
+		client: newBenchmarkClient(),
+	}
+}
+
+// Cache exposes the engine's result cache for advanced callers / tests.
+func (e *Engine) Cache() *BenchmarkCache {
+	return e.cache
+}
+
+// ClearCache drops all cached benchmark results held by this engine.
+func (e *Engine) ClearCache() {
+	e.cache.ClearCache()
+}
+
+// defaultEngine is the process-wide engine used by the package-level helper
+// functions. New code should prefer constructing its own Engine.
+var defaultEngine = NewEngine()
+
+// Default returns the process-wide engine used by the package-level helpers.
+func Default() *Engine {
+	return defaultEngine
+}
 
 // Result stores benchmark results for a URL
 type Result struct {
@@ -133,16 +181,16 @@ func (r Results) Len() int           { return len(r) }
 func (r Results) Less(i, j int) bool { return r[i].Duration < r[j].Duration }
 func (r Results) Swap(i, j int)      { r[i], r[j] = r[j], r[i] }
 
-// Benchmark performs HTTP GET requests and measures response time.
-// It uses a shared HTTP client with connection pooling for better performance.
-func Benchmark(ctx context.Context, base, query string, times int) (time.Duration, error) {
+// Benchmark performs HTTP GET requests against base+query using the engine's
+// shared HTTP client and reports the average response time.
+func (e *Engine) Benchmark(ctx context.Context, base, query string, times int) (time.Duration, error) {
 	var totalDuration time.Duration
 	for i := 0; i < times; i++ {
 		select {
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		default:
-			duration, err := singleBenchmark(ctx, benchmarkClient, base+query)
+			duration, err := singleBenchmark(ctx, e.client, base+query)
 			if err != nil {
 				return 0, err
 			}
@@ -151,6 +199,11 @@ func Benchmark(ctx context.Context, base, query string, times int) (time.Duratio
 	}
 
 	return totalDuration / time.Duration(times), nil
+}
+
+// Benchmark is the package-level shim that delegates to the default engine.
+func Benchmark(ctx context.Context, base, query string, times int) (time.Duration, error) {
+	return defaultEngine.Benchmark(ctx, base, query, times)
 }
 
 func singleBenchmark(ctx context.Context, client *http.Client, url string) (time.Duration, error) {
@@ -199,16 +252,11 @@ func singleBenchmark(ctx context.Context, client *http.Client, url string) (time
 	return time.Since(start), nil
 }
 
-// MaxBenchmarkConcurrency caps how many mirror benchmarks run in parallel.
-// Mirror lists can have 50+ entries; spawning that many concurrent TCP
-// connections wastes resources and can trip rate limits on shared CDNs.
-const MaxBenchmarkConcurrency = 8
-
-// GetTheFastestMirror finds the fastest responding mirror from the provided list.
-// Concurrency is capped at MaxBenchmarkConcurrency. Once `maxResults` valid
-// results are collected, the parent context is cancelled so in-flight
+// GetTheFastestMirror finds the fastest responding mirror from the provided
+// list. Concurrency is capped at MaxBenchmarkConcurrency. Once `maxResults`
+// valid results are collected, the parent context is cancelled so in-flight
 // benchmarks abort promptly instead of running to completion.
-func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
+func (e *Engine) GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	log := logger.Default()
 	ctx, cancel := context.WithTimeout(context.Background(), BenchmarkDetectTimeout)
 	defer cancel()
@@ -237,7 +285,7 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 			}
 			defer func() { <-sem }()
 
-			duration, err := Benchmark(ctx, u, testURL, BenchmarkMaxTries)
+			duration, err := e.Benchmark(ctx, u, testURL, BenchmarkMaxTries)
 			if err != nil {
 				errs <- err
 				return
@@ -293,32 +341,34 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	return collectedResults[0].URL, nil
 }
 
-// benchmarkGroup collapses concurrent cache-miss benchmark requests for the
-// same distType into a single execution.
-var benchmarkGroup singleflight.Group
+// GetTheFastestMirror is the package-level shim that delegates to the default engine.
+func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
+	return defaultEngine.GetTheFastestMirror(mirrors, testURL)
+}
 
-// GetTheFastestMirrorWithCache finds the fastest mirror, using cache if available.
-// This is the preferred method for production use as it avoids repeated benchmarking.
-func GetTheFastestMirrorWithCache(distType int, mirrors []string, testURL string) (string, error) {
-	// Check cache first
-	if cached, ok := defaultCache.GetCachedResult(distType); ok {
+// GetTheFastestMirrorWithCache finds the fastest mirror, using cache if
+// available. This is the preferred method for production use as it avoids
+// repeated benchmarking. Concurrent cache-miss callers for the same distType
+// are collapsed into a single execution via the engine's singleflight group.
+func (e *Engine) GetTheFastestMirrorWithCache(distType int, mirrors []string, testURL string) (string, error) {
+	if cached, ok := e.cache.GetCachedResult(distType); ok {
 		log := logger.Default()
 		log.Debug().Int("dist_type", distType).Str("mirror", cached).Msg("using cached benchmark result")
 		return cached, nil
 	}
 
 	key := singleflightKey(distType)
-	v, err, _ := benchmarkGroup.Do(key, func() (interface{}, error) {
+	v, err, _ := e.group.Do(key, func() (interface{}, error) {
 		// Re-check after acquiring the singleflight slot in case another
 		// goroutine just populated the cache.
-		if cached, ok := defaultCache.GetCachedResult(distType); ok {
+		if cached, ok := e.cache.GetCachedResult(distType); ok {
 			return cached, nil
 		}
-		fastest, ferr := GetTheFastestMirror(mirrors, testURL)
+		fastest, ferr := e.GetTheFastestMirror(mirrors, testURL)
 		if ferr != nil {
 			return "", ferr
 		}
-		defaultCache.SetCachedResult(distType, fastest, DefaultCacheTTL)
+		e.cache.SetCachedResult(distType, fastest, DefaultCacheTTL)
 		return fastest, nil
 	})
 	if err != nil {
@@ -327,19 +377,31 @@ func GetTheFastestMirrorWithCache(distType int, mirrors []string, testURL string
 	return v.(string), nil
 }
 
+// GetTheFastestMirrorWithCache is the package-level shim that delegates to the
+// default engine.
+func GetTheFastestMirrorWithCache(distType int, mirrors []string, testURL string) (string, error) {
+	return defaultEngine.GetTheFastestMirrorWithCache(distType, mirrors, testURL)
+}
+
 func singleflightKey(distType int) string {
 	return "benchmark/" + strconv.Itoa(distType)
 }
 
-// GetTheFastestMirrorAsync runs benchmark in the background and calls the callback when complete.
-// This allows the application to start immediately with a default mirror while benchmarking runs.
-// The callback will be called with the result when the benchmark completes.
-func GetTheFastestMirrorAsync(distType int, mirrors []string, testURL string, callback AsyncBenchmarkCallback) {
+// GetTheFastestMirrorAsync runs benchmark in the background and calls the
+// callback when complete. This allows the application to start immediately
+// with a default mirror while benchmarking runs.
+//
+// Concurrent async calls for the same distType are collapsed via the
+// engine's singleflight group: only one goroutine probes mirrors, and
+// every caller's callback is invoked with the same result. This matches
+// the deduplication behaviour of GetTheFastestMirrorWithCache so a SIGHUP
+// reload that fires sync + async benchmarks in quick succession does not
+// double-probe upstream mirrors.
+func (e *Engine) GetTheFastestMirrorAsync(distType int, mirrors []string, testURL string, callback AsyncBenchmarkCallback) {
 	log := logger.Default()
 
 	go func() {
-		// Check cache first
-		if cached, ok := defaultCache.GetCachedResult(distType); ok {
+		if cached, ok := e.cache.GetCachedResult(distType); ok {
 			log.Debug().Int("dist_type", distType).Str("mirror", cached).Msg("async: using cached benchmark result")
 			callback(AsyncBenchmarkResult{
 				DistType:      distType,
@@ -351,9 +413,22 @@ func GetTheFastestMirrorAsync(distType int, mirrors []string, testURL string, ca
 
 		log.Info().Int("dist_type", distType).Msg("async: starting background benchmark")
 
-		fastest, err := GetTheFastestMirror(mirrors, testURL)
+		key := singleflightKey(distType)
+		v, err, shared := e.group.Do(key, func() (interface{}, error) {
+			// Re-check after acquiring the singleflight slot in case
+			// another goroutine just populated the cache.
+			if cached, ok := e.cache.GetCachedResult(distType); ok {
+				return cached, nil
+			}
+			fastest, ferr := e.GetTheFastestMirror(mirrors, testURL)
+			if ferr != nil {
+				return "", ferr
+			}
+			e.cache.SetCachedResult(distType, fastest, DefaultCacheTTL)
+			return fastest, nil
+		})
 		if err != nil {
-			log.Error().Err(err).Int("dist_type", distType).Msg("async: benchmark failed")
+			log.Error().Err(err).Int("dist_type", distType).Bool("shared", shared).Msg("async: benchmark failed")
 			callback(AsyncBenchmarkResult{
 				DistType:      distType,
 				FastestMirror: "",
@@ -362,9 +437,8 @@ func GetTheFastestMirrorAsync(distType int, mirrors []string, testURL string, ca
 			return
 		}
 
-		// Cache the result
-		defaultCache.SetCachedResult(distType, fastest, DefaultCacheTTL)
-		log.Info().Int("dist_type", distType).Str("mirror", fastest).Msg("async: benchmark completed")
+		fastest, _ := v.(string)
+		log.Info().Int("dist_type", distType).Str("mirror", fastest).Bool("shared", shared).Msg("async: benchmark completed")
 
 		callback(AsyncBenchmarkResult{
 			DistType:      distType,
@@ -372,6 +446,12 @@ func GetTheFastestMirrorAsync(distType int, mirrors []string, testURL string, ca
 			Error:         nil,
 		})
 	}()
+}
+
+// GetTheFastestMirrorAsync is the package-level shim that delegates to the
+// default engine.
+func GetTheFastestMirrorAsync(distType int, mirrors []string, testURL string, callback AsyncBenchmarkCallback) {
+	defaultEngine.GetTheFastestMirrorAsync(distType, mirrors, testURL, callback)
 }
 
 // GetDefaultMirror returns the first mirror from the list as a fallback.
@@ -383,14 +463,14 @@ func GetDefaultMirror(mirrors []string) string {
 	return mirrors[0]
 }
 
-// ClearBenchmarkCache clears all cached benchmark results.
-// This is useful when forcing a re-benchmark, e.g., on SIGHUP reload.
+// ClearBenchmarkCache clears the default engine's cached benchmark results.
+// New, per-Server callers should use Engine.ClearCache instead.
 func ClearBenchmarkCache() {
-	defaultCache.ClearCache()
+	defaultEngine.ClearCache()
 }
 
-// GetBenchmarkCache returns the global benchmark cache instance.
-// This can be used for testing or advanced cache management.
+// GetBenchmarkCache returns the default engine's benchmark cache.
+// New, per-Server callers should use Engine.Cache instead.
 func GetBenchmarkCache() *BenchmarkCache {
-	return defaultCache
+	return defaultEngine.cache
 }
