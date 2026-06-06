@@ -798,7 +798,7 @@ apt-proxy/
 │   │   ├── transport.go      # Upstream HTTP transport (keep-alive, timeouts)
 │   │   ├── page.go           # Home page rendering
 │   │   └── stats.go          # Statistics
-│   ├── state/                # Application state management
+│   ├── state/                # Per-Server runtime state (proxy mode, mirror URLs)
 │   └── system/               # System utilities (disk, gc, filesize)
 ├── tests/                    # Integration tests
 │   └── integration/          # End-to-end tests

@@ -85,21 +85,21 @@ func TestGenerateBuildInList(t *testing.T) {
 	}
 }
 
-func TestReloadDistributionsConfig_NonExistentPath(t *testing.T) {
+func TestRegistryReload_NonExistentPath(t *testing.T) {
 	// Reload with non-existent path: must return an error and leave the
 	// previously-registered (built-in) distributions intact.
-	err := distro.ReloadDistributionsConfig("/nonexistent/distributions.yaml")
+	reg := distro.NewBuiltinRegistry()
+	err := reg.Reload("/nonexistent/distributions.yaml")
 	if err == nil {
 		t.Fatal("expected error reloading from non-existent path, got nil")
 	}
-	reg := distro.GetRegistry()
 	for _, id := range []string{distro.DistroUbuntu, distro.DistroDebian, distro.DistroCentOS, distro.DistroAlpine} {
 		if _, ok := reg.GetByID(id); !ok {
 			t.Errorf("expected built-in distribution %q to be registered", id)
 		}
 	}
-	m := distro.GetHostPatternMap()
+	m := reg.HostPatternMap()
 	if len(m) == 0 {
-		t.Error("GetHostPatternMap() should return non-empty map after built-in registration")
+		t.Error("HostPatternMap() should return non-empty map after built-in registration")
 	}
 }

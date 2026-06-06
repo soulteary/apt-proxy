@@ -794,7 +794,7 @@ apt-proxy/
 │   │   ├── transport.go      # 上游 HTTP transport（keep-alive、超时）
 │   │   ├── page.go           # 首页渲染
 │   │   └── stats.go          # 统计信息
-│   ├── state/                # 应用状态管理
+│   ├── state/                # 每个 Server 的运行时状态（代理模式、镜像 URL）
 │   └── system/               # 系统工具（磁盘、GC、文件大小）
 ├── tests/                    # 集成测试
 │   └── integration/          # 端到端测试

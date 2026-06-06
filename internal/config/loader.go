@@ -72,11 +72,6 @@ func ParseFlags() (*Config, error) {
 		config.Listen = mirrors.BuildListenAddress(host, port)
 	}
 
-	// Update global state
-	if err := UpdateGlobalState(config); err != nil {
-		return nil, fmt.Errorf("updating global state: %w", err)
-	}
-
 	return config, nil
 }
 
@@ -114,11 +109,6 @@ func ParseFlagsWithConfigFile() (*Config, error) {
 	// Apply defaults for any remaining unset values, but respect explicit
 	// CLI/ENV zeroes (e.g. --cache-max-size=0 must really disable the limit).
 	config = applyDefaultsWithExplicit(config, ex)
-
-	// Update global state
-	if err := UpdateGlobalState(config); err != nil {
-		return nil, fmt.Errorf("updating global state: %w", err)
-	}
 
 	return config, nil
 }

@@ -69,7 +69,10 @@ var builtinByMode = map[int]builtinDistro{
 	},
 }
 
-func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
+// GetGeoMirrorUrlsByMode returns the candidate upstream mirror URLs
+// for the given proxy mode. When reg is non-nil, registry-loaded
+// mirrors are preferred over the compile-time built-ins.
+func GetGeoMirrorUrlsByMode(reg *distro.Registry, mode int) (mirrors []string) {
 	// Ubuntu/UbuntuPorts: prefer geo-derived mirrors (real point of the
 	// `mirrors.txt` lookup). Fall back to registry/built-in on failure so
 	// the proxy still has *some* upstream list when the geo API is down.
@@ -89,7 +92,7 @@ func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 	}
 
 	// Prefer registry (config-loaded) mirrors when present
-	if reg := distro.GetRegistry(); reg != nil {
+	if reg != nil {
 		if d, ok := reg.GetByType(mode); ok && len(d.Mirrors) > 0 {
 			for _, m := range d.Mirrors {
 				mirrors = append(mirrors, GetFullMirrorURL(m))
@@ -139,9 +142,12 @@ func normalizeAliasURL(raw string) string {
 	return BuildHTTPSURL(raw)
 }
 
-func GetMirrorURLByAliases(osType int, alias string) string {
+// GetMirrorURLByAliases resolves alias to a fully qualified mirror URL.
+// When reg is non-nil, config-loaded aliases are checked first.
+// Returns "" when the alias cannot be resolved.
+func GetMirrorURLByAliases(reg *distro.Registry, osType int, alias string) string {
 	// Prefer registry (config-loaded) aliases when present
-	if reg := distro.GetRegistry(); reg != nil {
+	if reg != nil {
 		if d, ok := reg.GetByType(osType); ok && len(d.Aliases) > 0 {
 			if u, ok := d.Aliases[alias]; ok {
 				return normalizeAliasURL(u)
@@ -165,8 +171,11 @@ func GetMirrorURLByAliases(osType int, alias string) string {
 	return ""
 }
 
-func GetPredefinedConfiguration(proxyMode int) (string, *regexp.Regexp) {
-	if reg := distro.GetRegistry(); reg != nil {
+// GetPredefinedConfiguration returns (benchmarkURL, hostPattern) for
+// the given proxy mode. Registry-loaded entries override built-ins
+// when reg is non-nil.
+func GetPredefinedConfiguration(reg *distro.Registry, proxyMode int) (string, *regexp.Regexp) {
+	if reg != nil {
 		if d, ok := reg.GetByType(proxyMode); ok && d.URLPattern != nil {
 			return d.BenchmarkURL, d.URLPattern
 		}

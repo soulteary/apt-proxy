@@ -26,23 +26,38 @@ import (
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
-func TestCreatePackageStructRouter(t *testing.T) {
-	setupTestMirrors()
-	defer cleanupTestMirrors()
+// newTestPackageStruct constructs a fully-wired *PackageStruct backed by
+// a freshly-built AppState/Registry, so individual tests don't have to
+// repeat the boilerplate.
+func newTestPackageStruct(t *testing.T, cacheDir string, mode int) *PackageStruct {
+	t.Helper()
+	st := newTestState()
+	st.SetProxyMode(mode)
+	reg := newTestRegistry()
+	ps, err := NewPackageStruct(Options{
+		State:    st,
+		Registry: reg,
+		CacheDir: cacheDir,
+		Logger:   logger.Default(),
+		Mode:     mode,
+	})
+	if err != nil {
+		t.Fatalf("NewPackageStruct: %v", err)
+	}
+	return ps
+}
 
+func TestNewPackageStruct(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	state.SetProxyMode(distro.TypeAllDistros)
-
-	log := logger.Default()
-	ps := CreatePackageStructRouter(tmpDir, log)
+	ps := newTestPackageStruct(t, tmpDir, distro.TypeAllDistros)
 
 	if ps == nil {
-		t.Fatal("CreatePackageStructRouter() returned nil")
+		t.Fatal("NewPackageStruct() returned nil")
 	}
 	if ps.Handler == nil {
 		t.Error("PackageStruct.Handler is nil")
@@ -52,20 +67,23 @@ func TestCreatePackageStructRouter(t *testing.T) {
 	}
 }
 
-func TestPackageStructServeHTTP(t *testing.T) {
-	setupTestMirrors()
-	defer cleanupTestMirrors()
+func TestNewPackageStructRequiresStateAndRegistry(t *testing.T) {
+	if _, err := NewPackageStruct(Options{}); err == nil {
+		t.Error("NewPackageStruct({}) should error when State and Registry are nil")
+	}
+	if _, err := NewPackageStruct(Options{State: state.NewAppState()}); err == nil {
+		t.Error("NewPackageStruct without Registry should error")
+	}
+}
 
+func TestPackageStructServeHTTP(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	state.SetProxyMode(distro.TypeAllDistros)
-
-	log := logger.Default()
-	ps := CreatePackageStructRouter(tmpDir, log)
+	ps := newTestPackageStruct(t, tmpDir, distro.TypeAllDistros)
 
 	tests := []struct {
 		name       string
@@ -205,11 +223,14 @@ func contains(s, substr string) bool {
 }
 
 func TestRefreshMirrors(t *testing.T) {
-	setupTestMirrors()
-	defer cleanupTestMirrors()
+	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	state.SetProxyMode(distro.TypeAllDistros)
+	ps := newTestPackageStruct(t, tmpDir, distro.TypeAllDistros)
 
 	// Should not panic
-	RefreshMirrors()
+	ps.RefreshMirrors()
 }

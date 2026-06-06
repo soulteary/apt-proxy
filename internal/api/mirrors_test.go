@@ -60,3 +60,13 @@ func TestMirrorsHandlerRefreshRejectsGet(t *testing.T) {
 		t.Fatalf("status = %d, want 405", rec.Code)
 	}
 }
+
+func TestMirrorsHandlerRefreshErrorsWithoutReloadFunc(t *testing.T) {
+	h := newTestMirrorsHandler(nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/mirrors/refresh", nil)
+	h.HandleMirrorsRefresh(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+}

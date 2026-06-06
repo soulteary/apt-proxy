@@ -21,17 +21,21 @@ import (
 	logger "github.com/soulteary/logger-kit"
 
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
-	"github.com/soulteary/apt-proxy/internal/proxy"
 )
 
-// MirrorsHandler handles mirror-related API endpoints
+// MirrorsHandler handles mirror-related API endpoints.
+//
+// reloadFunc is required: it is the per-Server reload closure that owns
+// distribution-registry reload + mirror refresh. The handler intentionally
+// has no package-global fallback so that misconfigured callers fail loudly
+// rather than mutating an unrelated Server's state.
 type MirrorsHandler struct {
 	log        *logger.Logger
-	reloadFunc func() // optional: reload distributions config then refresh mirrors
+	reloadFunc func()
 }
 
-// NewMirrorsHandler creates a new MirrorsHandler. reloadFunc is optional; if set,
-// HandleMirrorsRefresh will call it (e.g. reload distributions.yaml then refresh mirrors).
+// NewMirrorsHandler creates a new MirrorsHandler. reloadFunc is required;
+// passing nil makes HandleMirrorsRefresh return 500.
 func NewMirrorsHandler(log *logger.Logger, reloadFunc func()) *MirrorsHandler {
 	return &MirrorsHandler{
 		log:        log,
@@ -39,21 +43,22 @@ func NewMirrorsHandler(log *logger.Logger, reloadFunc func()) *MirrorsHandler {
 	}
 }
 
-// HandleMirrorsRefresh triggers distribution config reload and mirror refresh
+// HandleMirrorsRefresh triggers distribution config reload and mirror refresh.
 func (h *MirrorsHandler) HandleMirrorsRefresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		WriteAppError(w, apperrors.New(apperrors.ErrMethodNotAllowed, "Method not allowed"))
 		return
 	}
 
-	start := time.Now()
-
-	if h.reloadFunc != nil {
-		h.reloadFunc()
-	} else {
-		proxy.RefreshMirrors()
+	if h.reloadFunc == nil {
+		h.log.Error().Msg("mirrors handler has no reload function configured")
+		WriteAppError(w, apperrors.New(apperrors.ErrInternal,
+			"mirrors handler not wired to a server (missing reloadFunc)"))
+		return
 	}
 
+	start := time.Now()
+	h.reloadFunc()
 	duration := time.Since(start)
 
 	h.log.Info().

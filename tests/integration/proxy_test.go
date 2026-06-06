@@ -28,6 +28,7 @@ import (
 	logger "github.com/soulteary/logger-kit"
 
 	"github.com/soulteary/apt-proxy/internal/api"
+	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
 	httpcache "github.com/soulteary/httpcache-kit"
@@ -50,8 +51,16 @@ func newTestServer(t *testing.T) *testServer {
 		t.Fatalf("failed to create temp cache dir: %v", err)
 	}
 
-	// Set proxy mode
-	state.SetProxyMode(1) // All distros
+	// Build per-test state with mock mirrors so the async benchmark
+	// inside NewPackageStruct doesn't try to reach real mirrors.
+	st := state.NewAppState()
+	st.SetProxyMode(distro.TypeAllDistros)
+	st.SetMirror(distro.TypeUbuntu, "http://mirrors.example.com/ubuntu/")
+	st.SetMirror(distro.TypeUbuntuPorts, "http://mirrors.example.com/ubuntu-ports/")
+	st.SetMirror(distro.TypeDebian, "http://mirrors.example.com/debian/")
+	st.SetMirror(distro.TypeCentOS, "http://mirrors.example.com/centos/")
+	st.SetMirror(distro.TypeAlpine, "http://mirrors.example.com/alpine/")
+	reg := distro.NewBuiltinRegistry()
 
 	// Create cache
 	cache, err := httpcache.NewDiskCacheWithConfig(cacheDir, httpcache.DefaultCacheConfig())
@@ -67,7 +76,18 @@ func newTestServer(t *testing.T) *testServer {
 	})
 
 	// Create proxy router
-	proxyRouter := proxy.CreatePackageStructRouterAsync(cacheDir, log)
+	proxyRouter, err := proxy.NewPackageStruct(proxy.Options{
+		State:    st,
+		Registry: reg,
+		CacheDir: cacheDir,
+		Logger:   log,
+		Mode:     distro.TypeAllDistros,
+		Async:    true,
+	})
+	if err != nil {
+		os.RemoveAll(cacheDir)
+		t.Fatalf("failed to create proxy router: %v", err)
+	}
 
 	// Wrap with cache handler
 	cachedHandler := httpcache.NewHandler(cache, proxyRouter.Handler)
@@ -75,7 +95,7 @@ func newTestServer(t *testing.T) *testServer {
 
 	// Create handlers
 	cacheHandler := api.NewCacheHandler(cache, log)
-	mirrorsHandler := api.NewMirrorsHandler(log, nil)
+	mirrorsHandler := api.NewMirrorsHandler(log, proxyRouter.RefreshMirrors)
 	authMiddleware := api.NewAuthMiddleware(api.AuthConfig{
 		APIKey: "test-api-key",
 		Logger: log,

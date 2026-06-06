@@ -25,32 +25,29 @@ import (
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
-	"github.com/soulteary/apt-proxy/internal/state"
 )
 
-// setupTestMirrors sets up mock mirrors to avoid network requests during tests
-func setupTestMirrors() {
-	state.SetUbuntuMirror("http://mirrors.example.com/ubuntu/")
-	state.SetUbuntuPortsMirror("http://mirrors.example.com/ubuntu-ports/")
-	state.SetDebianMirror("http://mirrors.example.com/debian/")
-	state.SetCentOSMirror("http://mirrors.example.com/centos/")
-	state.SetAlpineMirror("http://mirrors.example.com/alpine/")
-}
-
-// cleanupTestMirrors resets all mirrors after tests
-func cleanupTestMirrors() {
-	state.ResetUbuntuMirror()
-	state.ResetUbuntuPortsMirror()
-	state.ResetDebianMirror()
-	state.ResetCentOSMirror()
-	state.ResetAlpineMirror()
+// withTestMirrors returns a copy of cfg with mock mirror URLs filled in
+// when the caller didn't supply any. Tests use this to avoid real-network
+// mirror benchmarks during NewServer.
+func withTestMirrors(cfg *config.Config) *config.Config {
+	if cfg == nil {
+		return nil
+	}
+	out := *cfg
+	if out.Mirrors == (config.MirrorConfig{}) {
+		out.Mirrors = config.MirrorConfig{
+			Ubuntu:      "http://mirrors.example.com/ubuntu/",
+			UbuntuPorts: "http://mirrors.example.com/ubuntu-ports/",
+			Debian:      "http://mirrors.example.com/debian/",
+			CentOS:      "http://mirrors.example.com/centos/",
+			Alpine:      "http://mirrors.example.com/alpine/",
+		}
+	}
+	return &out
 }
 
 func TestNewServer(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -92,7 +89,7 @@ func TestNewServer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv, err := NewServer(tt.cfg)
+			srv, err := NewServer(withTestMirrors(tt.cfg))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewServer() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -106,10 +103,6 @@ func TestNewServer(t *testing.T) {
 }
 
 func TestServerInitialize(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -124,7 +117,7 @@ func TestServerInitialize(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -151,10 +144,6 @@ func TestServerInitialize(t *testing.T) {
 }
 
 func TestServerCreateRouter(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -169,7 +158,7 @@ func TestServerCreateRouter(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -180,10 +169,6 @@ func TestServerCreateRouter(t *testing.T) {
 }
 
 func TestServerStartAndShutdown(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -198,7 +183,7 @@ func TestServerStartAndShutdown(t *testing.T) {
 		Listen:   "127.0.0.1:0", // Use port 0 to get a random available port
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -236,10 +221,6 @@ func TestServerStartAndShutdown(t *testing.T) {
 }
 
 func TestCacheDirCreation(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary parent directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -257,7 +238,7 @@ func TestCacheDirCreation(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -273,10 +254,6 @@ func TestCacheDirCreation(t *testing.T) {
 }
 
 func TestHealthEndpoints(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -291,7 +268,7 @@ func TestHealthEndpoints(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -333,10 +310,6 @@ func TestHealthEndpoints(t *testing.T) {
 // responseRecorder removed: unused in tests.
 
 func TestMirrorConfig(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -358,7 +331,7 @@ func TestMirrorConfig(t *testing.T) {
 		},
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -369,10 +342,6 @@ func TestMirrorConfig(t *testing.T) {
 }
 
 func TestServerReload(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -387,7 +356,7 @@ func TestServerReload(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -407,10 +376,6 @@ func TestServerReload(t *testing.T) {
 // Admin API Tests
 
 func TestCacheStatsAPI(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -425,7 +390,7 @@ func TestCacheStatsAPI(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -498,10 +463,6 @@ func TestCacheStatsAPI(t *testing.T) {
 }
 
 func TestCachePurgeAPI(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -516,7 +477,7 @@ func TestCachePurgeAPI(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -585,10 +546,6 @@ func TestCachePurgeAPI(t *testing.T) {
 }
 
 func TestCacheCleanupAPI(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -603,7 +560,7 @@ func TestCacheCleanupAPI(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -674,10 +631,6 @@ func TestCacheCleanupAPI(t *testing.T) {
 }
 
 func TestMirrorsRefreshAPI(t *testing.T) {
-	// Setup mock mirrors to avoid network requests
-	setupTestMirrors()
-	defer cleanupTestMirrors()
-
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
 	if err != nil {
@@ -692,7 +645,7 @@ func TestMirrorsRefreshAPI(t *testing.T) {
 		Listen:   "127.0.0.1:0",
 	}
 
-	srv, err := NewServer(cfg)
+	srv, err := NewServer(withTestMirrors(cfg))
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}

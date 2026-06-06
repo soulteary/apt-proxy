@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package config configuration validation and global state hand-off.
+// Package config configuration validation and state hand-off.
 package config
 
 import (
@@ -21,21 +21,32 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
-// UpdateGlobalState updates the global state with the current configuration,
-// including proxy mode and mirror URLs for all supported distributions.
-// This enables components throughout the application to access configuration.
-func UpdateGlobalState(config *Config) error {
-	state.SetProxyMode(config.Mode)
+// ApplyToState writes the proxy mode and per-distro mirror URLs from
+// config into the supplied AppState. Aliases are resolved against reg
+// when reg is non-nil.
+//
+// This replaces the previous package-global UpdateGlobalState helper:
+// callers must now own (and supply) the AppState explicitly so that
+// multiple Servers in the same process can each configure their own
+// state without collision.
+func ApplyToState(config *Config, st *state.AppState, reg *distro.Registry) error {
+	if config == nil {
+		return fmt.Errorf("config: ApplyToState called with nil Config")
+	}
+	if st == nil {
+		return fmt.Errorf("config: ApplyToState called with nil AppState")
+	}
 
-	state.SetUbuntuMirror(config.Mirrors.Ubuntu)
-	state.SetUbuntuPortsMirror(config.Mirrors.UbuntuPorts)
-	state.SetDebianMirror(config.Mirrors.Debian)
-	state.SetCentOSMirror(config.Mirrors.CentOS)
-	state.SetAlpineMirror(config.Mirrors.Alpine)
-
+	st.SetProxyMode(config.Mode)
+	st.SetMirrorWithRegistry(distro.TypeUbuntu, config.Mirrors.Ubuntu, reg)
+	st.SetMirrorWithRegistry(distro.TypeUbuntuPorts, config.Mirrors.UbuntuPorts, reg)
+	st.SetMirrorWithRegistry(distro.TypeDebian, config.Mirrors.Debian, reg)
+	st.SetMirrorWithRegistry(distro.TypeCentOS, config.Mirrors.CentOS, reg)
+	st.SetMirrorWithRegistry(distro.TypeAlpine, config.Mirrors.Alpine, reg)
 	return nil
 }
 

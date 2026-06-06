@@ -39,6 +39,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/distro"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/proxy"
+	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
 	httpcache "github.com/soulteary/httpcache-kit"
 	vfs "github.com/soulteary/vfs-kit"
@@ -50,6 +51,8 @@ type Server struct {
 	config              *config.Config           // Application configuration
 	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
 	s3fs                *s3vfs.S3VFS             // Active S3 backend (only set when storage backend == "s3")
+	state               *state.AppState          // Per-server runtime state (proxy mode, mirror URLs)
+	registry            *distro.Registry         // Per-server distribution registry
 	proxy               *proxy.PackageStruct     // Main proxy router (Handler is cache-wrapped)
 	app                 *fiber.App               // Fiber application
 	log                 *logger.Logger           // Structured logger
@@ -184,21 +187,41 @@ func (s *Server) initialize() error {
 	// Initialize health check aggregator
 	s.initHealthChecks()
 
-	// Load distributions config (distributions.yaml) if path set; overlays built-in
-	if err := distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath); err != nil {
-		s.log.Warn().
-			Err(err).
-			Str("path", s.config.DistributionsConfigPath).
-			Msg("failed to load distributions config; using built-in defaults")
+	// Build the per-Server distribution registry. RegisterBuiltins seeds
+	// the compile-time defaults; Reload overlays user-supplied YAML when
+	// DistributionsConfigPath is set.
+	s.registry = distro.NewBuiltinRegistry()
+	if s.config.DistributionsConfigPath != "" {
+		if err := s.registry.Reload(s.config.DistributionsConfigPath); err != nil {
+			s.log.Warn().
+				Err(err).
+				Str("path", s.config.DistributionsConfigPath).
+				Msg("failed to load distributions config; using built-in defaults")
+		}
 	}
 
-	// Configure upstream transport (keep-alive to mirrors; default true)
-	proxy.InitUpstreamTransport(s.config.UpstreamKeepAlive)
+	// Build the per-Server AppState and apply config (proxy mode, mirrors).
+	s.state = state.NewAppState()
+	if err := config.ApplyToState(s.config, s.state, s.registry); err != nil {
+		return wrapErr(apperrors.ErrServerInit, "failed to apply config to state", err)
+	}
 
-	// Initialize proxy with async benchmark for faster startup
+	// Initialize proxy with async benchmark for faster startup.
 	// This uses default mirrors immediately and updates to the fastest mirror
-	// in the background after benchmarking completes
-	s.proxy = proxy.CreatePackageStructRouterAsync(s.config.CacheDir, s.log)
+	// in the background after benchmarking completes.
+	ps, err := proxy.NewPackageStruct(proxy.Options{
+		State:           s.state,
+		Registry:        s.registry,
+		CacheDir:        s.config.CacheDir,
+		Logger:          s.log,
+		Mode:            s.state.GetProxyMode(),
+		EnableKeepAlive: s.config.UpstreamKeepAlive,
+		Async:           true,
+	})
+	if err != nil {
+		return wrapErr(apperrors.ErrServerInit, "failed to initialize proxy", err)
+	}
+	s.proxy = ps
 
 	// Wrap proxy with cache (request logging is done by logger-kit FiberMiddleware)
 	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, &httpcache.HandlerOptions{Logger: s.log})
@@ -211,21 +234,7 @@ func (s *Server) initialize() error {
 
 	// Initialize API handlers (mirrors refresh also reloads distributions config when path set)
 	s.cacheHandler = api.NewCacheHandler(s.cache, s.log)
-	s.mirrorsHandler = api.NewMirrorsHandler(s.log, func() {
-		if err := distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath); err != nil {
-			s.log.Warn().
-				Err(err).
-				Str("path", s.config.DistributionsConfigPath).
-				Msg("failed to reload distributions config")
-		}
-		// Prefer the per-instance refresh path; falls back to the package
-		// global only if proxy isn't initialized yet (shouldn't happen here).
-		if s.proxy != nil {
-			s.proxy.RefreshMirrors()
-		} else {
-			proxy.RefreshMirrors()
-		}
-	})
+	s.mirrorsHandler = api.NewMirrorsHandler(s.log, s.refreshMirrors)
 
 	// Both middlewares need to agree on what counts as the "real" client
 	// IP. Construct the extractor once and share it; otherwise auth logs
@@ -544,23 +553,33 @@ func (s *Server) Start() error {
 	}
 }
 
+// refreshMirrors reloads distributions config (when configured) and
+// refreshes mirror selection on this Server's proxy. Used as the reload
+// closure for the mirrors API handler and for SIGHUP-triggered reloads.
+func (s *Server) refreshMirrors() {
+	if s.registry != nil && s.config.DistributionsConfigPath != "" {
+		if err := s.registry.Reload(s.config.DistributionsConfigPath); err != nil {
+			s.log.Warn().
+				Err(err).
+				Str("path", s.config.DistributionsConfigPath).
+				Msg("failed to reload distributions config")
+		}
+	}
+	if s.state != nil {
+		if err := config.ApplyToState(s.config, s.state, s.registry); err != nil {
+			s.log.Warn().Err(err).Msg("failed to re-apply config to state during reload")
+		}
+	}
+	if s.proxy != nil {
+		s.proxy.RefreshMirrors()
+	}
+}
+
 // reload handles configuration hot reload triggered by SIGHUP signal.
 // It reloads distributions config (if path set) and refreshes mirror configurations.
 func (s *Server) reload() {
 	s.log.Info().Msg("received SIGHUP, reloading configuration...")
-
-	if err := distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath); err != nil {
-		s.log.Warn().
-			Err(err).
-			Str("path", s.config.DistributionsConfigPath).
-			Msg("failed to reload distributions config")
-	}
-	if s.proxy != nil {
-		s.proxy.RefreshMirrors()
-	} else {
-		proxy.RefreshMirrors()
-	}
-
+	s.refreshMirrors()
 	s.log.Info().Msg("configuration reload complete")
 }
 

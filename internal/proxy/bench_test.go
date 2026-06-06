@@ -20,30 +20,14 @@ import (
 	"testing"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
-	"github.com/soulteary/apt-proxy/internal/state"
 )
-
-// setupBenchmarkMirrors sets up mock mirrors for benchmarks
-func setupBenchmarkMirrors() {
-	state.SetUbuntuMirror("http://mirrors.example.com/ubuntu/")
-	state.SetUbuntuPortsMirror("http://mirrors.example.com/ubuntu-ports/")
-	state.SetDebianMirror("http://mirrors.example.com/debian/")
-	state.SetCentOSMirror("http://mirrors.example.com/centos/")
-	state.SetAlpineMirror("http://mirrors.example.com/alpine/")
-}
 
 // BenchmarkURLRewrite benchmarks URL rewrite performance for different distributions
 func BenchmarkURLRewrite(b *testing.B) {
-	setupBenchmarkMirrors()
-	defer func() {
-		state.ResetUbuntuMirror()
-		state.ResetUbuntuPortsMirror()
-		state.ResetDebianMirror()
-		state.ResetCentOSMirror()
-		state.ResetAlpineMirror()
-	}()
+	st := newTestState()
+	reg := newTestRegistry()
 
-	rewriters := CreateNewRewriters(distro.TypeAllDistros)
+	rewriters := CreateNewRewriters(distro.TypeAllDistros, st, reg)
 	if rewriters == nil {
 		b.Fatal("CreateNewRewriters() returned nil")
 	}
@@ -94,16 +78,10 @@ func BenchmarkURLRewrite(b *testing.B) {
 
 // BenchmarkURLRewriteWithQuery benchmarks URL rewrite with query parameters
 func BenchmarkURLRewriteWithQuery(b *testing.B) {
-	setupBenchmarkMirrors()
-	defer func() {
-		state.ResetUbuntuMirror()
-		state.ResetUbuntuPortsMirror()
-		state.ResetDebianMirror()
-		state.ResetCentOSMirror()
-		state.ResetAlpineMirror()
-	}()
+	st := newTestState()
+	reg := newTestRegistry()
 
-	rewriters := CreateNewRewriters(distro.TypeUbuntu)
+	rewriters := CreateNewRewriters(distro.TypeUbuntu, st, reg)
 	if rewriters == nil {
 		b.Fatal("CreateNewRewriters() returned nil")
 	}

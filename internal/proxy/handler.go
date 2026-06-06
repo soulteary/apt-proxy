@@ -15,6 +15,7 @@
 package proxy
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -47,23 +48,26 @@ type hostPatternEntry struct {
 	rules   []distro.Rule
 }
 
-// hostPatternCache caches the snapshot from distro.GetHostPatternMap so we
-// don't allocate/copy a fresh map for every request. RefreshMirrors clears
-// this pointer on hot reload; readers fall back to defaultHostPatterns when
-// the registry returns an empty result.
-var hostPatternCache atomic.Pointer[[]hostPatternEntry]
+// defaultHostPatterns is the compile-time fallback used when the
+// supplied registry has no usable entries (e.g. tests that constructed
+// a bare PackageStruct without registering distributions).
+var defaultHostPatterns = []hostPatternEntry{
+	{pattern: distro.UbuntuHostPattern, rules: distro.UbuntuDefaultCacheRules},
+	{pattern: distro.UbuntuPortsHostPattern, rules: distro.UbuntuPortsDefaultCacheRules},
+	{pattern: distro.DebianHostPattern, rules: distro.DebianDefaultCacheRules},
+	{pattern: distro.CentosHostPattern, rules: distro.CentosDefaultCacheRules},
+	{pattern: distro.AlpineHostPattern, rules: distro.AlpineDefaultCacheRules},
+}
 
 // hostPatternsFromRegistry materialises the registry's pattern→rules map
 // into a stable, ordered slice. Distros are walked via distroModesOrder so
 // matching is deterministic for callers that have multiple overlapping rules.
-func hostPatternsFromRegistry() []hostPatternEntry {
-	reg := distro.GetRegistry()
+func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 	if reg == nil {
 		return nil
 	}
 	all := reg.GetAll()
 	out := make([]hostPatternEntry, 0, len(all))
-	// Walk known distros in a stable order first.
 	seen := make(map[string]struct{}, len(all))
 	for _, mode := range distroModesOrder {
 		for id, d := range all {
@@ -74,7 +78,6 @@ func hostPatternsFromRegistry() []hostPatternEntry {
 			seen[id] = struct{}{}
 		}
 	}
-	// Then any additional registered distros (config-loaded with an unknown type).
 	for id, d := range all {
 		if _, ok := seen[id]; ok {
 			continue
@@ -87,132 +90,116 @@ func hostPatternsFromRegistry() []hostPatternEntry {
 	return out
 }
 
-// getHostPatterns returns the cached pattern→rules entries, populating the
-// cache on first access. The fallback (defaultHostPatterns) is used only if
-// the registry has nothing to offer (e.g. during a unit test that nuked it).
-func getHostPatterns() []hostPatternEntry {
-	if cur := hostPatternCache.Load(); cur != nil && len(*cur) > 0 {
-		return *cur
-	}
-	entries := hostPatternsFromRegistry()
-	if len(entries) == 0 {
-		return defaultHostPatterns
-	}
-	hostPatternCache.Store(&entries)
-	return entries
-}
-
-// invalidateHostPatternCache forces the next request to rebuild the cache
-// from the registry. Called from RefreshMirrors / SIGHUP reload.
-func invalidateHostPatternCache() {
-	hostPatternCache.Store(nil)
-}
-
-// defaultHostPatterns is the compile-time fallback used when no registry
-// entries are available. The order matches distroModesOrder.
-var defaultHostPatterns = []hostPatternEntry{
-	{pattern: distro.UbuntuHostPattern, rules: distro.UbuntuDefaultCacheRules},
-	{pattern: distro.UbuntuPortsHostPattern, rules: distro.UbuntuPortsDefaultCacheRules},
-	{pattern: distro.DebianHostPattern, rules: distro.DebianDefaultCacheRules},
-	{pattern: distro.CentosHostPattern, rules: distro.CentosDefaultCacheRules},
-	{pattern: distro.AlpineHostPattern, rules: distro.AlpineDefaultCacheRules},
-}
-
-var (
-	rewriters        *URLRewriters
-	defaultTransport *http.Transport
-	// retryableTransport wraps defaultTransport with retry logic and tracing
-	retryableTransport *RetryableTransport
-	// rewritersMu serializes the package-level rewriters pointer swap.
-	// RewriteRequestByMode reads the value of `rewriters` while holding it as
-	// a parameter, so this lock only protects writers (init / refresh) racing
-	// each other (e.g. SIGHUP + /api/mirrors/refresh).
-	rewritersMu sync.Mutex
-)
-
-func init() {
-	// Default: enable HTTP keep-alive to upstream mirrors. Reusing TCP/TLS
-	// connections to a small set of mirrors is dramatically cheaper than
-	// dialling per request, especially for HTTPS mirrors where every request
-	// would otherwise pay a fresh handshake.
-	initUpstreamTransport(false)
-}
-
-// initUpstreamTransport sets the package-level upstream transport.
-// When disableKeepAlives is true, connections are not reused.
-// When false (default), HTTP keep-alive to upstream mirrors is enabled.
-func initUpstreamTransport(disableKeepAlives bool) {
-	defaultTransport = &http.Transport{
+// NewUpstreamTransport constructs a fresh upstream *http.Transport with
+// apt-proxy's tuned timeouts and connection-pool defaults.
+//
+// enableKeepAlive: true reuses connections to mirrors (recommended);
+// false disables keep-alives.
+func NewUpstreamTransport(enableKeepAlive bool) *http.Transport {
+	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ResponseHeaderTimeout: DefaultResponseHeaderTimeout,
-		DisableKeepAlives:     disableKeepAlives,
+		DisableKeepAlives:     !enableKeepAlive,
 		MaxIdleConns:          DefaultMaxIdleConns,
 		IdleConnTimeout:       DefaultIdleConnTimeout,
 		DisableCompression:    false,
 	}
-	retryableTransport = NewRetryableTransport(defaultTransport)
-}
-
-// InitUpstreamTransport configures the upstream HTTP transport (e.g. from config).
-// Call before CreatePackageStructRouter or CreatePackageStructRouterAsync.
-// enableKeepAlive: true = reuse connections to mirrors (recommended); false = disable keep-alives.
-func InitUpstreamTransport(enableKeepAlive bool) {
-	initUpstreamTransport(!enableKeepAlive)
 }
 
 // PackageStruct is the main HTTP handler that routes requests to appropriate
-// distribution-specific handlers and applies caching rules.
+// distribution-specific handlers and applies caching rules. It owns all of
+// the per-Server state previously held in package-level globals: the
+// AppState, distro Registry, URL rewriters, and the host-pattern cache.
 type PackageStruct struct {
 	Handler  http.Handler   // The underlying HTTP handler (typically a reverse proxy)
 	Rules    []distro.Rule  // Caching rules for different package types
 	CacheDir string         // Cache directory path for statistics
 	log      *logger.Logger // Structured logger
-	// rewriters is the per-instance URL rewriter set. It mirrors the package
-	// global so existing tests/utilities keep working, but ServeHTTP prefers
-	// the instance field; concurrent Servers in the same process can hold
-	// independent rewriters this way.
+
+	state    *state.AppState
+	registry *distro.Registry
+	mode     int
+
+	// rewriters holds the URL rewriters used by ServeHTTP. Writers swap
+	// the pointer under refreshMu; the URLRewriters struct itself has
+	// finer-grained locking for the per-mirror pointer swap.
 	rewriters *URLRewriters
-	mode      int
+
+	// transport is the upstream HTTP transport (with retry+tracing wrapping)
+	// used by the underlying ReverseProxy.
+	transport http.RoundTripper
+
+	// hostPatternCache caches the snapshot of registry-derived host
+	// patterns so we don't allocate/copy on every request. RefreshMirrors
+	// clears this pointer; readers fall back to defaultHostPatterns when
+	// the registry returns an empty result.
+	hostPatternCache atomic.Pointer[[]hostPatternEntry]
+
+	// refreshMu serializes RefreshMirrors so two concurrent reload paths
+	// (SIGHUP debounced reload + /api/mirrors/refresh) don't race when
+	// rebuilding rewriters. Readers don't take this mutex.
+	refreshMu sync.Mutex
 }
 
-// responseWriter wraps http.ResponseWriter to inject cache control headers
-// based on the matched caching rule.
-type responseWriter struct {
-	http.ResponseWriter
-	rule *distro.Rule // The matched caching rule for this request
+// Options configures NewPackageStruct.
+type Options struct {
+	State             *state.AppState
+	Registry          *distro.Registry
+	CacheDir          string
+	Logger            *logger.Logger
+	Mode              int
+	EnableKeepAlive   bool
+	Async             bool              // when true, use async (non-blocking) benchmarks during construction
+	TransportOverride http.RoundTripper // optional: caller-supplied transport (mainly for tests)
 }
 
-// createPackageStruct initializes a PackageStruct with the given rewriter factory.
-func createPackageStruct(cacheDir string, log *logger.Logger, rewriterFactory func(int) *URLRewriters) *PackageStruct {
-	mode := state.GetProxyMode()
-	rewritersMu.Lock()
-	rewriters = rewriterFactory(mode)
-	current := rewriters
-	rewritersMu.Unlock()
-	return &PackageStruct{
-		Rules:     GetRewriteRulesByMode(mode),
-		CacheDir:  cacheDir,
+// NewPackageStruct constructs a fully wired PackageStruct using the
+// supplied state/registry. State and Registry are required; Logger
+// defaults to logger.Default() when nil.
+func NewPackageStruct(opts Options) (*PackageStruct, error) {
+	if opts.State == nil {
+		return nil, errors.New("proxy: Options.State is required")
+	}
+	if opts.Registry == nil {
+		return nil, errors.New("proxy: Options.Registry is required")
+	}
+
+	log := opts.Logger
+	if log == nil {
+		log = logger.Default()
+	}
+
+	transport := opts.TransportOverride
+	if transport == nil {
+		transport = NewRetryableTransport(NewUpstreamTransport(opts.EnableKeepAlive))
+	}
+
+	mode := opts.Mode
+	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async)
+
+	ps := &PackageStruct{
+		Rules:     GetRewriteRulesByMode(opts.Registry, mode),
+		CacheDir:  opts.CacheDir,
 		log:       log,
-		rewriters: current,
+		state:     opts.State,
+		registry:  opts.Registry,
 		mode:      mode,
+		rewriters: rewriters,
+		transport: transport,
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
-			Transport: retryableTransport,
+			Transport: transport,
 		},
 	}
+	return ps, nil
 }
 
-// CreatePackageStructRouter initializes and returns a new PackageStruct instance
-// configured for the current proxy mode. Uses synchronous benchmark (may block startup).
-// For faster startup, use CreatePackageStructRouterAsync instead.
-func CreatePackageStructRouter(cacheDir string, log *logger.Logger) *PackageStruct {
-	return createPackageStruct(cacheDir, log, CreateNewRewriters)
-}
-
-// CreatePackageStructRouterAsync initializes and returns a new PackageStruct instance
-// using async benchmark for faster startup (recommended).
-func CreatePackageStructRouterAsync(cacheDir string, log *logger.Logger) *PackageStruct {
-	return createPackageStruct(cacheDir, log, CreateNewRewritersAsync)
+// newRewriters chooses the sync/async constructor based on opts.Async.
+func newRewriters(mode int, st *state.AppState, reg *distro.Registry, async bool) *URLRewriters {
+	if async {
+		return CreateNewRewritersAsync(mode, st, reg)
+	}
+	return CreateNewRewriters(mode, st, reg)
 }
 
 // HandleHomePage serves the home page with statistics
@@ -221,8 +208,35 @@ func HandleHomePage(rw http.ResponseWriter, r *http.Request, cacheDir string) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.WriteHeader(status)
 	if _, err := io.WriteString(rw, tpl); err != nil {
-		logger.Error().Err(err).Msg("Error rendering home page")
+		logger.Default().Error().Err(err).Msg("Error rendering home page")
 	}
+}
+
+// Transport returns the upstream HTTP transport. Exposed mainly so the
+// caller can wrap it (e.g. with httpcache) when constructing the final
+// handler chain.
+func (ap *PackageStruct) Transport() http.RoundTripper {
+	if ap == nil {
+		return nil
+	}
+	return ap.transport
+}
+
+// State returns the AppState backing this PackageStruct (read-only access
+// for callers that need to inspect or mutate mirror configuration).
+func (ap *PackageStruct) State() *state.AppState {
+	if ap == nil {
+		return nil
+	}
+	return ap.state
+}
+
+// Registry returns the distribution registry backing this PackageStruct.
+func (ap *PackageStruct) Registry() *distro.Registry {
+	if ap == nil {
+		return nil
+	}
+	return ap.registry
 }
 
 // ServeHTTP implements http.Handler interface. It processes incoming requests,
@@ -231,11 +245,9 @@ func HandleHomePage(rw http.ResponseWriter, r *http.Request, cacheDir string) {
 func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Start tracing span for the request
 	spanCtx, span := tracing.StartSpan(ctx, "proxy.request")
 	defer span.End()
 
-	// Set span attributes
 	tracing.SetSpanAttributesFromMap(span, map[string]interface{}{
 		"http.method":      r.Method,
 		"http.url":         r.URL.String(),
@@ -246,7 +258,6 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		"http.remote_addr": r.RemoteAddr,
 	})
 
-	// Update request context with span context
 	r = r.WithContext(spanCtx)
 
 	rule := ap.handleExternalURLs(r)
@@ -271,12 +282,40 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// responseWriter wraps http.ResponseWriter to inject cache control headers
+// based on the matched caching rule.
+type responseWriter struct {
+	http.ResponseWriter
+	rule *distro.Rule // The matched caching rule for this request
+}
+
+// hostPatterns returns this PackageStruct's cached pattern→rules entries,
+// populating the cache on first access. The fallback (defaultHostPatterns)
+// is used only if the registry has nothing to offer.
+func (ap *PackageStruct) hostPatterns() []hostPatternEntry {
+	if cur := ap.hostPatternCache.Load(); cur != nil && len(*cur) > 0 {
+		return *cur
+	}
+	entries := hostPatternsFromRegistry(ap.registry)
+	if len(entries) == 0 {
+		return defaultHostPatterns
+	}
+	ap.hostPatternCache.Store(&entries)
+	return entries
+}
+
+// invalidateHostPatterns forces the next request to rebuild the cache
+// from the registry. Called from RefreshMirrors / SIGHUP reload.
+func (ap *PackageStruct) invalidateHostPatterns() {
+	ap.hostPatternCache.Store(nil)
+}
+
 // handleExternalURLs processes requests for external package repositories.
 // It matches the request path against known distribution patterns and returns
 // the appropriate caching rule if a match is found.
 func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	path := r.URL.Path
-	for _, entry := range getHostPatterns() {
+	for _, entry := range ap.hostPatterns() {
 		if entry.pattern.MatchString(path) {
 			return ap.processMatchingRule(r, entry.rules)
 		}
@@ -309,11 +348,7 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *distro.Rule) {
 		return
 	}
 	before := r.URL.String()
-	rw := ap.rewriters
-	if rw == nil {
-		rw = rewriters
-	}
-	RewriteRequestByMode(r, rw, rule.OS)
+	RewriteRequestByMode(r, ap.rewriters, rule.OS)
 
 	if r.URL != nil {
 		r.Host = r.URL.Host
@@ -325,15 +360,19 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *distro.Rule) {
 }
 
 // RefreshMirrors refreshes this PackageStruct's mirror configuration.
-// Use this method on a PackageStruct instance instead of the package-level
-// proxy.RefreshMirrors() to avoid touching the global state shared with
-// other instances or tests.
+// Triggered by SIGHUP and POST /api/mirrors/refresh. The mutex serializes
+// concurrent refreshes (the rewriter pointer swap inside RefreshRewriters
+// has its own finer-grained lock; this outer lock prevents two refresh
+// runs from racing to clear the benchmark cache and re-elect mirrors at
+// the same time).
 func (ap *PackageStruct) RefreshMirrors() {
 	if ap == nil || ap.rewriters == nil {
 		return
 	}
-	invalidateHostPatternCache()
-	RefreshRewriters(ap.rewriters, ap.mode)
+	ap.refreshMu.Lock()
+	defer ap.refreshMu.Unlock()
+	ap.invalidateHostPatterns()
+	RefreshRewriters(ap.rewriters, ap.mode, ap.state, ap.registry)
 }
 
 // WriteHeader implements http.ResponseWriter interface. It injects cache control
@@ -351,19 +390,4 @@ func (rw *responseWriter) shouldSetCacheControl(status int) bool {
 	return rw.rule != nil &&
 		rw.rule.CacheControl != "" &&
 		(status == http.StatusOK || status == http.StatusNotFound)
-}
-
-// RefreshMirrors refreshes the mirror configurations for all distributions.
-// This is typically called in response to a SIGHUP signal for hot reload,
-// and from the /api/mirrors/refresh endpoint. The mutex serializes concurrent
-// refreshes (the rewriter pointer swap inside RefreshRewriters has its own
-// finer-grained lock; this outer lock prevents two refresh runs from racing
-// to clear the benchmark cache and re-elect mirrors at the same time).
-func RefreshMirrors() {
-	mode := state.GetProxyMode()
-	rewritersMu.Lock()
-	current := rewriters
-	rewritersMu.Unlock()
-	invalidateHostPatternCache()
-	RefreshRewriters(current, mode)
 }

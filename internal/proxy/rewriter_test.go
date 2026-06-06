@@ -23,27 +23,26 @@ import (
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
-// setupTestMirrors sets up mock mirrors to avoid network requests during tests
-func setupTestMirrors() {
-	state.SetUbuntuMirror("http://mirrors.example.com/ubuntu/")
-	state.SetUbuntuPortsMirror("http://mirrors.example.com/ubuntu-ports/")
-	state.SetDebianMirror("http://mirrors.example.com/debian/")
-	state.SetCentOSMirror("http://mirrors.example.com/centos/")
-	state.SetAlpineMirror("http://mirrors.example.com/alpine/")
+// newTestState constructs a fresh AppState pre-populated with mock
+// mirrors, so tests don't have to set / reset shared globals.
+func newTestState() *state.AppState {
+	st := state.NewAppState()
+	st.SetMirror(distro.TypeUbuntu, "http://mirrors.example.com/ubuntu/")
+	st.SetMirror(distro.TypeUbuntuPorts, "http://mirrors.example.com/ubuntu-ports/")
+	st.SetMirror(distro.TypeDebian, "http://mirrors.example.com/debian/")
+	st.SetMirror(distro.TypeCentOS, "http://mirrors.example.com/centos/")
+	st.SetMirror(distro.TypeAlpine, "http://mirrors.example.com/alpine/")
+	return st
 }
 
-// cleanupTestMirrors resets all mirrors after tests
-func cleanupTestMirrors() {
-	state.ResetUbuntuMirror()
-	state.ResetUbuntuPortsMirror()
-	state.ResetDebianMirror()
-	state.ResetCentOSMirror()
-	state.ResetAlpineMirror()
+// newTestRegistry returns a registry seeded with the built-in distributions.
+func newTestRegistry() *distro.Registry {
+	return distro.NewBuiltinRegistry()
 }
 
 func TestCreateNewRewriters(t *testing.T) {
-	setupTestMirrors()
-	defer cleanupTestMirrors()
+	st := newTestState()
+	reg := newTestRegistry()
 
 	tests := []struct {
 		name string
@@ -59,7 +58,7 @@ func TestCreateNewRewriters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rewriters := CreateNewRewriters(tt.mode)
+			rewriters := CreateNewRewriters(tt.mode, st, reg)
 			if rewriters == nil {
 				t.Error("CreateNewRewriters() returned nil")
 			}
@@ -68,6 +67,8 @@ func TestCreateNewRewriters(t *testing.T) {
 }
 
 func TestGetRewriteRulesByMode(t *testing.T) {
+	reg := newTestRegistry()
+
 	tests := []struct {
 		name     string
 		mode     int
@@ -82,7 +83,7 @@ func TestGetRewriteRulesByMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rules := GetRewriteRulesByMode(tt.mode)
+			rules := GetRewriteRulesByMode(reg, tt.mode)
 			if tt.wantMore && len(rules) == 0 {
 				t.Error("GetRewriteRulesByMode() returned empty rules")
 			}
@@ -91,10 +92,10 @@ func TestGetRewriteRulesByMode(t *testing.T) {
 }
 
 func TestRefreshRewriters(t *testing.T) {
-	setupTestMirrors()
-	defer cleanupTestMirrors()
+	st := newTestState()
+	reg := newTestRegistry()
 
-	rewriters := CreateNewRewriters(distro.TypeAllDistros)
+	rewriters := CreateNewRewriters(distro.TypeAllDistros, st, reg)
 	if rewriters == nil {
 		t.Fatal("CreateNewRewriters() returned nil")
 	}
@@ -103,7 +104,7 @@ func TestRefreshRewriters(t *testing.T) {
 		t.Error("Initial Ubuntu rewriter is nil")
 	}
 
-	RefreshRewriters(rewriters, distro.TypeAllDistros)
+	RefreshRewriters(rewriters, distro.TypeAllDistros, st, reg)
 
 	if rewriters.Ubuntu == nil {
 		t.Error("Ubuntu rewriter is nil after refresh")
@@ -111,7 +112,9 @@ func TestRefreshRewriters(t *testing.T) {
 }
 
 func TestRefreshRewritersNil(t *testing.T) {
-	RefreshRewriters(nil, distro.TypeAllDistros)
+	st := newTestState()
+	reg := newTestRegistry()
+	RefreshRewriters(nil, distro.TypeAllDistros, st, reg)
 }
 
 func TestMatchingRule(t *testing.T) {
@@ -138,10 +141,10 @@ func TestMatchingRule(t *testing.T) {
 }
 
 func TestRewriteRequestByMode(t *testing.T) {
-	setupTestMirrors()
-	defer cleanupTestMirrors()
+	st := newTestState()
+	reg := newTestRegistry()
 
-	rewriters := CreateNewRewriters(distro.TypeUbuntu)
+	rewriters := CreateNewRewriters(distro.TypeUbuntu, st, reg)
 
 	req, err := http.NewRequest("GET", "http://localhost/ubuntu/dists/jammy/Release", nil)
 	if err != nil {
@@ -157,53 +160,50 @@ func TestRewriteRequestByMode(t *testing.T) {
 // the mirror path prefix.
 func TestRewriteRequestByModePathPrefix(t *testing.T) {
 	cases := []struct {
-		name      string
-		mirror    string
-		mode      int
-		setMirror func(string)
-		reset     func()
-		path      string
-		wantHost  string
-		wantPath  string
+		name     string
+		mirror   string
+		mode     int
+		distType int
+		path     string
+		wantHost string
+		wantPath string
 	}{
 		{
-			name:      "ubuntu with sub-path mirror",
-			mirror:    "http://mirror.example.com/repo/ubuntu/",
-			mode:      distro.TypeUbuntu,
-			setMirror: state.SetUbuntuMirror,
-			reset:     state.ResetUbuntuMirror,
-			path:      "/ubuntu/dists/jammy/Release",
-			wantHost:  "mirror.example.com",
-			wantPath:  "/repo/ubuntu/dists/jammy/Release",
+			name:     "ubuntu with sub-path mirror",
+			mirror:   "http://mirror.example.com/repo/ubuntu/",
+			mode:     distro.TypeUbuntu,
+			distType: distro.TypeUbuntu,
+			path:     "/ubuntu/dists/jammy/Release",
+			wantHost: "mirror.example.com",
+			wantPath: "/repo/ubuntu/dists/jammy/Release",
 		},
 		{
-			name:      "debian with sub-path mirror",
-			mirror:    "http://mirror.example.com/repo/debian/",
-			mode:      distro.TypeDebian,
-			setMirror: state.SetDebianMirror,
-			reset:     state.ResetDebianMirror,
-			path:      "/debian/dists/bookworm/Release",
-			wantHost:  "mirror.example.com",
-			wantPath:  "/repo/debian/dists/bookworm/Release",
+			name:     "debian with sub-path mirror",
+			mirror:   "http://mirror.example.com/repo/debian/",
+			mode:     distro.TypeDebian,
+			distType: distro.TypeDebian,
+			path:     "/debian/dists/bookworm/Release",
+			wantHost: "mirror.example.com",
+			wantPath: "/repo/debian/dists/bookworm/Release",
 		},
 		{
-			name:      "debian-security routed via security mirror",
-			mirror:    "http://security.example.com/debian-security/",
-			mode:      distro.TypeDebian,
-			setMirror: state.SetDebianMirror,
-			reset:     state.ResetDebianMirror,
-			path:      "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
-			wantHost:  "security.example.com",
-			wantPath:  "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
+			name:     "debian-security routed via security mirror",
+			mirror:   "http://security.example.com/debian-security/",
+			mode:     distro.TypeDebian,
+			distType: distro.TypeDebian,
+			path:     "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
+			wantHost: "security.example.com",
+			wantPath: "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.setMirror(tc.mirror)
-			defer tc.reset()
+			st := state.NewAppState()
+			reg := newTestRegistry()
+			st.SetMirror(tc.distType, tc.mirror)
 
-			rewriters := CreateNewRewriters(tc.mode)
+			rewriters := CreateNewRewriters(tc.mode, st, reg)
 			req, err := http.NewRequest("GET", "http://localhost"+tc.path, nil)
 			if err != nil {
 				t.Fatalf("NewRequest: %v", err)
@@ -241,14 +241,14 @@ func TestGetRewriterConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.wantName, func(t *testing.T) {
-			getMirror, name := getRewriterConfig(tt.mode)
+			descriptor, name := getRewriterConfig(tt.mode)
 			if tt.wantNil {
-				if getMirror != nil {
-					t.Error("Expected nil getMirror function for unknown mode")
+				if descriptor != nil {
+					t.Error("Expected nil descriptor for unknown mode")
 				}
 			} else {
-				if getMirror == nil {
-					t.Error("Expected non-nil getMirror function")
+				if descriptor == nil {
+					t.Error("Expected non-nil descriptor")
 				}
 				if name != tt.wantName {
 					t.Errorf("name = %q, want %q", name, tt.wantName)
@@ -259,10 +259,10 @@ func TestGetRewriterConfig(t *testing.T) {
 }
 
 func TestURLRewritersConcurrency(t *testing.T) {
-	setupTestMirrors()
-	defer cleanupTestMirrors()
+	st := newTestState()
+	reg := newTestRegistry()
 
-	rewriters := CreateNewRewriters(distro.TypeAllDistros)
+	rewriters := CreateNewRewriters(distro.TypeAllDistros, st, reg)
 
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
@@ -274,7 +274,7 @@ func TestURLRewritersConcurrency(t *testing.T) {
 	}
 
 	go func() {
-		RefreshRewriters(rewriters, distro.TypeAllDistros)
+		RefreshRewriters(rewriters, distro.TypeAllDistros, st, reg)
 		done <- true
 	}()
 
@@ -284,10 +284,11 @@ func TestURLRewritersConcurrency(t *testing.T) {
 }
 
 func TestCreateRewriterWithSpecifiedMirror(t *testing.T) {
-	state.SetUbuntuMirror("http://custom.mirror.com/ubuntu/")
-	defer state.ResetUbuntuMirror()
+	st := state.NewAppState()
+	reg := newTestRegistry()
+	st.SetMirror(distro.TypeUbuntu, "http://custom.mirror.com/ubuntu/")
 
-	rewriter := createRewriter(distro.TypeUbuntu)
+	rewriter := createRewriter(distro.TypeUbuntu, st, reg)
 	if rewriter == nil {
 		t.Fatal("createRewriter() returned nil")
 	}
@@ -303,10 +304,10 @@ func TestCreateRewriterWithSpecifiedMirror(t *testing.T) {
 }
 
 func TestURLRewriterPattern(t *testing.T) {
-	setupTestMirrors()
-	defer cleanupTestMirrors()
+	st := newTestState()
+	reg := newTestRegistry()
 
-	rewriters := CreateNewRewriters(distro.TypeUbuntu)
+	rewriters := CreateNewRewriters(distro.TypeUbuntu, st, reg)
 	if rewriters.Ubuntu == nil {
 		t.Fatal("Ubuntu rewriter is nil")
 	}
