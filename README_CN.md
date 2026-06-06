@@ -299,7 +299,7 @@ http_proxy=http://host.docker.internal:3142 \
 ./apt-proxy -h
 ```
 
-**可用选项：**
+**可用选项：** 下表按主题分组，每个 flag 都对应同名的环境变量与 YAML 字段（参见 [环境变量](#环境变量) 与 [YAML 配置文件](#yaml-配置文件)）。
 
 | 选项 | 描述 | 默认值 |
 |------|------|--------|
@@ -323,7 +323,7 @@ http_proxy=http://host.docker.internal:3142 \
 | `-enable-api-auth` | 显式开/关 API 鉴权中间件 | `false`（设置 `-api-key` 时自动变为 `true`） |
 | `-api-rate-limit` | 每 IP 每分钟的 API 请求数（`0` 关闭） | `60` |
 | `-trusted-proxies` | 受信任代理 CIDR 列表（逗号分隔），仅对其匹配的请求解析 `X-Forwarded-For` | |
-| `-upstream-keep-alive` | 上游 HTTP keep-alive（仅 CLI/ENV 生效，YAML 不可配置） | `true` |
+| `-upstream-keep-alive` | 上游 HTTP keep-alive | `true` |
 | `-storage-backend` | 缓存存储后端：`disk` 或 `s3` | `disk` |
 | `-s3-endpoint` | S3 endpoint（`host[:port]`，不含协议前缀） | |
 | `-s3-region` | S3 region（AWS 必填，多数 MinIO 服务可留空） | |
@@ -486,13 +486,16 @@ security:
 
 mode: all
 
+# 上游传输
+upstream_keep_alive: true
+
 # 可选：外部 distributions/mirrors 配置文件（可热重载）
 distributions_config: ./config/distributions.yaml
 ```
 
 **YAML 中的环境变量展开：** 仅识别 `${VAR}` 与 `${VAR:-default}` 两种形式；裸 `$VAR` **不会**被展开。未定义的 `${VAR}` 会**保持原样**（而不是替换为空），便于及时发现拼写错误。
 
-**注意：** `upstream_keep_alive` **无法**通过 YAML 配置，请使用 `--upstream-keep-alive` 或 `APT_PROXY_UPSTREAM_KEEP_ALIVE`。同样，缓存只能使用上述人类可读字段（`dir`、`max_size_gb`、`ttl_hours`、`cleanup_interval_min`），原始字节/Duration 字段属于内部表示。
+**说明：** 缓存仅识别上述人类可读字段（`dir`、`max_size_gb`、`ttl_hours`、`cleanup_interval_min`）；原始字节 / Duration 字段（`max_size`、`ttl`、`cleanup_interval`）属于内部表示，不会从 YAML 读入。
 
 **配置文件搜索路径（按顺序）：**
 1. 通过 `-config` 参数或 `APT_PROXY_CONFIG_FILE` 环境变量指定的路径
@@ -588,7 +591,8 @@ APT_PROXY_S3_USE_PATH_STYLE=true
 - 写入采用"智能"上传策略：≤ `inline_max_mb` 的对象在内存中累积后一次 PUT；超过
   阈值则落盘到临时文件再 `PutObject`。可根据典型包大小调整。
 - S3 模式下 `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` 会被**忽略**；只有
-  TLS 证书路径仍然需要本地文件。
+  TLS 证书路径仍然需要本地文件。当 `storage.backend=s3` 同时显式设置了非默认
+  cache.dir 时，启动会输出一行警告，避免该特例被静默吞掉。
 
 **资源容量规划（S3 后端）：**
 

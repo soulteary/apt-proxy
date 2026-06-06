@@ -64,6 +64,7 @@ func TestFiberHealthHandlerBranches(t *testing.T) {
 		if err != nil {
 			t.Fatalf("app.Test: %v", err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != fiber.StatusForbidden {
 			t.Errorf("status = %d, want 403", resp.StatusCode)
 		}
@@ -82,6 +83,7 @@ func TestFiberHealthHandlerBranches(t *testing.T) {
 		if err != nil {
 			t.Fatalf("app.Test: %v", err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != fiber.StatusOK {
 			t.Errorf("status = %d, want 200", resp.StatusCode)
 		}
@@ -105,6 +107,7 @@ func TestFiberHealthHandlerBranches(t *testing.T) {
 		if err != nil {
 			t.Fatalf("app.Test: %v", err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != fiber.StatusOK {
 			t.Errorf("status = %d, want 200", resp.StatusCode)
 		}

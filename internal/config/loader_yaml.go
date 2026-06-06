@@ -81,6 +81,11 @@ type YAMLConfig struct {
 
 	Mode                string `yaml:"mode"`
 	DistributionsConfig string `yaml:"distributions_config"`
+
+	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors.
+	// Pointer to distinguish "user did not set" (nil → leave to defaults
+	// or CLI/ENV) from "user explicitly set false" (disable keep-alive).
+	UpstreamKeepAlive *bool `yaml:"upstream_keep_alive"`
 }
 
 // LoadConfigFile loads configuration from a YAML file.
@@ -190,6 +195,15 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			},
 		},
 		DistributionsConfigPath: yamlCfg.DistributionsConfig,
+	}
+
+	// Apply UpstreamKeepAlive: default to true (matches CLI default) so the
+	// merged base does not silently flip a CLI default of true to YAML's
+	// boolean zero value. Only an explicit YAML false disables keep-alive.
+	if yamlCfg.UpstreamKeepAlive != nil {
+		cfg.UpstreamKeepAlive = *yamlCfg.UpstreamKeepAlive
+	} else {
+		cfg.UpstreamKeepAlive = true
 	}
 
 	// Convert mode string to int

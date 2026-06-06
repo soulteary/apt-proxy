@@ -299,7 +299,7 @@ View all available options:
 ./apt-proxy -h
 ```
 
-**Available Options:**
+**Available Options:** Flags are grouped by topic below; each flag has a 1:1 environment-variable and YAML equivalent (see [Environment Variables](#environment-variables) and [YAML Configuration File](#yaml-configuration-file)).
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -323,7 +323,7 @@ View all available options:
 | `-enable-api-auth` | Explicitly enable/disable API authentication middleware | `false` (auto `true` when `-api-key` is set) |
 | `-api-rate-limit` | API requests per IP per minute (`0` to disable) | `60` |
 | `-trusted-proxies` | Comma-separated CIDRs whose `X-Forwarded-For` is honored by rate limiter and auth | |
-| `-upstream-keep-alive` | Enable HTTP keep-alive to upstream mirrors (CLI/ENV only; not configurable via YAML) | `true` |
+| `-upstream-keep-alive` | Enable HTTP keep-alive to upstream mirrors | `true` |
 | `-storage-backend` | Cache storage backend: `disk` or `s3` (see [S3 Storage Backend](#s3-storage-backend)) | `disk` |
 | `-s3-endpoint` | S3 endpoint host[:port] (required when backend is `s3`) | |
 | `-s3-region` | S3 region (required for AWS S3, ignored by most MinIO services) | |
@@ -486,13 +486,16 @@ security:
 
 mode: all
 
+# Upstream transport
+upstream_keep_alive: true
+
 # Optional: external distributions/mirrors config (hot-reloadable)
 distributions_config: ./config/distributions.yaml
 ```
 
 **Environment variable expansion in YAML:** values support `${VAR}` and `${VAR:-default}` forms. Bare `$VAR` is **not** expanded. An undefined `${VAR}` is left as-is (instead of becoming empty) so that typos surface loudly.
 
-**Note:** `upstream_keep_alive` is **not** read from YAML — configure it via `--upstream-keep-alive` or `APT_PROXY_UPSTREAM_KEEP_ALIVE`. Likewise, only the human-friendly cache fields shown above (`dir`, `max_size_gb`, `ttl_hours`, `cleanup_interval_min`) are valid; raw byte/duration fields are internal representations.
+**Note:** the cache section uses the human-friendly fields shown above (`dir`, `max_size_gb`, `ttl_hours`, `cleanup_interval_min`); the raw byte/duration fields (`max_size`, `ttl`, `cleanup_interval`) are internal representations and are **not** read from YAML.
 
 **Config file search paths (in order):**
 1. Path specified via `-config` flag or `APT_PROXY_CONFIG_FILE` environment variable
@@ -593,6 +596,8 @@ APT_PROXY_S3_USE_PATH_STYLE=true
   `PutObject`. Tune `inline_max_mb` based on your typical package size.
 - `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` are **ignored** when the
   S3 backend is active. Only TLS cert/key files still need a local path.
+  Setting a non-default cache.dir while `storage.backend=s3` triggers a
+  startup warning so the override is observable rather than silently dropped.
 
 **Resource sizing & capacity planning (S3 backend):**
 

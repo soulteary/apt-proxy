@@ -58,6 +58,25 @@ const (
 	EnvTLSCertFile = config.EnvTLSCertFile
 	EnvTLSKeyFile  = config.EnvTLSKeyFile
 
+	// Security (API)
+	EnvAPIKey                = config.EnvAPIKey
+	EnvEnableAPIAuth         = config.EnvEnableAPIAuth
+	EnvAPIRateLimitPerMinute = config.EnvAPIRateLimitPerMinute
+	EnvTrustedProxies        = config.EnvTrustedProxies
+
+	// Upstream transport
+	EnvUpstreamKeepAlive = config.EnvUpstreamKeepAlive
+
+	// Configuration files
+	EnvConfigFile          = config.EnvConfigFile
+	EnvDistributionsConfig = config.EnvDistributionsConfig
+
+	// Logging (no CLI equivalent; canonical + legacy aliases).
+	EnvLogLevel        = config.EnvLogLevel
+	EnvLogFormat       = config.EnvLogFormat
+	EnvLogLevelLegacy  = config.EnvLogLevelLegacy
+	EnvLogFormatLegacy = config.EnvLogFormatLegacy
+
 	EnvStorageBackend = config.EnvStorageBackend
 	EnvS3Endpoint     = config.EnvS3Endpoint
 	EnvS3Region       = config.EnvS3Region
@@ -81,6 +100,9 @@ const (
 	DefaultCacheMaxSizeGB          = config.DefaultCacheMaxSizeGB
 	DefaultCacheTTLHours           = config.DefaultCacheTTLHours
 	DefaultCacheCleanupIntervalMin = config.DefaultCacheCleanupIntervalMin
+
+	DefaultAPIRateLimitPerMinute = config.DefaultAPIRateLimitPerMinute
+	DefaultConfigFileName        = config.DefaultConfigFileName
 
 	DefaultStorageBackend = config.DefaultStorageBackend
 	DefaultS3InlineMaxMB  = config.DefaultS3InlineMaxMB

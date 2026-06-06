@@ -17,6 +17,8 @@ package config
 
 import (
 	"flag"
+	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -65,7 +67,6 @@ func ModeToInt(mode string) int {
 // defineFlags defines all command-line flags for the application.
 // This function is shared between ParseFlags and ParseFlagsWithConfigFile.
 func defineFlags(flags *flag.FlagSet) {
-	// Define flags (for CLI compatibility and help text)
 	flags.String("host", DefaultHost, "the host to bind to")
 	flags.String("port", DefaultPort, "the port to bind to")
 	flags.String("mode", distro.DistroAll,
@@ -123,6 +124,119 @@ func defineFlags(flags *flag.FlagSet) {
 	flags.Bool("s3-use-path-style", false, "force path-style URLs (needed for MinIO/Ceph)")
 	flags.Int64("s3-inline-max-mb", DefaultS3InlineMaxMB, "in-memory write threshold (MiB) before spilling to TempDir")
 	flags.String("s3-temp-dir", "", "directory for spilled writes (default os.TempDir())")
+}
+
+// flagGroups defines the visual grouping used when rendering -h output.
+// The order here is the order users see; flags omitted from any group fall
+// back to a final "Other" section so we never silently hide options.
+var flagGroups = []struct {
+	title string
+	flags []string
+}{
+	{
+		title: "Server / Mode",
+		flags: []string{"host", "port", "mode", "debug", "config", "distributions-config"},
+	},
+	{
+		title: "Cache (used when storage backend is \"disk\")",
+		flags: []string{"cachedir", "cache-max-size", "cache-ttl", "cache-cleanup-interval"},
+	},
+	{
+		title: "Mirrors",
+		flags: []string{"ubuntu", "ubuntu-ports", "debian", "centos", "alpine"},
+	},
+	{
+		title: "TLS",
+		flags: []string{"tls", "tls-cert", "tls-key"},
+	},
+	{
+		title: "Security (API)",
+		flags: []string{"api-key", "enable-api-auth", "api-rate-limit", "trusted-proxies"},
+	},
+	{
+		title: "Upstream",
+		flags: []string{"upstream-keep-alive"},
+	},
+	{
+		title: "Storage backend (disk | s3)",
+		flags: []string{
+			"storage-backend",
+			"s3-endpoint", "s3-region", "s3-bucket", "s3-prefix",
+			"s3-access-key", "s3-secret-key", "s3-session-token",
+			"s3-use-ssl", "s3-use-path-style",
+			"s3-inline-max-mb", "s3-temp-dir",
+		},
+	},
+}
+
+// installGroupedUsage replaces the FlagSet's default Usage with a topic-
+// grouped renderer. The 30+ flags are visually compressed into 7 sections,
+// matching the README's "Configuration Options" table, so the surface no
+// longer feels like a wall of text. Every flag still appears verbatim;
+// stragglers (flags missing from flagGroups) land in a trailing "Other"
+// group so adding a new flag without updating the groups can't hide it.
+func installGroupedUsage(flags *flag.FlagSet) {
+	flags.Usage = func() {
+		out := flags.Output()
+		name := flags.Name()
+		if name == "" {
+			name = "apt-proxy"
+		}
+		// Usage output goes to a best-effort writer (typically os.Stderr);
+		// surfacing transient write errors here would only obscure the help
+		// text the user actually asked for, so we deliberately ignore them.
+		_, _ = fmt.Fprintf(out, "Usage of %s:\n", name)
+		_, _ = fmt.Fprintln(out, "Every flag has a 1:1 ENV (APT_PROXY_*) and YAML equivalent; see README for the full schema.")
+
+		seen := map[string]bool{}
+		for _, g := range flagGroups {
+			_, _ = fmt.Fprintf(out, "\n# %s\n", g.title)
+			for _, name := range g.flags {
+				f := flags.Lookup(name)
+				if f == nil {
+					continue
+				}
+				printFlag(out, f)
+				seen[name] = true
+			}
+		}
+
+		var leftovers []*flag.Flag
+		flags.VisitAll(func(f *flag.Flag) {
+			if !seen[f.Name] {
+				leftovers = append(leftovers, f)
+			}
+		})
+		if len(leftovers) > 0 {
+			_, _ = fmt.Fprintln(out, "\n# Other")
+			for _, f := range leftovers {
+				printFlag(out, f)
+			}
+		}
+	}
+}
+
+// printFlag mirrors the layout of flag.PrintDefaults closely enough that
+// users used to the standard help output recognise each entry, while
+// keeping our renderer self-contained (PrintDefaults sorts globally and
+// does not honour group ordering).
+func printFlag(out io.Writer, f *flag.Flag) {
+	// See installGroupedUsage: write errors on the help stream are not
+	// actionable, so we discard them rather than half-render the output.
+	_, _ = fmt.Fprintf(out, "  -%s", f.Name)
+	if typeName, _ := flag.UnquoteUsage(f); typeName != "" {
+		_, _ = fmt.Fprintf(out, " %s", typeName)
+	}
+	_, _ = fmt.Fprintln(out)
+	if f.Usage != "" {
+		_, _ = fmt.Fprintf(out, "    \t%s", f.Usage)
+		if f.DefValue != "" {
+			_, _ = fmt.Fprintf(out, " (default %q)", f.DefValue)
+		}
+		_, _ = fmt.Fprintln(out)
+	} else if f.DefValue != "" {
+		_, _ = fmt.Fprintf(out, "    \t(default %q)\n", f.DefValue)
+	}
 }
 
 // cliExplicit tracks which fields were explicitly set on the CLI / via ENV.

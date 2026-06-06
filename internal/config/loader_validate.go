@@ -97,6 +97,15 @@ func ValidateConfig(config *Config) error {
 		if (config.Storage.S3.AccessKey != "") != (config.Storage.S3.SecretKey != "") {
 			return fmt.Errorf("S3 access_key and secret_key must be set together")
 		}
+		// Surface the historical "S3 ignores cache.dir" rule. We previously
+		// silently dropped the value; emit a one-line stderr warning when the
+		// operator supplied a non-default cache directory so the special case
+		// is observable instead of buried in README.
+		if config.CacheDir != "" && config.CacheDir != DefaultCacheDir {
+			fmt.Fprintf(os.Stderr,
+				"warning: storage backend is %q; ignoring cache.dir=%q (cache.dir/--cachedir/APT_PROXY_CACHEDIR only apply when backend is %q)\n",
+				StorageBackendS3, config.CacheDir, StorageBackendDisk)
+		}
 	default:
 		return fmt.Errorf("unknown storage backend %q (expected %q or %q)",
 			config.Storage.Backend, StorageBackendDisk, StorageBackendS3)

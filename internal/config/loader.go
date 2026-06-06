@@ -36,6 +36,7 @@ import (
 func ParseFlags() (*Config, error) {
 	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
 	defineFlags(flags)
+	installGroupedUsage(flags)
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
@@ -80,6 +81,7 @@ func ParseFlags() (*Config, error) {
 func ParseFlagsWithConfigFile() (*Config, error) {
 	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
 	defineFlags(flags)
+	installGroupedUsage(flags)
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)

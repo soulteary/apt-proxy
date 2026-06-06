@@ -9,6 +9,9 @@
 # Environment variable: APT_PROXY_CONFIG_FILE=/path/to/config.yaml
 #
 # Configuration priority: CLI flags > Environment variables > Config file > Defaults
+#
+# Every CLI flag has a 1:1 YAML / ENV equivalent; this file shows the full
+# user-facing schema. See README "Configuration Options" for the flag table.
 
 # Server configuration
 server:
@@ -101,9 +104,24 @@ security:
   # API key for protected management endpoints
   # Supports environment variable expansion: ${APT_PROXY_API_KEY}
   api_key: ${APT_PROXY_API_KEY}
-  
+
   # Enable API authentication (automatically enabled when api_key is set)
   enable_api_auth: true
+
+  # API requests per IP per minute (0 disables; default 60)
+  api_rate_limit_per_minute: 60
+
+  # Trusted proxy CIDRs whose X-Forwarded-For is honored by the API rate
+  # limiter and IP-based audit fields. Leave empty to ignore XFF entirely
+  # (the secure default for direct-exposed deployments).
+  # trusted_proxies:
+  #   - 10.0.0.0/8
+  #   - 192.168.0.0/16
+
+# Upstream transport
+# HTTP keep-alive to upstream mirrors. Disable only if a proxy / firewall
+# in front mishandles persistent connections.
+upstream_keep_alive: true
 
 # Distribution mode
 # Options: all, ubuntu, ubuntu-ports, debian, centos, alpine

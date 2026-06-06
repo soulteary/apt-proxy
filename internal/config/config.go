@@ -116,18 +116,33 @@ type MirrorConfig struct {
 	Alpine      string `yaml:"alpine"`
 }
 
-// CacheConfig holds cache-specific configuration
+// CacheConfig holds cache-specific configuration.
+//
+// Only the *GB / *Hours / *Min fields are user-facing in YAML (via the
+// human-friendly YAMLConfig.Cache.* schema). The raw byte / time.Duration
+// fields are internal representations populated by the loader; they carry
+// `yaml:"-"` so the struct does not falsely advertise YAML support for
+// "max_size" / "ttl" / "cleanup_interval" etc.
 type CacheConfig struct {
-	// MaxSize is the maximum cache size in bytes (default: 10GB)
-	MaxSize int64 `yaml:"max_size"`
-	// MaxSizeGB is an alternative way to specify max size in GB for YAML config
-	MaxSizeGB int64 `yaml:"max_size_gb"`
-	// TTL is the time-to-live for cached items (default: 7 days)
-	TTL time.Duration `yaml:"ttl"`
-	// TTLHours is an alternative way to specify TTL in hours for YAML config
-	TTLHours int `yaml:"ttl_hours"`
-	// CleanupInterval is the interval between cleanup runs (default: 1 hour)
-	CleanupInterval time.Duration `yaml:"cleanup_interval"`
-	// CleanupIntervalMin is an alternative way to specify cleanup interval in minutes for YAML config
-	CleanupIntervalMin int `yaml:"cleanup_interval_min"`
+	// MaxSize is the maximum cache size in bytes (default: 10GB).
+	// Internal representation; not read from YAML.
+	MaxSize int64 `yaml:"-"`
+	// MaxSizeGB is an alternative way to specify max size in GB for YAML config.
+	// Not read from the top-level Config YAML; YAMLConfig.Cache.MaxSizeGB
+	// is the user-facing knob.
+	MaxSizeGB int64 `yaml:"-"`
+	// TTL is the time-to-live for cached items (default: 7 days).
+	// Internal representation; not read from YAML.
+	TTL time.Duration `yaml:"-"`
+	// TTLHours is an alternative way to specify TTL in hours for YAML config.
+	// Not read from the top-level Config YAML; YAMLConfig.Cache.TTLHours
+	// is the user-facing knob.
+	TTLHours int `yaml:"-"`
+	// CleanupInterval is the interval between cleanup runs (default: 1 hour).
+	// Internal representation; not read from YAML.
+	CleanupInterval time.Duration `yaml:"-"`
+	// CleanupIntervalMin is an alternative way to specify cleanup interval in minutes for YAML config.
+	// Not read from the top-level Config YAML; YAMLConfig.Cache.CleanupIntervalMin
+	// is the user-facing knob.
+	CleanupIntervalMin int `yaml:"-"`
 }
