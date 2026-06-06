@@ -44,8 +44,8 @@ cache:
 # (MinIO / Ceph / R2 / B2 / OSS / COS / AWS S3, ...). When backend is "s3"
 # the cache.dir field above is ignored.
 #
-# A complete working example (compose stack with MinIO) lives in
-# examples/s3-minio/.
+# A complete working example (compose stack with OtterIO, an Apache-2.0
+# S3-compatible fork of MinIO) lives in examples/s3-otterio/.
 storage:
   backend: disk           # "disk" (default) or "s3"
   s3:

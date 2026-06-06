@@ -280,7 +280,7 @@ http_proxy=http://host.docker.internal:3142 \
 
 ### Docker Compose 示例
 
-查看 [examples 目录](examples/) 获取完整的 Docker Compose 配置。其中包含四个自包含的子示例：[`basic/`](examples/basic/)（最小部署）、[`specify-mirrors/`](examples/specify-mirrors/)（指定上游镜像）、[`s3-minio/`](examples/s3-minio/)（缓存落到 S3 兼容对象存储）、[`config-template/`](examples/config-template/)（带详尽注释的 `apt-proxy.yaml` 参考）。
+查看 [examples 目录](examples/) 获取完整的 Docker Compose 配置。其中包含四个自包含的子示例：[`basic/`](examples/basic/)（最小部署）、[`specify-mirrors/`](examples/specify-mirrors/)（指定上游镜像）、[`s3-otterio/`](examples/s3-otterio/)（缓存落到 S3 兼容对象存储，使用 [OtterIO](https://github.com/soulteary/otterio)——MinIO 的 Apache-2.0 衍生项目）、[`config-template/`](examples/config-template/)（带详尽注释的 `apt-proxy.yaml` 参考）。
 
 ## 配置选项
 
@@ -559,6 +559,7 @@ APT_PROXY_S3_USE_PATH_STYLE=true
 | ------------------ | ---------------------------------------------------- | --------- | ---------------- | -------------------------------------- |
 | AWS S3             | `s3.<region>.amazonaws.com`                          | `true`    | `false`          | 必须显式设置 `region`                  |
 | MinIO              | `minio.local:9000` / `<host>:9000`                   | 视部署    | `true`           | 必须 path-style                        |
+| OtterIO            | `otterio:9000` / `<host>:9000`                       | 视部署    | `true`           | MinIO 的 Apache-2.0 衍生项目；配置相同 |
 | Ceph RGW           | `rgw.example.com`                                    | 视部署    | `true`           | 必须 path-style                        |
 | Cloudflare R2      | `<account>.r2.cloudflarestorage.com`                 | `true`    | `false`          | region 固定为 `auto`                   |
 | Backblaze B2       | `s3.<region>.backblazeb2.com`                        | `true`    | `false`          | App Key 需对 bucket 有读写权限         |
@@ -579,8 +580,8 @@ APT_PROXY_S3_USE_PATH_STYLE=true
 - S3 模式下 `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` 会被**忽略**；只有
   TLS 证书路径仍然需要本地文件。
 
-完整可运行的示例（含 MinIO + 自动建桶 + 接好的 apt-proxy）见
-[`examples/s3-minio/`](examples/s3-minio/)。
+完整可运行的示例（含 OtterIO + 自动建桶 + 接好的 apt-proxy）见
+[`examples/s3-otterio/`](examples/s3-otterio/)。
 
 ## API 端点
 

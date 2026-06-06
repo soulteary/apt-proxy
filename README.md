@@ -280,7 +280,7 @@ http_proxy=http://host.docker.internal:3142 \
 
 ### Docker Compose Example
 
-See the [examples directory](examples/) for complete Docker Compose configurations. It contains four self-contained subdirectories: [`basic/`](examples/basic/) (minimal deployment), [`specify-mirrors/`](examples/specify-mirrors/) (pin upstream mirrors), [`s3-minio/`](examples/s3-minio/) (cache offloaded to an S3-compatible bucket) and [`config-template/`](examples/config-template/) (fully-commented `apt-proxy.yaml` reference).
+See the [examples directory](examples/) for complete Docker Compose configurations. It contains four self-contained subdirectories: [`basic/`](examples/basic/) (minimal deployment), [`specify-mirrors/`](examples/specify-mirrors/) (pin upstream mirrors), [`s3-otterio/`](examples/s3-otterio/) (cache offloaded to an S3-compatible bucket, using [OtterIO](https://github.com/soulteary/otterio) — an Apache-2.0 fork of MinIO) and [`config-template/`](examples/config-template/) (fully-commented `apt-proxy.yaml` reference).
 
 ## Configuration Options
 
@@ -560,6 +560,7 @@ APT_PROXY_S3_USE_PATH_STYLE=true
 | ------------------ | ---------------------------------------------------- | --------- | ---------------- | -------------------------------------- |
 | AWS S3             | `s3.<region>.amazonaws.com`                          | `true`    | `false`          | Set `region` explicitly                |
 | MinIO              | `minio.local:9000` / `<host>:9000`                   | varies    | `true`           | path-style is required                 |
+| OtterIO            | `otterio:9000` / `<host>:9000`                       | varies    | `true`           | Apache-2.0 fork of MinIO; same config  |
 | Ceph RGW           | `rgw.example.com`                                    | varies    | `true`           | path-style is required                 |
 | Cloudflare R2      | `<account>.r2.cloudflarestorage.com`                 | `true`    | `false`          | Region must be `auto`                  |
 | Backblaze B2       | `s3.<region>.backblazeb2.com`                        | `true`    | `false`          | App keys with read+write to bucket     |
@@ -583,8 +584,8 @@ APT_PROXY_S3_USE_PATH_STYLE=true
 - `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` are **ignored** when the
   S3 backend is active. Only TLS cert/key files still need a local path.
 
-A complete working example (compose stack with MinIO + auto-provisioned bucket
-+ pre-wired apt-proxy) lives in [`examples/s3-minio/`](examples/s3-minio/).
+A complete working example (compose stack with OtterIO + auto-provisioned bucket
++ pre-wired apt-proxy) lives in [`examples/s3-otterio/`](examples/s3-otterio/).
 
 ## API Endpoints
 

@@ -1,5 +1,11 @@
 # Example apt-proxy.yaml using an S3-compatible bucket as the cache store.
 #
+# This file is paired with the OtterIO compose stack in this directory
+# (https://github.com/soulteary/otterio — an Apache-2.0 fork of MinIO that
+# speaks the same S3 API), but the same config also works against any other
+# S3-compatible service: AWS S3, Ceph RGW, Cloudflare R2, Backblaze B2,
+# Aliyun OSS, Tencent COS, etc.
+#
 # Save this file alongside the apt-proxy binary (or pass it via --config) and
 # point APT_PROXY_S3_ACCESS_KEY / APT_PROXY_S3_SECRET_KEY at credentials with
 # read+write access to the bucket. The bucket itself must already exist.
@@ -16,14 +22,14 @@ mode: all
 storage:
   backend: s3
   s3:
-    endpoint: "${APT_PROXY_S3_ENDPOINT:-minio:9000}"
+    endpoint: "${APT_PROXY_S3_ENDPOINT:-otterio:9000}"
     region: "${APT_PROXY_S3_REGION:-}"
     bucket: "${APT_PROXY_S3_BUCKET:-apt-proxy}"
     prefix: "apt-proxy/"
     access_key: "${APT_PROXY_S3_ACCESS_KEY}"
     secret_key: "${APT_PROXY_S3_SECRET_KEY}"
     use_ssl: false
-    use_path_style: true   # MinIO/Ceph need path-style; AWS S3 typically false
+    use_path_style: true   # OtterIO/MinIO/Ceph need path-style; AWS S3 typically false
     inline_max_mb: 32      # writes <= 32 MiB stay in memory; larger spill to TempDir
     temp_dir: ""           # empty = os.TempDir()
 

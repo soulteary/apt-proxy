@@ -14,13 +14,14 @@
 
 //go:build integration
 
-// Package integration's S3-storage tests run against a live MinIO instance.
+// Package integration's S3-storage tests run against a live S3-compatible
+// service (any of MinIO / OtterIO / Ceph RGW / etc. will do).
 //
 // They are gated by APT_PROXY_TEST_S3_ENDPOINT (and friends) so that the
 // default `go test -tags=integration ./...` invocation skips them on
 // developer workstations without docker. The CI workflow under
-// .github/workflows/ci.yaml provisions a minio service container and exports
-// the env vars; see also examples/s3-minio/ for a local docker-compose setup.
+// .github/workflows/ci.yml boots an OtterIO container and exports the env
+// vars; see also examples/s3-otterio/ for a local docker-compose setup.
 package integration
 
 import (
@@ -43,9 +44,9 @@ import (
 	httpcache "github.com/soulteary/httpcache-kit"
 )
 
-// s3TestEnv collects the MinIO connection details. We check via env vars so
-// the test binary stays usable both locally (developer-supplied MinIO) and in
-// CI (service-container supplied).
+// s3TestEnv collects the S3-compatible service connection details. We check
+// via env vars so the test binary stays usable both locally (developer-supplied
+// MinIO/OtterIO/etc.) and in CI (where the workflow boots OtterIO for us).
 type s3TestEnv struct {
 	endpoint     string
 	accessKey    string
@@ -62,8 +63,8 @@ func loadS3TestEnv(t *testing.T) s3TestEnv {
 	t.Helper()
 	env := s3TestEnv{
 		endpoint:     os.Getenv("APT_PROXY_TEST_S3_ENDPOINT"),
-		accessKey:    envOrDefault("APT_PROXY_TEST_S3_ACCESS_KEY", "minioadmin"),
-		secretKey:    envOrDefault("APT_PROXY_TEST_S3_SECRET_KEY", "minioadmin"),
+		accessKey:    envOrDefault("APT_PROXY_TEST_S3_ACCESS_KEY", "otterioadmin"),
+		secretKey:    envOrDefault("APT_PROXY_TEST_S3_SECRET_KEY", "otterioadmin"),
 		bucket:       envOrDefault("APT_PROXY_TEST_S3_BUCKET", "apt-proxy-itest"),
 		useSSL:       os.Getenv("APT_PROXY_TEST_S3_USE_SSL") == "true",
 		usePathStyle: envOrDefault("APT_PROXY_TEST_S3_USE_PATH_STYLE", "true") == "true",
@@ -82,8 +83,8 @@ func envOrDefault(name, def string) string {
 }
 
 // ensureBucket lazily creates the integration bucket. We don't fail when the
-// bucket already exists; that is the common case in CI where a fixture step
-// pre-provisions it.
+// bucket already exists; that keeps the test idempotent across local reruns
+// and CI invocations alike.
 func ensureBucket(ctx context.Context, t *testing.T, env s3TestEnv) {
 	t.Helper()
 	cli, err := minio.New(env.endpoint, &minio.Options{
@@ -113,8 +114,8 @@ func lookup(pathStyle bool) minio.BucketLookupType {
 }
 
 // TestS3VFSEndToEnd runs the full Open / Stat / ReadDir / Remove / WFile path
-// against a real MinIO server. It uses a per-test prefix so reruns are
-// idempotent and parallel test runs don't collide.
+// against a real S3-compatible server (MinIO/OtterIO/etc.). It uses a per-test
+// prefix so reruns are idempotent and parallel test runs don't collide.
 func TestS3VFSEndToEnd(t *testing.T) {
 	env := loadS3TestEnv(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

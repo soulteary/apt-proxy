@@ -1,0 +1,76 @@
+# Compose example: run apt-proxy with a colocated OtterIO bucket as cache storage.
+#
+# OtterIO is a community-maintained, Apache-licensed fork of the upstream MinIO
+# codebase (https://github.com/soulteary/otterio). It exposes the same S3 API,
+# so apt-proxy talks to it via the standard `s3` storage backend.
+#
+# Usage:
+#   docker compose up -d
+#   curl -x http://127.0.0.1:3142 http://archive.ubuntu.com/ubuntu/dists/noble/Release
+#
+# All cached package bodies/headers land in the OtterIO bucket "apt-proxy".
+# The bucket is auto-provisioned by the `aws-cli` sidecar on first start.
+
+services:
+  otterio:
+    image: soulteary/otterio:latest
+    container_name: apt-proxy-otterio
+    command: server /data --console-address :9001
+    environment:
+      OTTERIO_ROOT_USER: otterioadmin
+      OTTERIO_ROOT_PASSWORD: otterioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - otterio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/otterio/health/live"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+
+  # One-shot job: wait for OtterIO, then create the bucket. Idempotent.
+  # We use the AWS CLI here (instead of a MinIO `mc` image) so the stack stays
+  # self-consistent with the OtterIO project; any S3-compatible client works.
+  otterio-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      otterio:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: otterioadmin
+      AWS_SECRET_ACCESS_KEY: otterioadmin
+      AWS_DEFAULT_REGION: us-east-1
+      # Skip the IMDS probe: we have static keys and the runtime is not EC2.
+      AWS_EC2_METADATA_DISABLED: "true"
+    entrypoint: >
+      /bin/sh -c "
+      aws --endpoint-url http://otterio:9000 s3api head-bucket --bucket apt-proxy 2>/dev/null
+      || aws --endpoint-url http://otterio:9000 s3api create-bucket --bucket apt-proxy
+      "
+    restart: "no"
+
+  apt-proxy:
+    # Build from the repo root: `docker compose build` after a `git clone`.
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: apt-proxy
+    depends_on:
+      otterio-init:
+        condition: service_completed_successfully
+    environment:
+      APT_PROXY_STORAGE_BACKEND: s3
+      APT_PROXY_S3_ENDPOINT: otterio:9000
+      APT_PROXY_S3_BUCKET: apt-proxy
+      APT_PROXY_S3_ACCESS_KEY: otterioadmin
+      APT_PROXY_S3_SECRET_KEY: otterioadmin
+      APT_PROXY_S3_USE_SSL: "false"
+      APT_PROXY_S3_USE_PATH_STYLE: "true"
+      APT_PROXY_S3_PREFIX: "apt-proxy/"
+    ports:
+      - "3142:3142"
+
+volumes:
+  otterio-data:
