@@ -31,6 +31,7 @@ func DirSize(path string) (uint64, error) {
 }
 
 // ByteCountDecimal formats b as human-readable size (1000-based: kB, MB, …).
+// Use ByteCountBinary for filesystem-style 1024-based output.
 func ByteCountDecimal(b uint64) string {
 	const unit = 1000
 	if b < unit {
@@ -42,4 +43,20 @@ func ByteCountDecimal(b uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+}
+
+// ByteCountBinary formats b as human-readable size (1024-based: KiB, MiB, …,
+// rendered as KB/MB/GB to match common storage conventions). Used by the API
+// stats endpoint so disk usage figures line up with `du` / filesystem tools.
+func ByteCountBinary(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := uint64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

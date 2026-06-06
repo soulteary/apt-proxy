@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	stderrors "errors"
 	"net/http"
 	"os"
 	"os/signal"
@@ -60,7 +61,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	s.initLogger()
 
 	if err := s.initialize(); err != nil {
-		return nil, wrapServerError("failed to initialize server", err)
+		return nil, wrapErr(apperrors.ErrServerInit, "failed to initialize server", err)
 	}
 
 	// Initialize tracing (optional, only if OTLP endpoint is configured)
@@ -72,14 +73,23 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 // initLogger initializes the structured logger with configuration from environment
 func (s *Server) initLogger() {
-	// Determine log level from environment or debug flag
-	level := logger.ParseLevelFromEnv(config.EnvLogLevel, logger.InfoLevel)
+	// Determine log level from environment or debug flag. Honour the
+	// canonical APT_PROXY_LOG_LEVEL first, fall back to the legacy LOG_LEVEL
+	// for backwards compatibility.
+	levelEnv := config.EnvLogLevel
+	if os.Getenv(levelEnv) == "" && os.Getenv(config.EnvLogLevelLegacy) != "" {
+		levelEnv = config.EnvLogLevelLegacy
+	}
+	level := logger.ParseLevelFromEnv(levelEnv, logger.InfoLevel)
 	if s.config.Debug {
 		level = logger.DebugLevel
 	}
 
-	// Determine log format from environment
+	// Determine log format from environment (same legacy fallback as level).
 	formatStr := os.Getenv(config.EnvLogFormat)
+	if formatStr == "" {
+		formatStr = os.Getenv(config.EnvLogFormatLegacy)
+	}
 	format := logger.ParseFormat(formatStr)
 
 	// Create logger with configuration
@@ -142,7 +152,7 @@ func (s *Server) initialize() error {
 	cacheConfig := s.buildCacheConfig()
 	cache, err := httpcache.NewDiskCacheWithConfig(s.config.CacheDir, cacheConfig)
 	if err != nil {
-		return wrapCacheError("failed to initialize cache", err)
+		return wrapErr(apperrors.ErrCacheInit, "failed to initialize cache", err)
 	}
 	s.cache = cache
 
@@ -156,7 +166,12 @@ func (s *Server) initialize() error {
 	s.initHealthChecks()
 
 	// Load distributions config (distributions.yaml) if path set; overlays built-in
-	distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
+	if err := distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath); err != nil {
+		s.log.Warn().
+			Err(err).
+			Str("path", s.config.DistributionsConfigPath).
+			Msg("failed to load distributions config; using built-in defaults")
+	}
 
 	// Configure upstream transport (keep-alive to mirrors; default true)
 	proxy.InitUpstreamTransport(s.config.UpstreamKeepAlive)
@@ -178,7 +193,12 @@ func (s *Server) initialize() error {
 	// Initialize API handlers (mirrors refresh also reloads distributions config when path set)
 	s.cacheHandler = api.NewCacheHandler(s.cache, s.log)
 	s.mirrorsHandler = api.NewMirrorsHandler(s.log, func() {
-		distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
+		if err := distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath); err != nil {
+			s.log.Warn().
+				Err(err).
+				Str("path", s.config.DistributionsConfigPath).
+				Msg("failed to reload distributions config")
+		}
 		// Prefer the per-instance refresh path; falls back to the package
 		// global only if proxy isn't initialized yet (shouldn't happen here).
 		if s.proxy != nil {
@@ -188,13 +208,19 @@ func (s *Server) initialize() error {
 		}
 	})
 
-	// Initialize API authentication middleware
+	// Both middlewares need to agree on what counts as the "real" client
+	// IP. Construct the extractor once and share it; otherwise auth logs
+	// could attribute a request to r.RemoteAddr (the proxy) while
+	// rate-limit logs attributed it to the XFF left-most IP, making it
+	// impossible to correlate forensic events.
+	clientIP := api.NewClientIPExtractor(s.config.Security.TrustedProxies)
+
 	s.authMiddleware = api.NewAuthMiddleware(api.AuthConfig{
-		APIKey: s.config.Security.APIKey,
-		Logger: s.log,
+		APIKey:   s.config.Security.APIKey,
+		Logger:   s.log,
+		ClientIP: clientIP,
 	})
 
-	// Initialize API rate limit (per IP per minute; 0 = disabled)
 	s.rateLimitMiddleware = api.NewRateLimitMiddleware(
 		s.config.Security.APIRateLimitPerMinute,
 		s.log,
@@ -287,9 +313,15 @@ func (s *Server) createFiberApp() *fiber.App {
 		logCfg.IncludeBody = true
 	}
 	logCfg.CustomFieldsFiber = func(c *fiber.Ctx) map[string]interface{} {
+		// Use Content-Length header when available so we don't pull the
+		// (potentially streamed) body into memory just to record its size.
+		size := c.Response().Header.ContentLength()
+		if size <= 0 {
+			size = len(c.Response().Body())
+		}
 		return map[string]interface{}{
 			"cache": cacheLabelFromHeader(string(c.Response().Header.Peek("X-Cache"))),
-			"size":  len(c.Response().Body()),
+			"size":  size,
 		}
 	}
 	app.Use(logger.FiberMiddleware(logCfg))
@@ -389,13 +421,46 @@ func (s *Server) Start() error {
 	s.log.Info().Msg("server started successfully")
 	s.log.Info().Msg("send SIGHUP to reload mirror configurations")
 
+	// Run reload work asynchronously and debounce bursts (e.g. systemd
+	// occasionally fires SIGHUP twice in quick succession). reloadPending
+	// coalesces all signals received while a previous reload is still
+	// running into a single follow-up reload. reloadDone signals completion
+	// and is consumed only by the main loop.
+	const reloadDebounce = 500 * time.Millisecond
+	var (
+		reloadInFlight bool
+		reloadPending  bool
+		reloadTimer    *time.Timer
+		reloadDone     = make(chan struct{}, 1)
+	)
+	scheduleReload := func() {
+		if reloadInFlight {
+			reloadPending = true
+			return
+		}
+		if reloadTimer != nil {
+			reloadTimer.Stop()
+		}
+		reloadInFlight = true
+		reloadTimer = time.AfterFunc(reloadDebounce, func() {
+			s.reload()
+			reloadDone <- struct{}{}
+		})
+	}
+
 	// Wait for shutdown signal, reload signal, or server error
 	for {
 		select {
 		case err := <-serverErr:
-			return wrapError("server error", err)
+			return wrapErr(apperrors.ErrInternal, "server error", err)
 		case <-sighupChan:
-			s.reload()
+			scheduleReload()
+		case <-reloadDone:
+			reloadInFlight = false
+			if reloadPending {
+				reloadPending = false
+				scheduleReload()
+			}
 		case <-ctx.Done():
 			return s.shutdown()
 		}
@@ -407,7 +472,12 @@ func (s *Server) Start() error {
 func (s *Server) reload() {
 	s.log.Info().Msg("received SIGHUP, reloading configuration...")
 
-	distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath)
+	if err := distro.ReloadDistributionsConfig(s.config.DistributionsConfigPath); err != nil {
+		s.log.Warn().
+			Err(err).
+			Str("path", s.config.DistributionsConfigPath).
+			Msg("failed to reload distributions config")
+	}
 	if s.proxy != nil {
 		s.proxy.RefreshMirrors()
 	} else {
@@ -419,27 +489,37 @@ func (s *Server) reload() {
 
 // shutdown performs a graceful server shutdown with a 5-second timeout.
 // It allows in-flight requests to complete before closing the proxy.
-// Returns an error if shutdown fails or times out.
+// All cleanup steps run unconditionally so a Fiber-shutdown failure does
+// not leak the cache file lock or skip the tracing flush.
 func (s *Server) shutdown() error {
 	s.log.Info().Msg("shutting down proxy...")
 
+	var errs []error
+
 	if err := s.app.ShutdownWithTimeout(5 * time.Second); err != nil {
-		return wrapError("failed to shutdown server gracefully", err)
+		s.log.Warn().Err(err).Msg("failed to shutdown server gracefully")
+		errs = append(errs, wrapErr(apperrors.ErrInternal, "failed to shutdown server gracefully", err))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Close cache to stop cleanup goroutines
+	// Close cache to stop cleanup goroutines and release file locks.
 	if s.cache != nil {
 		if err := s.cache.Close(); err != nil {
 			s.log.Warn().Err(err).Msg("failed to close cache")
+			errs = append(errs, wrapErr(apperrors.ErrCacheInit, "failed to close cache", err))
 		}
 	}
 
-	// Shutdown tracing
+	// Shutdown tracing (flush spans). Always attempt even on prior errors.
 	if err := tracing.Shutdown(ctx); err != nil {
 		s.log.Warn().Err(err).Msg("failed to shutdown tracing")
+		errs = append(errs, wrapErr(apperrors.ErrInternal, "failed to shutdown tracing", err))
+	}
+
+	if len(errs) > 0 {
+		return stderrors.Join(errs...)
 	}
 
 	s.log.Info().Msg("server shutdown complete")
@@ -465,7 +545,7 @@ func Daemon(flags *config.Config) error {
 
 	srv, err := NewServer(flags)
 	if err != nil {
-		return wrapServerError("failed to create server", err)
+		return wrapErr(apperrors.ErrServerInit, "failed to create server", err)
 	}
 
 	// Surface a Warn when API auth is configured-off so operators noticing
@@ -475,7 +555,7 @@ func Daemon(flags *config.Config) error {
 	}
 
 	if err := srv.Start(); err != nil {
-		return wrapError("server error", err)
+		return wrapErr(apperrors.ErrInternal, "server error", err)
 	}
 	return nil
 }
@@ -484,14 +564,10 @@ func Daemon(flags *config.Config) error {
 
 var errNilConfig = apperrors.New(apperrors.ErrConfigInvalid, "configuration cannot be nil")
 
-func wrapError(msg string, err error) error {
-	return apperrors.Wrap(apperrors.ErrInternal, msg, err)
-}
-
-func wrapServerError(msg string, err error) error {
-	return apperrors.Wrap(apperrors.ErrServerInit, msg, err)
-}
-
-func wrapCacheError(msg string, err error) error {
-	return apperrors.Wrap(apperrors.ErrCacheInit, msg, err)
+// wrapErr wraps err with the given AppError code and message. The previous
+// codebase had three near-identical helpers (wrapError/wrapServerError/
+// wrapCacheError) that differed only in the code they passed in; collapsing
+// them keeps callers honest about which error class they're emitting.
+func wrapErr(code apperrors.Code, msg string, err error) error {
+	return apperrors.Wrap(code, msg, err)
 }

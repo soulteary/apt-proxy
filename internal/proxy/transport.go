@@ -34,7 +34,12 @@ func NewRetryableTransport(baseTransport http.RoundTripper) *RetryableTransport 
 	}
 }
 
-// RoundTrip implements http.RoundTripper interface with retry and tracing support
+// RoundTrip implements http.RoundTripper interface with retry and tracing support.
+//
+// Retry safety: when the request has a body, we only retry if the caller
+// supplied req.GetBody (e.g. via http.NewRequest with bytes.Reader/strings.Reader).
+// Otherwise the body would already be consumed by the first attempt; we make
+// a single attempt in that case rather than send a corrupt second request.
 func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 
@@ -56,9 +61,17 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	propagator := otel.GetTextMapPropagator()
 	propagator.Inject(spanCtx, propagation.HeaderCarrier(req.Header))
 
+	// If the request has a body that cannot be replayed, disable retries.
+	// (apt-proxy currently only proxies GETs, but defensive code prevents
+	// future call sites from silently double-sending or dropping bodies.)
+	canRetry := req.Body == nil || req.Body == http.NoBody || req.GetBody != nil
+
 	// Perform request with retry logic
 	var lastErr error
 	maxAttempts := rt.retryOpts.MaxRetries + 1
+	if !canRetry {
+		maxAttempts = 1
+	}
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
@@ -73,6 +86,16 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 			case <-time.After(delay):
 			}
 
+			// Replay request body if available
+			if req.GetBody != nil {
+				body, gerr := req.GetBody()
+				if gerr != nil {
+					tracing.RecordError(span, gerr)
+					return nil, fmt.Errorf("failed to replay request body: %w", gerr)
+				}
+				req.Body = body
+			}
+
 			// Log retry attempt
 			tracing.SetSpanAttributes(span, map[string]string{
 				"retry.attempt": fmt.Sprintf("%d", attempt),
@@ -83,7 +106,7 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		resp, err := rt.baseTransport.RoundTrip(req)
 		if err != nil {
 			lastErr = err
-			if !rt.retryOpts.IsRetryableError(err, 0) {
+			if !canRetry || !rt.retryOpts.IsRetryableError(err, 0) {
 				tracing.RecordError(span, err)
 				return nil, fmt.Errorf("failed to execute request: %w", err)
 			}
@@ -95,7 +118,7 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		}
 
 		// Check if status code is retryable and we have retries left
-		if rt.retryOpts.IsRetryableError(nil, resp.StatusCode) && attempt < rt.retryOpts.MaxRetries {
+		if canRetry && rt.retryOpts.IsRetryableError(nil, resp.StatusCode) && attempt < rt.retryOpts.MaxRetries {
 			// Close response body before retry
 			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("server error: status %d", resp.StatusCode)

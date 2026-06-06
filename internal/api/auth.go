@@ -28,6 +28,11 @@ type AuthConfig struct {
 
 	// Logger is the structured logger for authentication events.
 	Logger *logger.Logger
+
+	// ClientIP extracts the real client IP for log records. When nil, the
+	// raw r.RemoteAddr is logged. Pass the same instance you use for the
+	// rate-limit middleware so audit trails are consistent across layers.
+	ClientIP *ClientIPExtractor
 }
 
 // AuthMiddleware provides API key authentication for protected endpoints.
@@ -137,14 +142,20 @@ func (m *AuthMiddleware) validateAPIKey(key string) bool {
 
 // logAuthFailure logs an authentication failure event.
 func (m *AuthMiddleware) logAuthFailure(r *http.Request, reason string) {
-	if m.config.Logger != nil {
-		m.config.Logger.Warn().
-			Str("path", r.URL.Path).
-			Str("method", r.Method).
-			Str("remote_addr", r.RemoteAddr).
-			Str("reason", reason).
-			Msg("API authentication failed")
+	if m.config.Logger == nil {
+		return
 	}
+	clientIP := r.RemoteAddr
+	if m.config.ClientIP != nil {
+		clientIP = m.config.ClientIP.ClientIP(r)
+	}
+	m.config.Logger.Warn().
+		Str("path", r.URL.Path).
+		Str("method", r.Method).
+		Str("client_ip", clientIP).
+		Str("remote_addr", r.RemoteAddr).
+		Str("reason", reason).
+		Msg("API authentication failed")
 }
 
 // IsEnabled returns true if authentication is enabled (API key is configured).

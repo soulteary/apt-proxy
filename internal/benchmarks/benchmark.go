@@ -6,10 +6,12 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
 	logger "github.com/soulteary/logger-kit"
+	"golang.org/x/sync/singleflight"
 )
 
 // BenchmarkCache stores cached benchmark results to avoid repeated testing.
@@ -138,7 +140,12 @@ func Benchmark(ctx context.Context, base, query string, times int) (time.Duratio
 }
 
 func singleBenchmark(ctx context.Context, client *http.Client, url string) (time.Duration, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	// Use HEAD when the upstream supports it: we only care about latency,
+	// not the response payload. Falling back to GET (with a tiny CopyN
+	// drain) is necessary for mirrors that don't implement HEAD correctly,
+	// since some return 405 / empty bodies that would otherwise mark the
+	// mirror as unhealthy.
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -148,12 +155,27 @@ func singleBenchmark(ctx context.Context, client *http.Client, url string) (time
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	// Discard body but handle potential errors
-	_, err = io.Copy(io.Discard, resp.Body)
-	if err != nil {
-		return 0, err
+	if resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented {
+		_ = resp.Body.Close()
+		// Retry as GET, draining only the first 8 KiB to keep network cost low.
+		getReq, gerr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if gerr != nil {
+			return 0, gerr
+		}
+		start = time.Now()
+		resp, err = client.Do(getReq)
+		if err != nil {
+			return 0, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if _, err := io.CopyN(io.Discard, resp.Body, 8*1024); err != nil && !errors.Is(err, io.EOF) {
+			return 0, err
+		}
+	} else {
+		defer func() { _ = resp.Body.Close() }()
+		// HEAD response: drain a small amount in case the server still sends
+		// a tiny body (some mirrors do, against spec).
+		_, _ = io.CopyN(io.Discard, resp.Body, 1024)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -217,13 +239,26 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	}()
 
 	var collectedResults Results
+	brokeEarly := false
 	for result := range results {
 		collectedResults = append(collectedResults, result)
 		if len(collectedResults) >= maxResults {
 			// Signal the remaining workers to stop ASAP.
 			cancel()
+			brokeEarly = true
 			break
 		}
+	}
+
+	if brokeEarly {
+		// Drain remaining channels to avoid goroutine leaks: workers are still
+		// running and the closer goroutine is blocked on wg.Wait.
+		go func() {
+			for range results {
+			}
+			for range errs {
+			}
+		}()
 	}
 
 	if len(collectedResults) == 0 {
@@ -244,6 +279,10 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	return collectedResults[0].URL, nil
 }
 
+// benchmarkGroup collapses concurrent cache-miss benchmark requests for the
+// same distType into a single execution.
+var benchmarkGroup singleflight.Group
+
 // GetTheFastestMirrorWithCache finds the fastest mirror, using cache if available.
 // This is the preferred method for production use as it avoids repeated benchmarking.
 func GetTheFastestMirrorWithCache(distType int, mirrors []string, testURL string) (string, error) {
@@ -254,15 +293,28 @@ func GetTheFastestMirrorWithCache(distType int, mirrors []string, testURL string
 		return cached, nil
 	}
 
-	// Run benchmark
-	fastest, err := GetTheFastestMirror(mirrors, testURL)
+	key := singleflightKey(distType)
+	v, err, _ := benchmarkGroup.Do(key, func() (interface{}, error) {
+		// Re-check after acquiring the singleflight slot in case another
+		// goroutine just populated the cache.
+		if cached, ok := defaultCache.GetCachedResult(distType); ok {
+			return cached, nil
+		}
+		fastest, ferr := GetTheFastestMirror(mirrors, testURL)
+		if ferr != nil {
+			return "", ferr
+		}
+		defaultCache.SetCachedResult(distType, fastest, DefaultCacheTTL)
+		return fastest, nil
+	})
 	if err != nil {
 		return "", err
 	}
+	return v.(string), nil
+}
 
-	// Cache the result
-	defaultCache.SetCachedResult(distType, fastest, DefaultCacheTTL)
-	return fastest, nil
+func singleflightKey(distType int) string {
+	return "benchmark/" + strconv.Itoa(distType)
 }
 
 // GetTheFastestMirrorAsync runs benchmark in the background and calls the callback when complete.

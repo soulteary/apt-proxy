@@ -2,6 +2,7 @@
 package distro
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sync"
@@ -106,15 +107,36 @@ func (r *Registry) GetByType(distType int) (*RegisteredDistribution, bool) {
 	return dist, exists
 }
 
-// GetAll returns all registered distributions
+// GetAll returns all registered distributions.
+//
+// The returned map and each value are independent of the registry's internal
+// state: the map is fresh, the *RegisteredDistribution structs are shallow
+// copies, and the Mirrors / CacheRules / Aliases collections are duplicated
+// at the top level. Callers may safely append to / mutate the headers of
+// those collections without affecting concurrent registry reads.
+//
+// Element-level data (URLWithAlias, Rule, *regexp.Regexp) is shared by
+// reference; we treat those as immutable once registered, which is true for
+// every code path today (registration always builds fresh values).
 func (r *Registry) GetAll() map[string]*RegisteredDistribution {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make(map[string]*RegisteredDistribution)
+	result := make(map[string]*RegisteredDistribution, len(r.distributions))
 	for k, v := range r.distributions {
-		// Create a copy to avoid race conditions
 		distCopy := *v
+		if v.Mirrors != nil {
+			distCopy.Mirrors = append([]URLWithAlias(nil), v.Mirrors...)
+		}
+		if v.CacheRules != nil {
+			distCopy.CacheRules = append([]Rule(nil), v.CacheRules...)
+		}
+		if v.Aliases != nil {
+			distCopy.Aliases = make(map[string]string, len(v.Aliases))
+			for ak, av := range v.Aliases {
+				distCopy.Aliases[ak] = av
+			}
+		}
 		result[k] = &distCopy
 	}
 	return result
@@ -278,17 +300,39 @@ func GetHostPatternMap() map[*regexp.Regexp][]Rule {
 // then loads and applies distributions from the given config file path.
 // When configPath is empty, Load() still tries default paths (./config/distributions.yaml,
 // ./distributions.yaml, /etc/apt-proxy/distributions.yaml, etc.).
+//
+// Errors loading or registering individual distributions are returned (joined)
+// so callers can surface them to operators. The registry is only mutated after
+// a successful YAML load: a parse/regex error preserves the previous registry
+// state. Per-entry Register failures are accumulated but do not roll back
+// previously-applied entries (which would require a deep clone of the
+// registry); built-in entries are always reapplied first.
+//
 // Safe to call at startup and on SIGHUP/API reload.
-func ReloadDistributionsConfig(configPath string) {
+func ReloadDistributionsConfig(configPath string) error {
+	loader := NewLoader(configPath)
+	cfg, err := loader.Load()
+	if err != nil {
+		return fmt.Errorf("loading distributions config: %w", err)
+	}
+
 	reg := GetRegistry()
 	reg.Clear()
 	registerBuiltinDistributions(reg)
-	loader := NewLoader(configPath)
-	cfg, err := loader.Load()
-	if err != nil || cfg == nil {
-		return
+
+	if cfg == nil {
+		return nil
 	}
+
+	var errs []error
 	for i := range cfg.Distributions {
-		_ = reg.LoadFromConfig(&cfg.Distributions[i])
+		if loadErr := reg.LoadFromConfig(&cfg.Distributions[i]); loadErr != nil {
+			errs = append(errs, fmt.Errorf("registering %s: %w",
+				cfg.Distributions[i].ID, loadErr))
+		}
 	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }

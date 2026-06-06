@@ -6,6 +6,7 @@ import (
 	"net/http/httputil"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logger "github.com/soulteary/logger-kit"
@@ -23,21 +24,84 @@ const (
 	DefaultMaxIdleConns          = 100
 )
 
-// getHostPatternMap returns pattern -> rules from registry (config-loaded or built-in)
-func getHostPatternMap() map[*regexp.Regexp][]distro.Rule {
-	m := distro.GetHostPatternMap()
-	if len(m) > 0 {
-		return m
-	}
-	return defaultHostPatternMap
+// hostPatternEntry pairs a compiled URL pattern with its rules and is used
+// instead of map[*regexp.Regexp][]Rule on the request hot path. A slice
+// preserves insertion order so the rule selected for a request is
+// deterministic across builds (Go map iteration is intentionally randomised).
+type hostPatternEntry struct {
+	pattern *regexp.Regexp
+	rules   []distro.Rule
 }
 
-var defaultHostPatternMap = map[*regexp.Regexp][]distro.Rule{
-	distro.UbuntuHostPattern:      distro.UbuntuDefaultCacheRules,
-	distro.UbuntuPortsHostPattern: distro.UbuntuPortsDefaultCacheRules,
-	distro.DebianHostPattern:      distro.DebianDefaultCacheRules,
-	distro.CentosHostPattern:      distro.CentosDefaultCacheRules,
-	distro.AlpineHostPattern:      distro.AlpineDefaultCacheRules,
+// hostPatternCache caches the snapshot from distro.GetHostPatternMap so we
+// don't allocate/copy a fresh map for every request. RefreshMirrors clears
+// this pointer on hot reload; readers fall back to defaultHostPatterns when
+// the registry returns an empty result.
+var hostPatternCache atomic.Pointer[[]hostPatternEntry]
+
+// hostPatternsFromRegistry materialises the registry's pattern→rules map
+// into a stable, ordered slice. Distros are walked via distroModesOrder so
+// matching is deterministic for callers that have multiple overlapping rules.
+func hostPatternsFromRegistry() []hostPatternEntry {
+	reg := distro.GetRegistry()
+	if reg == nil {
+		return nil
+	}
+	all := reg.GetAll()
+	out := make([]hostPatternEntry, 0, len(all))
+	// Walk known distros in a stable order first.
+	seen := make(map[string]struct{}, len(all))
+	for _, mode := range distroModesOrder {
+		for id, d := range all {
+			if d.Type != mode || d.URLPattern == nil || len(d.CacheRules) == 0 {
+				continue
+			}
+			out = append(out, hostPatternEntry{pattern: d.URLPattern, rules: d.CacheRules})
+			seen[id] = struct{}{}
+		}
+	}
+	// Then any additional registered distros (config-loaded with an unknown type).
+	for id, d := range all {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		if d.URLPattern == nil || len(d.CacheRules) == 0 {
+			continue
+		}
+		out = append(out, hostPatternEntry{pattern: d.URLPattern, rules: d.CacheRules})
+	}
+	return out
+}
+
+// getHostPatterns returns the cached pattern→rules entries, populating the
+// cache on first access. The fallback (defaultHostPatterns) is used only if
+// the registry has nothing to offer (e.g. during a unit test that nuked it).
+func getHostPatterns() []hostPatternEntry {
+	if cur := hostPatternCache.Load(); cur != nil && len(*cur) > 0 {
+		return *cur
+	}
+	entries := hostPatternsFromRegistry()
+	if len(entries) == 0 {
+		return defaultHostPatterns
+	}
+	hostPatternCache.Store(&entries)
+	return entries
+}
+
+// invalidateHostPatternCache forces the next request to rebuild the cache
+// from the registry. Called from RefreshMirrors / SIGHUP reload.
+func invalidateHostPatternCache() {
+	hostPatternCache.Store(nil)
+}
+
+// defaultHostPatterns is the compile-time fallback used when no registry
+// entries are available. The order matches distroModesOrder.
+var defaultHostPatterns = []hostPatternEntry{
+	{pattern: distro.UbuntuHostPattern, rules: distro.UbuntuDefaultCacheRules},
+	{pattern: distro.UbuntuPortsHostPattern, rules: distro.UbuntuPortsDefaultCacheRules},
+	{pattern: distro.DebianHostPattern, rules: distro.DebianDefaultCacheRules},
+	{pattern: distro.CentosHostPattern, rules: distro.CentosDefaultCacheRules},
+	{pattern: distro.AlpineHostPattern, rules: distro.AlpineDefaultCacheRules},
 }
 
 var (
@@ -53,12 +117,16 @@ var (
 )
 
 func init() {
-	initUpstreamTransport(true) // default: disable keep-alives (legacy behavior)
+	// Default: enable HTTP keep-alive to upstream mirrors. Reusing TCP/TLS
+	// connections to a small set of mirrors is dramatically cheaper than
+	// dialling per request, especially for HTTPS mirrors where every request
+	// would otherwise pay a fresh handshake.
+	initUpstreamTransport(false)
 }
 
 // initUpstreamTransport sets the package-level upstream transport.
-// When disableKeepAlives is true, connections are not reused (legacy behavior).
-// When false, HTTP keep-alive to upstream mirrors is enabled for better performance.
+// When disableKeepAlives is true, connections are not reused.
+// When false (default), HTTP keep-alive to upstream mirrors is enabled.
 func initUpstreamTransport(disableKeepAlives bool) {
 	defaultTransport = &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -194,9 +262,9 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 // the appropriate caching rule if a match is found.
 func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	path := r.URL.Path
-	for pattern, rules := range getHostPatternMap() {
-		if pattern.MatchString(path) {
-			return ap.processMatchingRule(r, rules)
+	for _, entry := range getHostPatterns() {
+		if entry.pattern.MatchString(path) {
+			return ap.processMatchingRule(r, entry.rules)
 		}
 	}
 	return nil
@@ -250,6 +318,7 @@ func (ap *PackageStruct) RefreshMirrors() {
 	if ap == nil || ap.rewriters == nil {
 		return
 	}
+	invalidateHostPatternCache()
 	RefreshRewriters(ap.rewriters, ap.mode)
 }
 
@@ -281,5 +350,6 @@ func RefreshMirrors() {
 	rewritersMu.Lock()
 	current := rewriters
 	rewritersMu.Unlock()
+	invalidateHostPatternCache()
 	RefreshRewriters(current, mode)
 }

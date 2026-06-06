@@ -4,11 +4,9 @@
 package distro
 
 import (
-	"bytes"
 	"fmt"
 	"regexp"
 	"strings"
-	"text/template"
 )
 
 // Distribution name constants
@@ -63,15 +61,24 @@ func (r *Rule) String() string {
 		r.Pattern.String(), r.CacheControl, r.Rewrite)
 }
 
-// URLWithAlias represents a mirror URL with its alias and metadata
+// URLWithAlias represents a mirror URL with its alias and metadata.
+// Scheme is "http", "https", or "" (unknown / let downstream pick the default).
 type URLWithAlias struct {
 	URL       string
 	Alias     string
-	HTTP      bool
-	HTTPS     bool
+	Scheme    string
 	Official  bool
 	Bandwidth int64
 }
+
+// HTTP reports whether the URL was registered as an HTTP-only mirror. It is a
+// thin convenience over Scheme retained so existing callers don't need to be
+// updated. Prefer reading Scheme directly in new code.
+func (u URLWithAlias) HTTP() bool { return u.Scheme == "http" }
+
+// HTTPS reports whether the URL was registered as an HTTPS mirror. See HTTP
+// for the migration note.
+func (u URLWithAlias) HTTPS() bool { return u.Scheme == "https" }
 
 // GenerateAliasFromURL generates an alias from a URL
 func GenerateAliasFromURL(url string) string {
@@ -79,113 +86,62 @@ func GenerateAliasFromURL(url string) string {
 	tldRemoved := tldRemovalRegex.ReplaceAllString(pureHost, "")
 	group := strings.Split(tldRemoved, ".")
 	alias := group[len(group)-1]
-
-	var buf bytes.Buffer
-	data := AliasTemplateData{Alias: alias}
-	if err := aliasTemplate.Execute(&buf, data); err != nil {
-		return "cn:" + alias
-	}
-	return buf.String()
+	return "cn:" + alias
 }
 
-// GenerateBuildInMirorItem creates a URLWithAlias from a URL
-func GenerateBuildInMirorItem(url string, official bool) URLWithAlias {
+// GenerateBuiltinMirrorItem creates a URLWithAlias from a URL.
+func GenerateBuiltinMirrorItem(url string, official bool) URLWithAlias {
 	var mirror URLWithAlias
 	mirror.Official = official
 	mirror.Alias = GenerateAliasFromURL(url)
 
-	if strings.HasPrefix(url, "http://") {
-		mirror.HTTP = true
-		mirror.HTTPS = false
-	} else if strings.HasPrefix(url, "https://") {
-		mirror.HTTP = false
-		mirror.HTTPS = true
+	switch {
+	case strings.HasPrefix(url, "http://"):
+		mirror.Scheme = "http"
+	case strings.HasPrefix(url, "https://"):
+		mirror.Scheme = "https"
 	}
 	mirror.URL = url
 	mirror.Bandwidth = 0
 	return mirror
 }
 
-var (
-	httpURLTemplate  = template.Must(template.New("httpURL").Parse("http://{{.URL}}"))
-	httpsURLTemplate = template.Must(template.New("httpsURL").Parse("https://{{.URL}}"))
-	aliasTemplate    = template.Must(template.New("alias").Parse("cn:{{.Alias}}"))
+// GenerateBuildInMirorItem is the original misspelt name kept for callers
+// that haven't migrated. New code should use GenerateBuiltinMirrorItem.
+//
+// Deprecated: use GenerateBuiltinMirrorItem.
+func GenerateBuildInMirorItem(url string, official bool) URLWithAlias {
+	return GenerateBuiltinMirrorItem(url, official)
+}
 
+var (
 	urlSchemeAndPathRegex = regexp.MustCompile(`^https?://|\/.*`)
 	tldRemovalRegex       = regexp.MustCompile(`\.edu\.cn$|\.cn$|\.com$|\.net$|\.net\.cn$|\.org$|\.org\.cn$`)
 )
 
-// URLTemplateData holds data for URL template execution
-type URLTemplateData struct {
-	URL string
+// GenerateBuiltinList generates a list of mirror URLs with aliases.
+func GenerateBuiltinList(officialList []string, customList []string) (mirrors []URLWithAlias) {
+	mirrors = appendBuiltins(mirrors, officialList, true)
+	mirrors = appendBuiltins(mirrors, customList, false)
+	return mirrors
 }
 
-// AliasTemplateData holds data for alias template execution
-type AliasTemplateData struct {
-	Alias string
+// GenerateBuildInList is the original misspelt name kept for callers that
+// haven't migrated.
+//
+// Deprecated: use GenerateBuiltinList.
+func GenerateBuildInList(officialList []string, customList []string) []URLWithAlias {
+	return GenerateBuiltinList(officialList, customList)
 }
 
-func buildHTTPURL(url string) (string, error) {
-	var buf bytes.Buffer
-	data := URLTemplateData{URL: url}
-	if err := httpURLTemplate.Execute(&buf, data); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-func buildHTTPSURL(url string) (string, error) {
-	var buf bytes.Buffer
-	data := URLTemplateData{URL: url}
-	if err := httpsURLTemplate.Execute(&buf, data); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-// GenerateBuildInList generates a list of mirror URLs with aliases
-func GenerateBuildInList(officialList []string, customList []string) (mirrors []URLWithAlias) {
-	for _, url := range officialList {
+func appendBuiltins(mirrors []URLWithAlias, list []string, official bool) []URLWithAlias {
+	for _, url := range list {
 		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-			httpURL, err := buildHTTPURL(url)
-			if err != nil {
-				httpURL = "http://" + url
-			}
-			mirror := GenerateBuildInMirorItem(httpURL, true)
-			mirrors = append(mirrors, mirror)
-
-			httpsURL, err := buildHTTPSURL(url)
-			if err != nil {
-				httpsURL = "https://" + url
-			}
-			mirror = GenerateBuildInMirorItem(httpsURL, true)
-			mirrors = append(mirrors, mirror)
-		} else {
-			mirror := GenerateBuildInMirorItem(url, true)
-			mirrors = append(mirrors, mirror)
+			mirrors = append(mirrors, GenerateBuiltinMirrorItem("http://"+url, official))
+			mirrors = append(mirrors, GenerateBuiltinMirrorItem("https://"+url, official))
+			continue
 		}
+		mirrors = append(mirrors, GenerateBuiltinMirrorItem(url, official))
 	}
-
-	for _, url := range customList {
-		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-			httpURL, err := buildHTTPURL(url)
-			if err != nil {
-				httpURL = "http://" + url
-			}
-			mirror := GenerateBuildInMirorItem(httpURL, false)
-			mirrors = append(mirrors, mirror)
-
-			httpsURL, err := buildHTTPSURL(url)
-			if err != nil {
-				httpsURL = "https://" + url
-			}
-			mirror = GenerateBuildInMirorItem(httpsURL, false)
-			mirrors = append(mirrors, mirror)
-		} else {
-			mirror := GenerateBuildInMirorItem(url, false)
-			mirrors = append(mirrors, mirror)
-		}
-	}
-
 	return mirrors
 }

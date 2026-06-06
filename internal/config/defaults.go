@@ -60,8 +60,13 @@ const (
 	DefaultAPIRateLimitPerMinute = 60
 )
 
-// Environment variable names for logging configuration
+// Environment variable names for logging configuration. The historical names
+// (LOG_LEVEL / LOG_FORMAT) collide with other tooling, so the canonical names
+// are now prefixed with APT_PROXY_. The unprefixed variants are read as a
+// fallback (see ResolveLogLevelEnv) so existing deployments don't break.
 const (
-	EnvLogLevel  = "LOG_LEVEL"
-	EnvLogFormat = "LOG_FORMAT"
+	EnvLogLevel        = "APT_PROXY_LOG_LEVEL"
+	EnvLogFormat       = "APT_PROXY_LOG_FORMAT"
+	EnvLogLevelLegacy  = "LOG_LEVEL"
+	EnvLogFormatLegacy = "LOG_FORMAT"
 )

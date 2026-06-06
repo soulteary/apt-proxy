@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/soulteary/apt-proxy/internal/system"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -59,8 +60,8 @@ type homeStatsSnapshot struct {
 }
 
 var (
-	homeStatsMu    sync.Mutex
-	homeStatsCache *homeStatsSnapshot
+	homeStatsCache atomic.Pointer[homeStatsSnapshot]
+	homeStatsGroup singleflight.Group
 )
 
 func computeHomeStats(cacheDir string) *homeStatsSnapshot {
@@ -103,14 +104,23 @@ func computeHomeStats(cacheDir string) *homeStatsSnapshot {
 	}
 }
 
+// getHomeStats returns a (possibly cached) snapshot. Reads are lock-free; on
+// expiry, singleflight collapses concurrent refreshes into a single FS walk.
 func getHomeStats(cacheDir string) *homeStatsSnapshot {
-	homeStatsMu.Lock()
-	defer homeStatsMu.Unlock()
-	if homeStatsCache != nil && homeStatsCache.cacheDir == cacheDir && time.Now().Before(homeStatsCache.expiresAt) {
-		return homeStatsCache
+	if cur := homeStatsCache.Load(); cur != nil && cur.cacheDir == cacheDir && time.Now().Before(cur.expiresAt) {
+		return cur
 	}
-	homeStatsCache = computeHomeStats(cacheDir)
-	return homeStatsCache
+	v, _, _ := homeStatsGroup.Do(cacheDir, func() (interface{}, error) {
+		// Re-check after acquiring the singleflight slot in case another
+		// goroutine just refreshed.
+		if cur := homeStatsCache.Load(); cur != nil && cur.cacheDir == cacheDir && time.Now().Before(cur.expiresAt) {
+			return cur, nil
+		}
+		s := computeHomeStats(cacheDir)
+		homeStatsCache.Store(s)
+		return s, nil
+	})
+	return v.(*homeStatsSnapshot)
 }
 
 func RenderInternalUrls(url string, cacheDir string) (string, int) {

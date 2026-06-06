@@ -56,6 +56,24 @@ var builtinByMode = map[int]builtinDistro{
 }
 
 func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
+	// Ubuntu/UbuntuPorts: prefer geo-derived mirrors (real point of the
+	// `mirrors.txt` lookup). Fall back to registry/built-in on failure so
+	// the proxy still has *some* upstream list when the geo API is down.
+	if mode == distro.TypeUbuntu || mode == distro.TypeUbuntuPorts {
+		online, err := GetUbuntuMirrorUrlsByGeo()
+		if err == nil && len(online) > 0 {
+			if mode == distro.TypeUbuntu {
+				return online
+			}
+			results := make([]string, 0, len(online))
+			for _, m := range online {
+				results = append(results, strings.ReplaceAll(m, "/ubuntu/", "/ubuntu-ports/"))
+			}
+			return results
+		}
+		// Geo failed: fall through to registry/built-in.
+	}
+
 	// Prefer registry (config-loaded) mirrors when present
 	if reg := distro.GetRegistry(); reg != nil {
 		if d, ok := reg.GetByType(mode); ok && len(d.Mirrors) > 0 {
@@ -66,23 +84,6 @@ func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 				return mirrors
 			}
 		}
-	}
-
-	// Ubuntu/UbuntuPorts try geo-based mirrors first, fall back to built-in.
-	if mode == distro.TypeUbuntu || mode == distro.TypeUbuntuPorts {
-		online, err := GetUbuntuMirrorUrlsByGeo()
-		if err != nil {
-			return builtinMirrorURLs(builtinByMode[mode].mirrors)
-		}
-		if mode == distro.TypeUbuntu {
-			return online
-		}
-		// Ubuntu Ports re-uses the Ubuntu geo list with a path swap.
-		results := make([]string, 0, len(online))
-		for _, m := range online {
-			results = append(results, strings.ReplaceAll(m, "/ubuntu/", "/ubuntu-ports/"))
-		}
-		return results
 	}
 
 	// Other single-distro modes: just return their built-in list.
@@ -98,34 +99,19 @@ func GetGeoMirrorUrlsByMode(mode int) (mirrors []string) {
 }
 
 func GetFullMirrorURL(mirror distro.URLWithAlias) string {
-	if mirror.HTTP {
+	if mirror.HTTP() {
 		if strings.HasPrefix(mirror.URL, "http://") {
 			return mirror.URL
 		}
-		url, err := BuildHTTPURL(mirror.URL)
-		if err != nil {
-			// Fallback to concatenation if template fails
-			return "http://" + mirror.URL
-		}
-		return url
+		return BuildHTTPURL(mirror.URL)
 	}
-	if mirror.HTTPS {
+	if mirror.HTTPS() {
 		if strings.HasPrefix(mirror.URL, "https://") {
 			return mirror.URL
 		}
-		url, err := BuildHTTPSURL(mirror.URL)
-		if err != nil {
-			// Fallback to concatenation if template fails
-			return "https://" + mirror.URL
-		}
-		return url
+		return BuildHTTPSURL(mirror.URL)
 	}
-	url, err := BuildHTTPSURL(mirror.URL)
-	if err != nil {
-		// Fallback to concatenation if template fails
-		return "https://" + mirror.URL
-	}
-	return url
+	return BuildHTTPSURL(mirror.URL)
 }
 
 // normalizeAliasURL ensures the alias value is a full URL (adds https:// if missing)
@@ -136,11 +122,7 @@ func normalizeAliasURL(raw string) string {
 	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
 		return raw
 	}
-	u, err := BuildHTTPSURL(raw)
-	if err != nil {
-		return "https://" + raw
-	}
-	return u
+	return BuildHTTPSURL(raw)
 }
 
 func GetMirrorURLByAliases(osType int, alias string) string {

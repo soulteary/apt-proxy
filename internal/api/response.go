@@ -3,10 +3,10 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
+	"github.com/soulteary/apt-proxy/internal/system"
 )
 
 // API response types for JSON serialization
@@ -68,25 +68,12 @@ func CalculateHitRate(hits, misses int64) float64 {
 	return float64(hits) / float64(total)
 }
 
-// FormatBytes formats bytes into a human-readable string
+// FormatBytes formats bytes into a human-readable string. Uses 1024-based
+// (binary) units to match filesystem conventions; delegates to
+// system.ByteCountBinary so the formatting is centralised.
 func FormatBytes(bytes int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-		TB = GB * 1024
-	)
-
-	switch {
-	case bytes >= TB:
-		return fmt.Sprintf("%.2f TB", float64(bytes)/TB)
-	case bytes >= GB:
-		return fmt.Sprintf("%.2f GB", float64(bytes)/GB)
-	case bytes >= MB:
-		return fmt.Sprintf("%.2f MB", float64(bytes)/MB)
-	case bytes >= KB:
-		return fmt.Sprintf("%.2f KB", float64(bytes)/KB)
-	default:
-		return fmt.Sprintf("%d B", bytes)
+	if bytes < 0 {
+		return "0 B"
 	}
+	return system.ByteCountBinary(uint64(bytes))
 }

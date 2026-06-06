@@ -32,24 +32,76 @@ type URLRewriters struct {
 	Mu          sync.RWMutex
 }
 
+// distroDescriptor consolidates per-distro metadata that previously lived in
+// multiple parallel maps (modeRules, rewriterConfigByMode, rewriterFieldByMode).
+// Adding a new distro now means appending one entry to distroDescriptors.
+type distroDescriptor struct {
+	mode         int
+	name         string
+	defaultRules []distro.Rule
+	getMirror    func() *url.URL
+	rewriter     func(*URLRewriters) **URLRewriter
+}
+
+var distroDescriptors = []distroDescriptor{
+	{
+		mode:         distro.TypeUbuntu,
+		name:         "Ubuntu",
+		defaultRules: distro.UbuntuDefaultCacheRules,
+		getMirror:    state.GetUbuntuMirror,
+		rewriter:     func(r *URLRewriters) **URLRewriter { return &r.Ubuntu },
+	},
+	{
+		mode:         distro.TypeUbuntuPorts,
+		name:         "Ubuntu Ports",
+		defaultRules: distro.UbuntuPortsDefaultCacheRules,
+		getMirror:    state.GetUbuntuPortsMirror,
+		rewriter:     func(r *URLRewriters) **URLRewriter { return &r.UbuntuPorts },
+	},
+	{
+		mode:         distro.TypeDebian,
+		name:         "Debian",
+		defaultRules: distro.DebianDefaultCacheRules,
+		getMirror:    state.GetDebianMirror,
+		rewriter:     func(r *URLRewriters) **URLRewriter { return &r.Debian },
+	},
+	{
+		mode:         distro.TypeCentOS,
+		name:         "CentOS",
+		defaultRules: distro.CentosDefaultCacheRules,
+		getMirror:    state.GetCentOSMirror,
+		rewriter:     func(r *URLRewriters) **URLRewriter { return &r.Centos },
+	},
+	{
+		mode:         distro.TypeAlpine,
+		name:         "Alpine",
+		defaultRules: distro.AlpineDefaultCacheRules,
+		getMirror:    state.GetAlpineMirror,
+		rewriter:     func(r *URLRewriters) **URLRewriter { return &r.Alpine },
+	},
+}
+
+// descriptorByMode is a fast lookup index for distroDescriptors. Built once
+// at package init so callers don't re-scan the slice.
+var descriptorByMode = func() map[int]*distroDescriptor {
+	m := make(map[int]*distroDescriptor, len(distroDescriptors))
+	for i := range distroDescriptors {
+		d := &distroDescriptors[i]
+		m[d.mode] = d
+	}
+	return m
+}()
+
 // modeRegistry centralizes mode → rules and mode → rewriter field.
-// Adding a new distro: append to distroModesOrder, add modeRules entry, add case in rewriterField.
-var (
-	distroModesOrder = []int{
-		distro.TypeUbuntu,
-		distro.TypeUbuntuPorts,
-		distro.TypeDebian,
-		distro.TypeCentOS,
-		distro.TypeAlpine,
+// Adding a new distro: append to distroDescriptors and the rest is wired
+// automatically.
+var distroModesOrder = func() []int {
+	out := make([]int, 0, len(distroDescriptors))
+	for _, d := range distroDescriptors {
+		out = append(out, d.mode)
 	}
-	modeRules = map[int][]distro.Rule{
-		distro.TypeUbuntu:      distro.UbuntuDefaultCacheRules,
-		distro.TypeUbuntuPorts: distro.UbuntuPortsDefaultCacheRules,
-		distro.TypeDebian:      distro.DebianDefaultCacheRules,
-		distro.TypeCentOS:      distro.CentosDefaultCacheRules,
-		distro.TypeAlpine:      distro.AlpineDefaultCacheRules,
-	}
-)
+	return out
+}()
 
 func modesToInit(mode int) []int {
 	if mode == distro.TypeAllDistros {
@@ -58,41 +110,19 @@ func modesToInit(mode int) []int {
 	return []int{mode}
 }
 
-// rewriterConfigEntry holds getter and display name for a distribution rewriter
-type rewriterConfigEntry struct {
-	getMirror func() *url.URL
-	name      string
-}
-
-var rewriterConfigByMode = map[int]rewriterConfigEntry{
-	distro.TypeUbuntu:      {state.GetUbuntuMirror, "Ubuntu"},
-	distro.TypeUbuntuPorts: {state.GetUbuntuPortsMirror, "Ubuntu Ports"},
-	distro.TypeDebian:      {state.GetDebianMirror, "Debian"},
-	distro.TypeCentOS:      {state.GetCentOSMirror, "CentOS"},
-	distro.TypeAlpine:      {state.GetAlpineMirror, "Alpine"},
-}
-
-var rewriterFieldByMode = map[int]func(*URLRewriters) **URLRewriter{
-	distro.TypeUbuntu:      func(r *URLRewriters) **URLRewriter { return &r.Ubuntu },
-	distro.TypeUbuntuPorts: func(r *URLRewriters) **URLRewriter { return &r.UbuntuPorts },
-	distro.TypeDebian:      func(r *URLRewriters) **URLRewriter { return &r.Debian },
-	distro.TypeCentOS:      func(r *URLRewriters) **URLRewriter { return &r.Centos },
-	distro.TypeAlpine:      func(r *URLRewriters) **URLRewriter { return &r.Alpine },
-}
-
 func rewriterField(r *URLRewriters, mode int) **URLRewriter {
-	if fn, ok := rewriterFieldByMode[mode]; ok {
-		return fn(r)
+	if d, ok := descriptorByMode[mode]; ok {
+		return d.rewriter(r)
 	}
 	return nil
 }
 
 func getRewriterConfig(mode int) (getMirror func() *url.URL, name string) {
-	e, ok := rewriterConfigByMode[mode]
+	d, ok := descriptorByMode[mode]
 	if !ok {
 		return nil, ""
 	}
-	return e.getMirror, e.name
+	return d.getMirror, d.name
 }
 
 // createRewriter creates a new URLRewriter for a specific distribution.
@@ -167,7 +197,14 @@ func createRewriterAsync(mode int, rewriters *URLRewriters) *URLRewriter {
 		rewriter.mirror = parsedMirror
 	}
 
-	// Run benchmark in background and update when complete
+	// Run benchmark in background and update when complete.
+	//
+	// Concurrency note: we *replace* the URLRewriter pointer in *p instead of
+	// mutating the existing struct. Readers in RewriteRequestByMode (and
+	// elsewhere) snapshot `*p` while holding rewriters.Mu.RLock and then
+	// access mirror/pattern outside the lock; mutating in place would race
+	// with those readers. Allocating a fresh URLRewriter and swapping the
+	// pointer under rewriters.Mu.Lock keeps published structs immutable.
 	benchmarks.GetTheFastestMirrorAsync(mode, mirrorURLs, benchmarkURL, func(result benchmarks.AsyncBenchmarkResult) {
 		if result.Error != nil {
 			log.Error().Err(result.Error).Str("distro", name).Msg("async benchmark failed")
@@ -180,12 +217,19 @@ func createRewriterAsync(mode int, rewriters *URLRewriters) *URLRewriter {
 			return
 		}
 
-		// Update the rewriter with the new fastest mirror
-		if p := rewriterField(rewriters, mode); p != nil && *p != nil {
-			rewriters.Mu.Lock()
-			(*p).mirror = parsedMirror
+		rewriters.Mu.Lock()
+		p := rewriterField(rewriters, mode)
+		if p == nil || *p == nil {
 			rewriters.Mu.Unlock()
+			return
 		}
+		// Build the replacement off the current snapshot's pattern so a
+		// concurrent RefreshRewriters cannot accidentally lose its newer
+		// pattern when this stale callback fires.
+		oldPattern := (*p).pattern
+		*p = &URLRewriter{mirror: parsedMirror, pattern: oldPattern}
+		rewriters.Mu.Unlock()
+
 		log.Info().Str("distro", name).Str("mirror", result.FastestMirror).Msg("async benchmark completed, mirror updated")
 	})
 
@@ -227,16 +271,17 @@ func GetRewriteRulesByMode(mode int) []distro.Rule {
 			return d.CacheRules
 		}
 	}
-	if rules, ok := modeRules[mode]; ok {
-		return rules
+	if d, ok := descriptorByMode[mode]; ok {
+		return d.defaultRules
 	}
+	// Aggregate (TypeAllDistros and unknown modes): preserve descriptor order.
 	n := 0
-	for _, r := range modeRules {
-		n += len(r)
+	for _, d := range distroDescriptors {
+		n += len(d.defaultRules)
 	}
 	rules := make([]distro.Rule, 0, n)
-	for _, m := range distroModesOrder {
-		rules = append(rules, modeRules[m]...)
+	for _, d := range distroDescriptors {
+		rules = append(rules, d.defaultRules...)
 	}
 	return rules
 }

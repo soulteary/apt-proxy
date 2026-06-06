@@ -200,9 +200,21 @@ type HTTPErrorResponse struct {
 }
 
 // WriteHTTPError writes an AppError as an HTTP JSON response.
+// Falls back to 500 Internal Server Error when err is nil or HTTPStatus is unset.
 func WriteHTTPError(w http.ResponseWriter, err *AppError) {
+	if err == nil {
+		err = New(ErrInternal, "internal error")
+	}
+	status := err.HTTPStatus
+	if status == 0 {
+		status = codeToHTTPStatus(err.Code)
+		if status == 0 {
+			status = http.StatusInternalServerError
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(err.HTTPStatus)
+	w.WriteHeader(status)
 
 	resp := HTTPErrorResponse{
 		Error:   err.Message,
@@ -244,30 +256,38 @@ func FromHTTPStatus(status int, message string) *AppError {
 	}
 }
 
-// Is checks if the error or any error in its unwrap chain is an AppError with the specified code.
-// Uses standard library errors.Unwrap to walk the chain for compatibility with errors.As.
+// Is checks if the error or any error in its unwrap chain is an AppError with
+// the specified code. Walks the chain via errors.As so it works correctly
+// even when intermediate errors are wrapped with fmt.Errorf("%w", ...).
 func Is(err error, code Code) bool {
 	for e := err; e != nil; e = stderrors.Unwrap(e) {
-		if appErr, ok := e.(*AppError); ok && appErr.Code == code {
+		var appErr *AppError
+		if stderrors.As(e, &appErr) && appErr.Code == code {
 			return true
 		}
 	}
 	return false
 }
 
-// GetCode returns the error code if err is an AppError, otherwise returns ErrUnknown.
+// GetCode returns the error code of the first AppError found in the unwrap
+// chain. Returns ErrUnknown if no AppError is present.
 func GetCode(err error) Code {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if stderrors.As(err, &appErr) {
 		return appErr.Code
 	}
 	return ErrUnknown
 }
 
-// GetHTTPStatus returns the HTTP status code for an error.
-// If err is not an AppError, returns 500 Internal Server Error.
+// GetHTTPStatus returns the HTTP status code of the first AppError found in
+// the unwrap chain. Returns 500 Internal Server Error if no AppError is
+// present, or if the AppError carries no explicit HTTPStatus (zero).
 func GetHTTPStatus(err error) int {
-	if appErr, ok := err.(*AppError); ok {
-		return appErr.HTTPStatus
+	var appErr *AppError
+	if stderrors.As(err, &appErr) {
+		if appErr.HTTPStatus > 0 {
+			return appErr.HTTPStatus
+		}
 	}
 	return http.StatusInternalServerError
 }

@@ -128,3 +128,42 @@ func TestRegistryGetAllReturnsCopies(t *testing.T) {
 		t.Error("GetAll should return copies; mutating result must not change registry")
 	}
 }
+
+func TestRegistryGetAllIsolatesSliceAndMapFields(t *testing.T) {
+	r := NewRegistry()
+	original := &RegisteredDistribution{
+		ID:         "iso",
+		Type:       42,
+		Name:       "iso",
+		URLPattern: regexp.MustCompile(`^/iso/`),
+		Mirrors: []URLWithAlias{
+			{URL: "https://m1.example.com"},
+		},
+		CacheRules: []Rule{{OS: 42, Pattern: regexp.MustCompile(`/a`)}},
+		Aliases:    map[string]string{"x": "1"},
+	}
+	if err := r.Register(original); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	snapshot := r.GetAll()["iso"]
+	// Mutate the snapshot's collections; original must remain untouched.
+	snapshot.Mirrors = append(snapshot.Mirrors, URLWithAlias{URL: "https://m2.example.com"})
+	snapshot.CacheRules = append(snapshot.CacheRules, Rule{OS: 42, Pattern: regexp.MustCompile(`/b`)})
+	snapshot.Aliases["x"] = "MUTATED"
+	snapshot.Aliases["y"] = "added"
+
+	again, _ := r.GetByID("iso")
+	if len(again.Mirrors) != 1 {
+		t.Errorf("Mirrors length leaked: got %d, want 1", len(again.Mirrors))
+	}
+	if len(again.CacheRules) != 1 {
+		t.Errorf("CacheRules length leaked: got %d, want 1", len(again.CacheRules))
+	}
+	if again.Aliases["x"] != "1" {
+		t.Errorf("Aliases value leaked: got %q, want %q", again.Aliases["x"], "1")
+	}
+	if _, ok := again.Aliases["y"]; ok {
+		t.Error("Aliases key leaked into registry")
+	}
+}

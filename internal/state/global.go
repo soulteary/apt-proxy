@@ -4,7 +4,7 @@ package state
 
 import (
 	"net/url"
-	"sync"
+	"sync/atomic"
 
 	logger "github.com/soulteary/logger-kit"
 
@@ -12,11 +12,15 @@ import (
 	mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
 )
 
-// MirrorState manages mirror URL states for a specific distribution
+// MirrorState manages mirror URL states for a specific distribution.
+//
+// The URL is stored as an atomic.Pointer[url.URL]. Reads (the hot path
+// for every proxied request) are lock-free; writes (Set/Reset) replace the
+// pointer atomically. We never mutate a *url.URL after publishing it, so
+// callers can hold the returned pointer without racing future writers.
 type MirrorState struct {
-	url      *url.URL
+	url      atomic.Pointer[url.URL]
 	distType int
-	mutex    sync.RWMutex
 }
 
 // NewMirrorState creates a new MirrorState instance
@@ -26,13 +30,12 @@ func NewMirrorState(distType int) *MirrorState {
 	}
 }
 
-// Set updates the mirror URL
+// Set updates the mirror URL.
+// An empty input or unparseable URL clears the state (and logs a warning
+// for the latter so misconfigurations are surfaced).
 func (m *MirrorState) Set(input string) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
 	if input == "" {
-		m.url = nil
+		m.url.Store(nil)
 		return
 	}
 
@@ -41,43 +44,36 @@ func (m *MirrorState) Set(input string) {
 		mirror = alias
 	}
 
-	url, err := url.Parse(mirror)
+	parsed, err := url.Parse(mirror)
 	if err != nil {
 		logger.Default().Warn().
 			Err(err).
 			Int("dist_type", m.distType).
 			Str("input", input).
 			Msg("invalid mirror URL, clearing state")
-		m.url = nil
+		m.url.Store(nil)
 		return
 	}
-	m.url = url
+	m.url.Store(parsed)
 }
 
-// Get returns the current mirror URL
+// Get returns the current mirror URL.
+// Callers receive the same *url.URL the writer published; never mutate it.
 func (m *MirrorState) Get() *url.URL {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-	return m.url
+	return m.url.Load()
 }
 
-// Reset clears the mirror URL
+// Reset clears the mirror URL.
 func (m *MirrorState) Reset() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.url = nil
+	m.url.Store(nil)
 }
 
-// Clone creates a copy of the MirrorState
+// Clone creates a copy of the MirrorState containing a deep copy of the URL.
 func (m *MirrorState) Clone() *MirrorState {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
 	clone := NewMirrorState(m.distType)
-	if m.url != nil {
-		// Deep copy the URL
-		urlCopy := *m.url
-		clone.url = &urlCopy
+	if cur := m.url.Load(); cur != nil {
+		urlCopy := *cur
+		clone.url.Store(&urlCopy)
 	}
 	return clone
 }
@@ -86,8 +82,7 @@ func (m *MirrorState) Clone() *MirrorState {
 // and mirror configurations for all supported distributions.
 // This struct supports dependency injection for better testability.
 type AppState struct {
-	proxyMode   int
-	modeMutex   sync.RWMutex
+	proxyMode   atomic.Int64 // proxy mode; atomic so callers can both read and write without locks
 	Ubuntu      *MirrorState
 	UbuntuPorts *MirrorState
 	Debian      *MirrorState
@@ -108,47 +103,44 @@ func NewAppState() *AppState {
 
 // SetProxyMode sets the proxy mode
 func (s *AppState) SetProxyMode(mode int) {
-	s.modeMutex.Lock()
-	defer s.modeMutex.Unlock()
-	s.proxyMode = mode
+	s.proxyMode.Store(int64(mode))
 }
 
 // GetProxyMode returns the current proxy mode
 func (s *AppState) GetProxyMode() int {
-	s.modeMutex.RLock()
-	defer s.modeMutex.RUnlock()
-	return s.proxyMode
+	return int(s.proxyMode.Load())
 }
 
 // SetMirror sets the mirror URL for a specific distribution
 func (s *AppState) SetMirror(distType int, input string) {
-	switch distType {
-	case distro.TypeUbuntu:
-		s.Ubuntu.Set(input)
-	case distro.TypeUbuntuPorts:
-		s.UbuntuPorts.Set(input)
-	case distro.TypeDebian:
-		s.Debian.Set(input)
-	case distro.TypeCentOS:
-		s.CentOS.Set(input)
-	case distro.TypeAlpine:
-		s.Alpine.Set(input)
+	if state := s.mirrorByType(distType); state != nil {
+		state.Set(input)
 	}
 }
 
 // GetMirror returns the mirror URL for a specific distribution
 func (s *AppState) GetMirror(distType int) *url.URL {
+	if state := s.mirrorByType(distType); state != nil {
+		return state.Get()
+	}
+	return nil
+}
+
+// mirrorByType returns the *MirrorState backing the given distro type, or
+// nil for unknown types. Centralising the switch avoids drift between
+// SetMirror/GetMirror/ResetAll's parallel cases.
+func (s *AppState) mirrorByType(distType int) *MirrorState {
 	switch distType {
 	case distro.TypeUbuntu:
-		return s.Ubuntu.Get()
+		return s.Ubuntu
 	case distro.TypeUbuntuPorts:
-		return s.UbuntuPorts.Get()
+		return s.UbuntuPorts
 	case distro.TypeDebian:
-		return s.Debian.Get()
+		return s.Debian
 	case distro.TypeCentOS:
-		return s.CentOS.Get()
+		return s.CentOS
 	case distro.TypeAlpine:
-		return s.Alpine.Get()
+		return s.Alpine
 	default:
 		return nil
 	}
@@ -165,18 +157,14 @@ func (s *AppState) ResetAll() {
 
 // Clone creates a deep copy of the AppState
 func (s *AppState) Clone() *AppState {
-	s.modeMutex.RLock()
-	mode := s.proxyMode
-	s.modeMutex.RUnlock()
-
 	clone := &AppState{
-		proxyMode:   mode,
 		Ubuntu:      s.Ubuntu.Clone(),
 		UbuntuPorts: s.UbuntuPorts.Clone(),
 		Debian:      s.Debian.Clone(),
 		CentOS:      s.CentOS.Clone(),
 		Alpine:      s.Alpine.Clone(),
 	}
+	clone.proxyMode.Store(s.proxyMode.Load())
 	return clone
 }
 
@@ -184,39 +172,36 @@ func (s *AppState) Clone() *AppState {
 // Global Singleton - Backward Compatibility Layer
 // ============================================================================
 
-var (
-	// globalState is the default global state instance
-	globalState     *AppState
-	globalStateMu   sync.RWMutex
-	globalStateOnce sync.Once
-)
+// globalState holds the process-wide AppState. We use atomic.Pointer instead
+// of a sync.Once + sync.RWMutex pair so reads (every proxied request goes
+// through GetUbuntuMirror et al.) are lock-free.
+var globalState atomic.Pointer[AppState]
 
-// initGlobalState initializes the global state singleton
-func initGlobalState() {
-	globalStateOnce.Do(func() {
-		globalState = NewAppState()
-	})
+// initGlobalState lazily creates the singleton on first access. CAS guards
+// against the rare case of two goroutines both observing nil at startup.
+func initGlobalState() *AppState {
+	if cur := globalState.Load(); cur != nil {
+		return cur
+	}
+	fresh := NewAppState()
+	if globalState.CompareAndSwap(nil, fresh) {
+		return fresh
+	}
+	return globalState.Load()
 }
 
 // Global returns the global AppState instance.
 // This is primarily for dependency injection scenarios where you need
 // to pass the state explicitly.
 func Global() *AppState {
-	initGlobalState()
-	globalStateMu.RLock()
-	defer globalStateMu.RUnlock()
-	return globalState
+	return initGlobalState()
 }
 
 // SetGlobal replaces the global AppState instance.
 // This is useful for testing or when you want to use a custom state instance.
-// This function is thread-safe and can be called concurrently with Global().
+// Safe to call concurrently with Global().
 func SetGlobal(state *AppState) {
-	globalStateMu.Lock()
-	defer globalStateMu.Unlock()
-	// Ensure initialization is done before replacing
-	initGlobalState()
-	globalState = state
+	globalState.Store(state)
 }
 
 // ============================================================================
@@ -224,13 +209,11 @@ func SetGlobal(state *AppState) {
 // ============================================================================
 
 func SetProxyMode(mode int) {
-	initGlobalState()
-	globalState.SetProxyMode(mode)
+	initGlobalState().SetProxyMode(mode)
 }
 
 func GetProxyMode() int {
-	initGlobalState()
-	return globalState.GetProxyMode()
+	return initGlobalState().GetProxyMode()
 }
 
 // ============================================================================
@@ -240,16 +223,11 @@ func GetProxyMode() int {
 // These variables maintain backward compatibility with existing code
 // that accesses mirrors directly. They delegate to the global AppState.
 var (
-	// UbuntuMirror provides backward compatible access to Ubuntu mirror state
-	UbuntuMirror = &mirrorProxy{distType: distro.TypeUbuntu}
-	// UbuntuPortsMirror provides backward compatible access to Ubuntu Ports mirror state
+	UbuntuMirror      = &mirrorProxy{distType: distro.TypeUbuntu}
 	UbuntuPortsMirror = &mirrorProxy{distType: distro.TypeUbuntuPorts}
-	// DebianMirror provides backward compatible access to Debian mirror state
-	DebianMirror = &mirrorProxy{distType: distro.TypeDebian}
-	// CentOSMirror provides backward compatible access to CentOS mirror state
-	CentOSMirror = &mirrorProxy{distType: distro.TypeCentOS}
-	// AlpineMirror provides backward compatible access to Alpine mirror state
-	AlpineMirror = &mirrorProxy{distType: distro.TypeAlpine}
+	DebianMirror      = &mirrorProxy{distType: distro.TypeDebian}
+	CentOSMirror      = &mirrorProxy{distType: distro.TypeCentOS}
+	AlpineMirror      = &mirrorProxy{distType: distro.TypeAlpine}
 )
 
 // mirrorProxy provides a proxy to the global state's mirror states
@@ -258,28 +236,16 @@ type mirrorProxy struct {
 }
 
 func (p *mirrorProxy) Set(input string) {
-	initGlobalState()
-	globalState.SetMirror(p.distType, input)
+	initGlobalState().SetMirror(p.distType, input)
 }
 
 func (p *mirrorProxy) Get() *url.URL {
-	initGlobalState()
-	return globalState.GetMirror(p.distType)
+	return initGlobalState().GetMirror(p.distType)
 }
 
 func (p *mirrorProxy) Reset() {
-	initGlobalState()
-	switch p.distType {
-	case distro.TypeUbuntu:
-		globalState.Ubuntu.Reset()
-	case distro.TypeUbuntuPorts:
-		globalState.UbuntuPorts.Reset()
-	case distro.TypeDebian:
-		globalState.Debian.Reset()
-	case distro.TypeCentOS:
-		globalState.CentOS.Reset()
-	case distro.TypeAlpine:
-		globalState.Alpine.Reset()
+	if state := initGlobalState().mirrorByType(p.distType); state != nil {
+		state.Reset()
 	}
 }
 

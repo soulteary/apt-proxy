@@ -15,6 +15,7 @@ require (
 	github.com/soulteary/version-kit v1.3.0
 	github.com/soulteary/vfs-kit v1.1.0
 	go.opentelemetry.io/otel v1.44.0
+	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )

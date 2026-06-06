@@ -20,10 +20,10 @@ type RateLimitMiddleware struct {
 	mu             sync.Mutex
 	buckets        map[string]*rateBucket
 	log            *logger.Logger
-	// trustedProxies is the optional list of CIDR networks whose remote
-	// address is allowed to set X-Forwarded-For. When empty, XFF is ignored
-	// (default secure behaviour).
-	trustedProxies []*net.IPNet
+	// clientIP extracts the rate-limit key from each request. It is shared
+	// with AuthMiddleware so both middlewares attribute requests to the same
+	// IP under XFF / trusted-proxy configurations.
+	clientIP *ClientIPExtractor
 }
 
 type rateBucket struct {
@@ -40,6 +40,7 @@ func NewRateLimitMiddleware(limitPerMinute int, log *logger.Logger, trustedProxi
 		limitPerMinute: limitPerMinute,
 		buckets:        make(map[string]*rateBucket),
 		log:            log,
+		clientIP:       &ClientIPExtractor{},
 	}
 	for _, cidr := range trustedProxies {
 		cidr = strings.TrimSpace(cidr)
@@ -53,7 +54,7 @@ func NewRateLimitMiddleware(limitPerMinute int, log *logger.Logger, trustedProxi
 			}
 			continue
 		}
-		m.trustedProxies = append(m.trustedProxies, n)
+		m.clientIP.AddTrustedProxy(n)
 	}
 	return m
 }
@@ -65,10 +66,11 @@ func (m *RateLimitMiddleware) Wrap(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := m.clientKey(r)
+		key := m.clientIP.ClientIP(r)
 		if !m.allow(key) {
 			if m.log != nil {
 				m.log.Warn().
+					Str("client_ip", key).
 					Str("remote_addr", r.RemoteAddr).
 					Str("path", r.URL.Path).
 					Msg("API rate limit exceeded")
@@ -113,38 +115,13 @@ func (m *RateLimitMiddleware) allow(key string) bool {
 }
 
 // clientKey returns the rate-limit key for a request.
-// X-Forwarded-For is only honored when the immediate peer (RemoteAddr) is a
-// trusted proxy; otherwise the peer's IP is used. This prevents arbitrary
-// clients from forging XFF to cycle through limit buckets.
+// Delegates to the shared ClientIPExtractor so auth and rate-limit
+// middlewares observe the same client identity. Retained as a thin wrapper
+// because existing tests poke at it directly.
 func (m *RateLimitMiddleware) clientKey(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-
-	if m.isTrustedProxy(host) {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if i := strings.IndexAny(xff, ", "); i > 0 {
-				return strings.TrimSpace(xff[:i])
-			}
-			return strings.TrimSpace(xff)
-		}
-	}
-	return host
+	return m.clientIP.ClientIP(r)
 }
 
 func (m *RateLimitMiddleware) isTrustedProxy(host string) bool {
-	if len(m.trustedProxies) == 0 {
-		return false
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return false
-	}
-	for _, n := range m.trustedProxies {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	return m.clientIP.isTrustedProxy(host)
 }

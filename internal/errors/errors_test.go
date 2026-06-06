@@ -3,6 +3,7 @@ package errors
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -257,6 +258,18 @@ func TestIs(t *testing.T) {
 	}
 	if Is(outer, ErrConfigInvalid) {
 		t.Error("Is should return false for code not in chain")
+	}
+
+	// fmt.Errorf("%w", ...) wraps must still resolve via errors.As.
+	wrappedByFmt := fmt.Errorf("context: %w", New(ErrCacheRead, "boom"))
+	if !Is(wrappedByFmt, ErrCacheRead) {
+		t.Error("Is should find AppError through fmt.Errorf wrapper")
+	}
+	if GetCode(wrappedByFmt) != ErrCacheRead {
+		t.Errorf("GetCode should walk fmt.Errorf wrappers, got %s", GetCode(wrappedByFmt))
+	}
+	if GetHTTPStatus(wrappedByFmt) != http.StatusInternalServerError {
+		t.Errorf("GetHTTPStatus should walk fmt.Errorf wrappers, got %d", GetHTTPStatus(wrappedByFmt))
 	}
 }
 

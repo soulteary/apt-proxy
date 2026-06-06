@@ -148,7 +148,7 @@ func TestRateLimitXFFTrustedProxy(t *testing.T) {
 // without panicking.
 func TestRateLimitInvalidTrustedCIDR(t *testing.T) {
 	m := NewRateLimitMiddleware(1, newTestLogger(), "not-a-cidr", "")
-	if len(m.trustedProxies) != 0 {
-		t.Errorf("expected 0 trusted proxies, got %d", len(m.trustedProxies))
+	if len(m.clientIP.trustedProxies) != 0 {
+		t.Errorf("expected 0 trusted proxies, got %d", len(m.clientIP.trustedProxies))
 	}
 }

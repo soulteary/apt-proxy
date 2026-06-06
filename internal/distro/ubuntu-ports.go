@@ -6,7 +6,11 @@ import (
 
 const (
 	UbuntuPortsGeoMirrorAPI = "http://mirrors.ubuntu.com/mirrors.txt"
-	UbuntuPortsBenchmarkURL = "dists/noble/InRelease/Release"
+	// Ubuntu Ports targets non-amd64 architectures. The previous
+	// `dists/noble/InRelease/Release` value pointed to a path that does not
+	// exist (InRelease is a file, not a directory) and made every benchmark
+	// 404. Use the arm64 Release file which mirrors universally publish.
+	UbuntuPortsBenchmarkURL = "dists/noble/main/binary-arm64/Release"
 )
 
 var UbuntuPortsHostPattern = regexp.MustCompile(`/ubuntu-ports/(.+)$`)
@@ -46,16 +50,4 @@ var UbuntuPortsCustomMirrors = []string{
 
 var BuiltinUbuntuPortsMirrors = GenerateBuildInList(UbuntuPortsOfficialMirrors, UbuntuPortsCustomMirrors)
 
-var UbuntuPortsDefaultCacheRules = []Rule{
-	{Pattern: regexp.MustCompile(`deb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`udeb$`), CacheControl: `max-age=100000`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`InRelease$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`DiffIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`PackagesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`Packages\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`SourcesIndex$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`Sources\.(bz2|gz|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`Release(\.gpg)?$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`Translation-(en|fr)\.(gz|bz2|bzip2|lzma)$`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-	{Pattern: regexp.MustCompile(`\/by-hash\/`), CacheControl: `max-age=3600`, Rewrite: true, OS: TypeUbuntuPorts},
-}
+var UbuntuPortsDefaultCacheRules = newDebStyleRules(TypeUbuntuPorts)
