@@ -384,6 +384,8 @@ func (s *Server) createFiberApp() *fiber.App {
 		c.Status(status)
 		return c.SendString(tpl)
 	})
+	// Static assets (must be registered before the catch-all proxy below).
+	app.Get("/static/apt-proxy-logo.png", adaptor.HTTPHandler(http.HandlerFunc(proxy.ServeStaticLogo)))
 	// All other paths -> proxy + cache
 	app.All("/*", adaptor.HTTPHandler(s.proxy.Handler))
 
