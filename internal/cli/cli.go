@@ -31,6 +31,10 @@ type (
 	MirrorConfig = config.MirrorConfig
 	// CacheConfig holds cache-specific configuration
 	CacheConfig = config.CacheConfig
+	// StorageConfig selects and configures the cache storage backend.
+	StorageConfig = config.StorageConfig
+	// S3Config holds the S3-compatible storage credentials and tunables.
+	S3Config = config.S3Config
 )
 
 // Re-export constants from internal/config for backward compatibility
@@ -54,6 +58,22 @@ const (
 	EnvTLSCertFile = config.EnvTLSCertFile
 	EnvTLSKeyFile  = config.EnvTLSKeyFile
 
+	EnvStorageBackend = config.EnvStorageBackend
+	EnvS3Endpoint     = config.EnvS3Endpoint
+	EnvS3Region       = config.EnvS3Region
+	EnvS3Bucket       = config.EnvS3Bucket
+	EnvS3Prefix       = config.EnvS3Prefix
+	EnvS3AccessKey    = config.EnvS3AccessKey
+	EnvS3SecretKey    = config.EnvS3SecretKey
+	EnvS3SessionToken = config.EnvS3SessionToken
+	EnvS3UseSSL       = config.EnvS3UseSSL
+	EnvS3UsePathStyle = config.EnvS3UsePathStyle
+	EnvS3InlineMaxMB  = config.EnvS3InlineMaxMB
+	EnvS3TempDir      = config.EnvS3TempDir
+
+	StorageBackendDisk = config.StorageBackendDisk
+	StorageBackendS3   = config.StorageBackendS3
+
 	DefaultHost     = config.DefaultHost
 	DefaultPort     = config.DefaultPort
 	DefaultCacheDir = config.DefaultCacheDir
@@ -61,6 +81,10 @@ const (
 	DefaultCacheMaxSizeGB          = config.DefaultCacheMaxSizeGB
 	DefaultCacheTTLHours           = config.DefaultCacheTTLHours
 	DefaultCacheCleanupIntervalMin = config.DefaultCacheCleanupIntervalMin
+
+	DefaultStorageBackend = config.DefaultStorageBackend
+	DefaultS3InlineMaxMB  = config.DefaultS3InlineMaxMB
+	DefaultS3Prefix       = config.DefaultS3Prefix
 )
 
 // Backward compatibility wrapper for internal function

@@ -280,7 +280,7 @@ http_proxy=http://host.docker.internal:3142 \
 
 ### Docker Compose 示例
 
-查看 [example 目录](example/) 获取完整的 Docker Compose 配置。
+查看 [examples 目录](examples/) 获取完整的 Docker Compose 配置。其中包含四个自包含的子示例：[`basic/`](examples/basic/)（最小部署）、[`specify-mirrors/`](examples/specify-mirrors/)（指定上游镜像）、[`s3-minio/`](examples/s3-minio/)（缓存落到 S3 兼容对象存储）、[`config-template/`](examples/config-template/)（带详尽注释的 `apt-proxy.yaml` 参考）。
 
 ## 配置选项
 
@@ -315,6 +315,18 @@ http_proxy=http://host.docker.internal:3142 \
 | `-api-rate-limit` | 每 IP 每分钟的 API 请求数（`0` 关闭） | `60` |
 | `-trusted-proxies` | 受信任代理 CIDR 列表（逗号分隔），仅对其匹配的请求解析 `X-Forwarded-For` | |
 | `-upstream-keep-alive` | 上游 HTTP keep-alive（仅 CLI/ENV 生效，YAML 不可配置） | `true` |
+| `-storage-backend` | 缓存存储后端：`disk` 或 `s3` | `disk` |
+| `-s3-endpoint` | S3 endpoint（`host[:port]`，不含协议前缀） | |
+| `-s3-region` | S3 region（AWS 必填，多数 MinIO 服务可留空） | |
+| `-s3-bucket` | S3 bucket 名称 | |
+| `-s3-prefix` | bucket 内 key 前缀 | `apt-proxy/` |
+| `-s3-access-key` | S3 access key（建议改用 ENV） | |
+| `-s3-secret-key` | S3 secret key（建议改用 ENV） | |
+| `-s3-session-token` | 临时凭证 session token（可选） | |
+| `-s3-use-ssl` | 与 S3 通信使用 HTTPS | `true` |
+| `-s3-use-path-style` | 强制 path-style 寻址（MinIO/Ceph 必须开启） | `false` |
+| `-s3-inline-max-mb` | 内存缓冲上传阈值（MiB），超过则落盘后再 PUT | `32` |
+| `-s3-temp-dir` | 大对象上传时使用的临时目录 | （`os.TempDir()`） |
 | `-config` | YAML 配置文件路径 | |
 | `-debug` | 启用详细调试日志（同时把请求 header/body 打印到日志） | `false` |
 
@@ -358,6 +370,23 @@ http_proxy=http://host.docker.internal:3142 \
 | `APT_PROXY_CACHE_MAX_SIZE` | `-cache-max-size` | 最大缓存大小（GB，`0` 禁用） |
 | `APT_PROXY_CACHE_TTL` | `-cache-ttl` | 缓存 TTL（小时，`0` 禁用） |
 | `APT_PROXY_CACHE_CLEANUP_INTERVAL` | `-cache-cleanup-interval` | 缓存清理间隔（分钟，`0` 禁用） |
+
+**存储后端 / S3**
+
+| 变量名 | 等价 CLI 参数 | 说明 |
+|--------|--------------|------|
+| `APT_PROXY_STORAGE_BACKEND` | `-storage-backend` | `disk` 或 `s3` |
+| `APT_PROXY_S3_ENDPOINT` | `-s3-endpoint` | S3 endpoint，如 `s3.amazonaws.com` 或 `minio:9000` |
+| `APT_PROXY_S3_REGION` | `-s3-region` | S3 region |
+| `APT_PROXY_S3_BUCKET` | `-s3-bucket` | bucket 名称 |
+| `APT_PROXY_S3_PREFIX` | `-s3-prefix` | key 前缀（默认 `apt-proxy/`） |
+| `APT_PROXY_S3_ACCESS_KEY` | `-s3-access-key` | access key（**推荐**通过 ENV 注入） |
+| `APT_PROXY_S3_SECRET_KEY` | `-s3-secret-key` | secret key（**推荐**通过 ENV 注入） |
+| `APT_PROXY_S3_SESSION_TOKEN` | `-s3-session-token` | STS 临时 session token |
+| `APT_PROXY_S3_USE_SSL` | `-s3-use-ssl` | 是否使用 HTTPS |
+| `APT_PROXY_S3_USE_PATH_STYLE` | `-s3-use-path-style` | path-style 寻址（MinIO/Ceph 必须） |
+| `APT_PROXY_S3_INLINE_MAX_MB` | `-s3-inline-max-mb` | 内存缓冲阈值（MiB） |
+| `APT_PROXY_S3_TEMP_DIR` | `-s3-temp-dir` | 大对象临时目录 |
 
 **TLS**
 
@@ -411,6 +440,21 @@ cache:
   ttl_hours: 168
   cleanup_interval_min: 60
 
+# 可选：将缓存改为 S3 兼容对象存储；backend 为 "disk" 时下面的 s3 字段被忽略
+storage:
+  backend: disk        # "disk"（默认）或 "s3"
+  s3:
+    endpoint: ""
+    region: ""
+    bucket: ""
+    prefix: apt-proxy/
+    access_key: ""
+    secret_key: ""
+    use_ssl: true
+    use_path_style: false
+    inline_max_mb: 32
+    temp_dir: ""
+
 mirrors:
   ubuntu: cn:tsinghua
   ubuntu_ports: ""
@@ -456,6 +500,87 @@ distributions_config: ./config/distributions.yaml
 - 设置为 `0` 表示不限制容量，不进行按容量淘汰。
 
 进程重启后，在尚未有新访问之前，LRU 顺序按文件修改时间近似。
+
+### S3 存储后端
+
+除了写到本地目录，`apt-proxy` 也可以把所有缓存的 body / header 直接落到任何 **S3
+兼容**的对象存储里。适合多实例共享缓存、缓存需要跨容器/节点持久化、或本地磁盘空间
+吃紧的场景。
+
+通过 `--storage-backend=s3`（或 `APT_PROXY_STORAGE_BACKEND=s3`、YAML 中的
+`storage.backend: s3`）启用。最少配置只需要 `endpoint`、`bucket`、`access_key`、
+`secret_key`，其它字段都有合理默认值。
+
+**YAML 示例：**
+
+```yaml
+storage:
+  backend: s3
+  s3:
+    endpoint: minio.example.com:9000     # host[:port]，不要带 scheme
+    region: us-east-1                    # AWS S3 必填；多数 MinIO 服务忽略
+    bucket: apt-proxy
+    prefix: apt-proxy/                   # 可选，默认 "apt-proxy/"
+    access_key: ${APT_PROXY_S3_ACCESS_KEY}
+    secret_key: ${APT_PROXY_S3_SECRET_KEY}
+    use_ssl: true
+    use_path_style: false                # MinIO/Ceph 需为 true；AWS/R2/B2 用 false
+    inline_max_mb: 32                    # ≤32 MiB 走内存缓冲；超过则落盘临时文件
+    temp_dir: ""                         # 留空使用 os.TempDir()
+```
+
+**ENV 示例**（适合 Kubernetes / Docker）：
+
+```bash
+APT_PROXY_STORAGE_BACKEND=s3
+APT_PROXY_S3_ENDPOINT=minio:9000
+APT_PROXY_S3_BUCKET=apt-proxy
+APT_PROXY_S3_ACCESS_KEY=...
+APT_PROXY_S3_SECRET_KEY=...
+APT_PROXY_S3_USE_SSL=false
+APT_PROXY_S3_USE_PATH_STYLE=true
+```
+
+**CLI 示例：**
+
+```bash
+./apt-proxy \
+  --storage-backend=s3 \
+  --s3-endpoint=s3.us-west-2.amazonaws.com \
+  --s3-region=us-west-2 \
+  --s3-bucket=apt-proxy \
+  --s3-access-key=$AWS_ACCESS_KEY_ID \
+  --s3-secret-key=$AWS_SECRET_ACCESS_KEY
+```
+
+**兼容性矩阵：**
+
+| 厂商 / 实现        | `endpoint`                                          | `use_ssl` | `use_path_style` | 备注                                   |
+| ------------------ | ---------------------------------------------------- | --------- | ---------------- | -------------------------------------- |
+| AWS S3             | `s3.<region>.amazonaws.com`                          | `true`    | `false`          | 必须显式设置 `region`                  |
+| MinIO              | `minio.local:9000` / `<host>:9000`                   | 视部署    | `true`           | 必须 path-style                        |
+| Ceph RGW           | `rgw.example.com`                                    | 视部署    | `true`           | 必须 path-style                        |
+| Cloudflare R2      | `<account>.r2.cloudflarestorage.com`                 | `true`    | `false`          | region 固定为 `auto`                   |
+| Backblaze B2       | `s3.<region>.backblazeb2.com`                        | `true`    | `false`          | App Key 需对 bucket 有读写权限         |
+| 阿里云 OSS         | `oss-cn-hangzhou.aliyuncs.com`                       | `true`    | `false`          | RAM 用户需 `oss:GetObject/PutObject`   |
+| 腾讯云 COS         | `cos.ap-shanghai.myqcloud.com`                       | `true`    | `false`          | 使用 SecretId / SecretKey              |
+| Garage / SeaweedFS | 视部署                                               | 视部署    | `true`           | 按 MinIO 风格配置                      |
+
+**运维注意事项：**
+
+- bucket 必须**预先存在**。`apt-proxy` 启动时会做一次 `BucketExists` 校验，配错
+  立即报错退出，不会等到第一次 cache miss 才发现。
+- `/healthz` 健康检查会感知存储后端：`s3` 模式做一次 HeadBucket，`disk` 模式做
+  `os.Stat`。
+- `s3vfs` 内置 8192 条元数据 LRU，用于吸收 `httpcache-kit` 频繁的 `Header()`
+  访问，使大多数请求只产生一次 S3 GET。
+- 写入采用"智能"上传策略：≤ `inline_max_mb` 的对象在内存中累积后一次 PUT；超过
+  阈值则落盘到临时文件再 `PutObject`。可根据典型包大小调整。
+- S3 模式下 `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` 会被**忽略**；只有
+  TLS 证书路径仍然需要本地文件。
+
+完整可运行的示例（含 MinIO + 自动建桶 + 接好的 apt-proxy）见
+[`examples/s3-minio/`](examples/s3-minio/)。
 
 ## API 端点
 
@@ -672,7 +797,7 @@ apt-proxy/
 │   └── system/               # 系统工具（磁盘、GC、文件大小）
 ├── tests/                    # 集成测试
 │   └── integration/          # 端到端测试
-└── config/, docker/, example/ # 示例配置、部署与文档
+└── config/, docker/, examples/ # 示例配置、部署与可运行示例
 ```
 
 ## 开发

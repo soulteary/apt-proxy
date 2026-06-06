@@ -280,7 +280,7 @@ http_proxy=http://host.docker.internal:3142 \
 
 ### Docker Compose Example
 
-See the [example directory](example/) for complete Docker Compose configurations.
+See the [examples directory](examples/) for complete Docker Compose configurations. It contains four self-contained subdirectories: [`basic/`](examples/basic/) (minimal deployment), [`specify-mirrors/`](examples/specify-mirrors/) (pin upstream mirrors), [`s3-minio/`](examples/s3-minio/) (cache offloaded to an S3-compatible bucket) and [`config-template/`](examples/config-template/) (fully-commented `apt-proxy.yaml` reference).
 
 ## Configuration Options
 
@@ -315,6 +315,17 @@ View all available options:
 | `-api-rate-limit` | API requests per IP per minute (`0` to disable) | `60` |
 | `-trusted-proxies` | Comma-separated CIDRs whose `X-Forwarded-For` is honored by rate limiter and auth | |
 | `-upstream-keep-alive` | Enable HTTP keep-alive to upstream mirrors (CLI/ENV only; not configurable via YAML) | `true` |
+| `-storage-backend` | Cache storage backend: `disk` or `s3` (see [S3 Storage Backend](#s3-storage-backend)) | `disk` |
+| `-s3-endpoint` | S3 endpoint host[:port] (required when backend is `s3`) | |
+| `-s3-region` | S3 region (required for AWS S3, ignored by most MinIO services) | |
+| `-s3-bucket` | S3 bucket name (must already exist) | |
+| `-s3-prefix` | S3 object key prefix | `apt-proxy/` |
+| `-s3-access-key` / `-s3-secret-key` | S3 IAM credentials | |
+| `-s3-session-token` | Optional STS session token | |
+| `-s3-use-ssl` | Use HTTPS to talk to the S3 endpoint | `true` |
+| `-s3-use-path-style` | Force path-style URLs (needed for MinIO/Ceph) | `false` |
+| `-s3-inline-max-mb` | In-memory write threshold in MiB before spilling to TempDir | `32` |
+| `-s3-temp-dir` | Directory for spilled writes (default `os.TempDir()`) | |
 | `-config` | Path to YAML configuration file | |
 | `-debug` | Enable verbose debug logging (also dumps request headers/body to logs) | `false` |
 
@@ -376,6 +387,23 @@ Every CLI flag has an equivalent environment variable. Plus a few extras for log
 | `APT_PROXY_API_RATE_LIMIT_PER_MINUTE` | `-api-rate-limit` | API requests per IP per minute (`0` disables) |
 | `APT_PROXY_TRUSTED_PROXIES` | `-trusted-proxies` | Comma-separated trusted proxy CIDRs |
 
+**Storage Backend**
+
+| Variable | Equivalent flag | Description |
+|----------|-----------------|-------------|
+| `APT_PROXY_STORAGE_BACKEND` | `-storage-backend` | `disk` (default) or `s3` |
+| `APT_PROXY_S3_ENDPOINT` | `-s3-endpoint` | S3 endpoint host[:port] |
+| `APT_PROXY_S3_REGION` | `-s3-region` | S3 region |
+| `APT_PROXY_S3_BUCKET` | `-s3-bucket` | S3 bucket name |
+| `APT_PROXY_S3_PREFIX` | `-s3-prefix` | S3 object key prefix |
+| `APT_PROXY_S3_ACCESS_KEY` | `-s3-access-key` | S3 access key ID |
+| `APT_PROXY_S3_SECRET_KEY` | `-s3-secret-key` | S3 secret access key |
+| `APT_PROXY_S3_SESSION_TOKEN` | `-s3-session-token` | Optional STS session token |
+| `APT_PROXY_S3_USE_SSL` | `-s3-use-ssl` | Use HTTPS to talk to the S3 endpoint |
+| `APT_PROXY_S3_USE_PATH_STYLE` | `-s3-use-path-style` | Force path-style URLs |
+| `APT_PROXY_S3_INLINE_MAX_MB` | `-s3-inline-max-mb` | Memory write threshold in MiB before spilling |
+| `APT_PROXY_S3_TEMP_DIR` | `-s3-temp-dir` | Directory for spilled writes |
+
 **Configuration files**
 
 | Variable | Equivalent flag | Description |
@@ -410,6 +438,22 @@ cache:
   max_size_gb: 20
   ttl_hours: 168
   cleanup_interval_min: 60
+
+# Optional: switch the cache to an S3-compatible object store.
+# When backend is "disk" (the default) only the cache.dir field above matters.
+storage:
+  backend: disk        # "disk" (default) or "s3"
+  s3:
+    endpoint: ""
+    region: ""
+    bucket: ""
+    prefix: apt-proxy/
+    access_key: ""
+    secret_key: ""
+    use_ssl: true
+    use_path_style: false
+    inline_max_mb: 32
+    temp_dir: ""
 
 mirrors:
   ubuntu: cn:tsinghua
@@ -456,6 +500,91 @@ The cache supports a size limit configured via `max_size_gb` (YAML), `--cache-ma
 - Set to `0` to disable the size limit; no size-based eviction is performed.
 
 After a process restart, the LRU order is approximated using file modification time until new accesses update it.
+
+### S3 Storage Backend
+
+Instead of writing the cache to a local directory, `apt-proxy` can keep every cached
+body/header inside any **S3-compatible** object store. This is useful when several
+`apt-proxy` instances need to share a cache pool, when the cache must outlive
+ephemeral compute (e.g. Kubernetes nodes), or when local disk is simply too small.
+
+Switch the backend with `--storage-backend=s3` (or `APT_PROXY_STORAGE_BACKEND=s3`,
+or `storage.backend: s3` in YAML). The minimum config is `endpoint`, `bucket`,
+`access_key`, and `secret_key`; everything else falls back to safe defaults.
+
+**YAML example:**
+
+```yaml
+storage:
+  backend: s3
+  s3:
+    endpoint: minio.example.com:9000     # host[:port], no scheme
+    region: us-east-1                    # required for AWS S3, ignored by most MinIO services
+    bucket: apt-proxy
+    prefix: apt-proxy/                   # optional, default "apt-proxy/"
+    access_key: ${APT_PROXY_S3_ACCESS_KEY}
+    secret_key: ${APT_PROXY_S3_SECRET_KEY}
+    use_ssl: true
+    use_path_style: false                # MinIO/Ceph need true; AWS/R2/B2 use false
+    inline_max_mb: 32                    # writes <= 32 MiB stay in memory; larger spill to TempDir
+    temp_dir: ""                         # empty = os.TempDir()
+```
+
+**ENV example** (suitable for Kubernetes / Docker):
+
+```bash
+APT_PROXY_STORAGE_BACKEND=s3
+APT_PROXY_S3_ENDPOINT=minio:9000
+APT_PROXY_S3_BUCKET=apt-proxy
+APT_PROXY_S3_ACCESS_KEY=...
+APT_PROXY_S3_SECRET_KEY=...
+APT_PROXY_S3_USE_SSL=false
+APT_PROXY_S3_USE_PATH_STYLE=true
+```
+
+**CLI example:**
+
+```bash
+./apt-proxy \
+  --storage-backend=s3 \
+  --s3-endpoint=s3.us-west-2.amazonaws.com \
+  --s3-region=us-west-2 \
+  --s3-bucket=apt-proxy \
+  --s3-access-key=$AWS_ACCESS_KEY_ID \
+  --s3-secret-key=$AWS_SECRET_ACCESS_KEY
+```
+
+**Compatibility matrix:**
+
+| Provider           | `endpoint`                                           | `use_ssl` | `use_path_style` | Notes                                  |
+| ------------------ | ---------------------------------------------------- | --------- | ---------------- | -------------------------------------- |
+| AWS S3             | `s3.<region>.amazonaws.com`                          | `true`    | `false`          | Set `region` explicitly                |
+| MinIO              | `minio.local:9000` / `<host>:9000`                   | varies    | `true`           | path-style is required                 |
+| Ceph RGW           | `rgw.example.com`                                    | varies    | `true`           | path-style is required                 |
+| Cloudflare R2      | `<account>.r2.cloudflarestorage.com`                 | `true`    | `false`          | Region must be `auto`                  |
+| Backblaze B2       | `s3.<region>.backblazeb2.com`                        | `true`    | `false`          | App keys with read+write to bucket     |
+| Aliyun OSS         | `oss-cn-hangzhou.aliyuncs.com`                       | `true`    | `false`          | RAM keys with `oss:GetObject/PutObject`|
+| Tencent COS        | `cos.ap-shanghai.myqcloud.com`                       | `true`    | `false`          | Use SecretId/SecretKey                 |
+| Garage / SeaweedFS | depends                                              | varies    | `true`           | Treat as MinIO-flavoured               |
+
+**Operational notes:**
+
+- The bucket must already exist. `apt-proxy` performs a `BucketExists` check on
+  startup and refuses to launch on misconfiguration so you don't discover the
+  problem on the first cache miss.
+- Health check (`/healthz`) reports the storage backend status: a HeadBucket
+  round-trip for `s3`, `os.Stat` for `disk`.
+- In-memory metadata LRU (8192 entries by default) absorbs the chatty
+  `Header()` access pattern of `httpcache-kit` so most requests cost a single
+  S3 GET, not two.
+- Writes use a "smart" upload strategy: bodies up to `inline_max_mb` stay in
+  RAM and PUT in one shot; anything bigger spills to a temp file before
+  `PutObject`. Tune `inline_max_mb` based on your typical package size.
+- `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` are **ignored** when the
+  S3 backend is active. Only TLS cert/key files still need a local path.
+
+A complete working example (compose stack with MinIO + auto-provisioned bucket
++ pre-wired apt-proxy) lives in [`examples/s3-minio/`](examples/s3-minio/).
 
 ## API Endpoints
 
@@ -672,7 +801,7 @@ apt-proxy/
 │   └── system/               # System utilities (disk, gc, filesize)
 ├── tests/                    # Integration tests
 │   └── integration/          # End-to-end tests
-└── config/, docker/, example/ # Sample configs, deployment, and docs
+└── config/, docker/, examples/ # Sample configs, deployment, and runnable examples
 ```
 
 ## Development

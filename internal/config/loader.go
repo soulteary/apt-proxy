@@ -163,5 +163,19 @@ func applyDefaultsWithExplicit(config *Config, ex *cliExplicit) *Config {
 		config.Cache.CleanupInterval = httpcache.DefaultCleanupInterval
 	}
 
+	// Default storage backend to "disk" when neither YAML nor CLI/ENV
+	// supplied a value, preserving prior behaviour for existing deployments.
+	if config.Storage.Backend == "" {
+		config.Storage.Backend = DefaultStorageBackend
+	}
+	if config.Storage.Backend == StorageBackendS3 {
+		if config.Storage.S3.Prefix == "" && (ex == nil || !ex.S3Prefix) {
+			config.Storage.S3.Prefix = DefaultS3Prefix
+		}
+		if config.Storage.S3.InlineMaxMB == 0 && (ex == nil || !ex.S3InlineMaxMB) {
+			config.Storage.S3.InlineMaxMB = DefaultS3InlineMaxMB
+		}
+	}
+
 	return config
 }

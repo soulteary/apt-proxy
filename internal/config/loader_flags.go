@@ -107,6 +107,22 @@ func defineFlags(flags *flag.FlagSet) {
 
 	// Upstream: keep-alive to mirrors (default true)
 	flags.Bool("upstream-keep-alive", true, "enable HTTP keep-alive to upstream mirrors")
+
+	// Storage backend selection (disk | s3). Empty/disk = local filesystem.
+	flags.String("storage-backend", DefaultStorageBackend, "cache storage backend: disk | s3")
+
+	// S3 storage backend flags (only honored when storage-backend=s3).
+	flags.String("s3-endpoint", "", "S3 endpoint host[:port], e.g. s3.amazonaws.com or minio.local:9000")
+	flags.String("s3-region", "", "S3 region (required for AWS S3, ignored by most MinIO services)")
+	flags.String("s3-bucket", "", "S3 bucket name (must already exist)")
+	flags.String("s3-prefix", DefaultS3Prefix, "S3 object key prefix (default apt-proxy/)")
+	flags.String("s3-access-key", "", "S3 access key ID")
+	flags.String("s3-secret-key", "", "S3 secret access key")
+	flags.String("s3-session-token", "", "optional S3 STS session token")
+	flags.Bool("s3-use-ssl", true, "use HTTPS to talk to the S3 endpoint")
+	flags.Bool("s3-use-path-style", false, "force path-style URLs (needed for MinIO/Ceph)")
+	flags.Int64("s3-inline-max-mb", DefaultS3InlineMaxMB, "in-memory write threshold (MiB) before spilling to TempDir")
+	flags.String("s3-temp-dir", "", "directory for spilled writes (default os.TempDir())")
 }
 
 // cliExplicit tracks which fields were explicitly set on the CLI / via ENV.
@@ -134,6 +150,19 @@ type cliExplicit struct {
 	TrustedProxies        bool
 	UpstreamKeepAlive     bool
 	DistributionsConfig   bool
+
+	StorageBackend bool
+	S3Endpoint     bool
+	S3Region       bool
+	S3Bucket       bool
+	S3Prefix       bool
+	S3AccessKey    bool
+	S3SecretKey    bool
+	S3SessionToken bool
+	S3UseSSL       bool
+	S3UsePathStyle bool
+	S3InlineMaxMB  bool
+	S3TempDir      bool
 }
 
 // flagOrEnvSet reports whether a CLI flag or its environment variable was
@@ -186,6 +215,19 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 		TrustedProxies:        flagOrEnvSet(flags, "trusted-proxies", EnvTrustedProxies),
 		UpstreamKeepAlive:     flagOrEnvSet(flags, "upstream-keep-alive", EnvUpstreamKeepAlive),
 		DistributionsConfig:   flagOrEnvSet(flags, "distributions-config", EnvDistributionsConfig),
+
+		StorageBackend: flagOrEnvSet(flags, "storage-backend", EnvStorageBackend),
+		S3Endpoint:     flagOrEnvSet(flags, "s3-endpoint", EnvS3Endpoint),
+		S3Region:       flagOrEnvSet(flags, "s3-region", EnvS3Region),
+		S3Bucket:       flagOrEnvSet(flags, "s3-bucket", EnvS3Bucket),
+		S3Prefix:       flagOrEnvSet(flags, "s3-prefix", EnvS3Prefix),
+		S3AccessKey:    flagOrEnvSet(flags, "s3-access-key", EnvS3AccessKey),
+		S3SecretKey:    flagOrEnvSet(flags, "s3-secret-key", EnvS3SecretKey),
+		S3SessionToken: flagOrEnvSet(flags, "s3-session-token", EnvS3SessionToken),
+		S3UseSSL:       flagOrEnvSet(flags, "s3-use-ssl", EnvS3UseSSL),
+		S3UsePathStyle: flagOrEnvSet(flags, "s3-use-path-style", EnvS3UsePathStyle),
+		S3InlineMaxMB:  flagOrEnvSet(flags, "s3-inline-max-mb", EnvS3InlineMaxMB),
+		S3TempDir:      flagOrEnvSet(flags, "s3-temp-dir", EnvS3TempDir),
 	}
 	hostSet := flagOrEnvSet(flags, "host", EnvHost)
 	portSet := flagOrEnvSet(flags, "port", EnvPort)
@@ -243,6 +285,20 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 		}
 	}
 
+	// Resolve storage backend configuration
+	storageBackend := configutil.ResolveString(flags, "storage-backend", EnvStorageBackend, DefaultStorageBackend, true)
+	s3Endpoint := configutil.ResolveString(flags, "s3-endpoint", EnvS3Endpoint, "", true)
+	s3Region := configutil.ResolveString(flags, "s3-region", EnvS3Region, "", true)
+	s3Bucket := configutil.ResolveString(flags, "s3-bucket", EnvS3Bucket, "", true)
+	s3Prefix := configutil.ResolveString(flags, "s3-prefix", EnvS3Prefix, DefaultS3Prefix, true)
+	s3AccessKey := configutil.ResolveString(flags, "s3-access-key", EnvS3AccessKey, "", true)
+	s3SecretKey := configutil.ResolveString(flags, "s3-secret-key", EnvS3SecretKey, "", true)
+	s3SessionToken := configutil.ResolveString(flags, "s3-session-token", EnvS3SessionToken, "", true)
+	s3UseSSL := configutil.ResolveBool(flags, "s3-use-ssl", EnvS3UseSSL, true)
+	s3UsePathStyle := configutil.ResolveBool(flags, "s3-use-path-style", EnvS3UsePathStyle, false)
+	s3InlineMaxMB := configutil.ResolveInt64(flags, "s3-inline-max-mb", EnvS3InlineMaxMB, DefaultS3InlineMaxMB, true)
+	s3TempDir := configutil.ResolveString(flags, "s3-temp-dir", EnvS3TempDir, "", true)
+
 	config := &Config{
 		Debug:             debug,
 		CacheDir:          cacheDir,
@@ -269,6 +325,22 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 			EnableAPIAuth:         enableAPIAuth,
 			APIRateLimitPerMinute: apiRateLimitPerMinute,
 			TrustedProxies:        trustedProxies,
+		},
+		Storage: StorageConfig{
+			Backend: storageBackend,
+			S3: S3Config{
+				Endpoint:     s3Endpoint,
+				Region:       s3Region,
+				Bucket:       s3Bucket,
+				Prefix:       s3Prefix,
+				AccessKey:    s3AccessKey,
+				SecretKey:    s3SecretKey,
+				SessionToken: s3SessionToken,
+				UseSSL:       s3UseSSL,
+				UsePathStyle: s3UsePathStyle,
+				InlineMaxMB:  s3InlineMaxMB,
+				TempDir:      s3TempDir,
+			},
 		},
 		DistributionsConfigPath: distributionsConfig,
 	}

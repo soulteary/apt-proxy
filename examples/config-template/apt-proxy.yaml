@@ -38,6 +38,28 @@ cache:
   # Default: 60 (1 hour)
   cleanup_interval_min: 60
 
+# Storage backend (optional)
+# By default the cache lives on the local filesystem (above). Switch to "s3"
+# to keep every cached body/header in any S3-compatible object store
+# (MinIO / Ceph / R2 / B2 / OSS / COS / AWS S3, ...). When backend is "s3"
+# the cache.dir field above is ignored.
+#
+# A complete working example (compose stack with MinIO) lives in
+# examples/s3-minio/.
+storage:
+  backend: disk           # "disk" (default) or "s3"
+  s3:
+    endpoint: ""          # host[:port], e.g. "s3.amazonaws.com" or "minio:9000"
+    region: ""            # required for AWS S3, ignored by most MinIO services
+    bucket: ""            # bucket must already exist
+    prefix: apt-proxy/    # object key prefix
+    access_key: ""        # prefer ENV: APT_PROXY_S3_ACCESS_KEY
+    secret_key: ""        # prefer ENV: APT_PROXY_S3_SECRET_KEY
+    use_ssl: true         # use HTTPS to talk to the endpoint
+    use_path_style: false # MinIO/Ceph need true; AWS/R2/B2 use false
+    inline_max_mb: 32     # writes <= 32 MiB stay in RAM, larger spill to temp_dir
+    temp_dir: ""          # empty = os.TempDir()
+
 # Optional: path to distributions/mirrors YAML (distributions.yaml)
 # Enables adding or editing distributions and mirrors without recompiling.
 # Hot-reload with SIGHUP or POST /api/mirrors/refresh

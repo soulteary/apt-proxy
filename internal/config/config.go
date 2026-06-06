@@ -17,6 +17,12 @@ package config
 
 import "time"
 
+// Storage backend identifiers used by StorageConfig.Backend.
+const (
+	StorageBackendDisk = "disk"
+	StorageBackendS3   = "s3"
+)
+
 // Config holds all application configuration
 type Config struct {
 	Debug                   bool           `yaml:"debug"`
@@ -25,11 +31,55 @@ type Config struct {
 	Listen                  string         `yaml:"listen"`
 	Mirrors                 MirrorConfig   `yaml:"mirrors"`
 	Cache                   CacheConfig    `yaml:"cache"`
+	Storage                 StorageConfig  `yaml:"storage"`
 	TLS                     TLSConfig      `yaml:"tls"`
 	Security                SecurityConfig `yaml:"security"`
 	DistributionsConfigPath string         `yaml:"distributions_config"`
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors (default true).
 	UpstreamKeepAlive bool `yaml:"upstream_keep_alive"`
+}
+
+// StorageConfig selects and configures the cache storage backend.
+// "disk" (default) keeps the cache on the local filesystem under CacheDir;
+// "s3" puts every cached body/header into an S3-compatible bucket so that
+// many apt-proxy instances can share a single cache pool.
+type StorageConfig struct {
+	// Backend selects which storage implementation to use.
+	// Empty defaults to "disk" for backward compatibility.
+	Backend string   `yaml:"backend"`
+	S3      S3Config `yaml:"s3"`
+}
+
+// S3Config holds the S3-compatible-storage credentials and tunables.
+// Endpoint, Bucket, AccessKey and SecretKey are required when Backend == "s3";
+// the rest of the fields have sensible defaults.
+type S3Config struct {
+	// Endpoint is the host[:port] of the S3 service, e.g. "s3.amazonaws.com"
+	// or "minio.example.com:9000".
+	Endpoint string `yaml:"endpoint"`
+	// Region is the AWS-style region; required for AWS S3, ignored by most
+	// MinIO-flavoured services.
+	Region string `yaml:"region"`
+	// Bucket is the destination bucket. It must already exist.
+	Bucket string `yaml:"bucket"`
+	// Prefix is an optional sub-path inside the bucket (e.g. "apt-proxy/")
+	// allowing several deployments to share one bucket safely.
+	Prefix string `yaml:"prefix"`
+	// AccessKey / SecretKey are the static IAM credentials.
+	AccessKey string `yaml:"access_key"`
+	SecretKey string `yaml:"secret_key"`
+	// SessionToken is the optional STS session token.
+	SessionToken string `yaml:"session_token"`
+	// UseSSL enables HTTPS to the endpoint. Defaults to true.
+	UseSSL bool `yaml:"use_ssl"`
+	// UsePathStyle forces path-style URLs. MinIO/Ceph generally need this.
+	UsePathStyle bool `yaml:"use_path_style"`
+	// InlineMaxMB is the in-memory write-buffer threshold in mebibytes.
+	// Writes whose total size exceeds this value spill to a temp file before
+	// being uploaded. Zero falls back to the package default (32).
+	InlineMaxMB int64 `yaml:"inline_max_mb"`
+	// TempDir is where spilled writes are staged. Empty means os.TempDir().
+	TempDir string `yaml:"temp_dir"`
 }
 
 // SecurityConfig holds security-related configuration

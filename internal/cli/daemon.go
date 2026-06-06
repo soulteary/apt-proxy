@@ -17,6 +17,7 @@ package cli
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -38,6 +39,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/distro"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/proxy"
+	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
 	httpcache "github.com/soulteary/httpcache-kit"
 	vfs "github.com/soulteary/vfs-kit"
 )
@@ -47,6 +49,7 @@ import (
 type Server struct {
 	config              *config.Config           // Application configuration
 	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
+	s3fs                *s3vfs.S3VFS             // Active S3 backend (only set when storage backend == "s3")
 	proxy               *proxy.PackageStruct     // Main proxy router (Handler is cache-wrapped)
 	app                 *fiber.App               // Fiber application
 	log                 *logger.Logger           // Structured logger
@@ -162,9 +165,11 @@ func (s *Server) initialize() error {
 		s.versionInfo = version.Default()
 	}
 
-	// Initialize cache with configuration
+	// Initialize cache with configuration. Storage backend is selected by
+	// config.Storage.Backend; "disk" (default) keeps the historical
+	// behaviour, "s3" plugs an S3-compatible bucket in via the s3vfs VFS.
 	cacheConfig := s.buildCacheConfig()
-	cache, err := httpcache.NewDiskCacheWithConfig(s.config.CacheDir, cacheConfig)
+	cache, err := s.initCache(cacheConfig)
 	if err != nil {
 		return wrapErr(apperrors.ErrCacheInit, "failed to initialize cache", err)
 	}
@@ -255,11 +260,67 @@ func (s *Server) initHealthChecks() {
 
 	s.healthAggregator = health.NewAggregator(cfg)
 
-	// Add cache directory check
+	// Register a storage-specific health check. For the local-disk backend
+	// we keep the cheap os.Stat probe; for S3 we delegate to a HeadBucket
+	// round-trip so we surface bucket-not-found / IAM regressions promptly.
+	if s.s3fs != nil {
+		fs := s.s3fs
+		s.healthAggregator.AddChecker(health.NewCustomChecker("storage", func(ctx context.Context) error {
+			return fs.HealthCheck(ctx)
+		}).WithTimeout(2 * time.Second))
+		return
+	}
+
+	// Fallback: local-disk cache directory check.
 	s.healthAggregator.AddChecker(health.NewCustomChecker("cache", func(ctx context.Context) error {
 		_, err := os.Stat(s.config.CacheDir)
 		return err
 	}).WithTimeout(1 * time.Second))
+}
+
+// initCache constructs a cache backend selected by config.Storage.Backend.
+// Empty backend and "disk" preserve the historical local-disk implementation;
+// "s3" wires httpcache-kit through the s3vfs VFS.
+//
+// On the s3 path we also stash the *S3VFS in the Server so the health check
+// (and any future maintenance hooks) can reach it without re-creating a
+// client.
+func (s *Server) initCache(cacheConfig *httpcache.CacheConfig) (httpcache.ExtendedCache, error) {
+	switch s.config.Storage.Backend {
+	case "", config.StorageBackendDisk:
+		return httpcache.NewDiskCacheWithConfig(s.config.CacheDir, cacheConfig)
+	case config.StorageBackendS3:
+		s3cfg := s.config.Storage.S3
+		var inlineMaxBytes int64
+		if s3cfg.InlineMaxMB > 0 {
+			inlineMaxBytes = s3cfg.InlineMaxMB * 1024 * 1024
+		}
+		fs, err := s3vfs.New(context.Background(), s3vfs.Config{
+			Endpoint:       s3cfg.Endpoint,
+			Region:         s3cfg.Region,
+			Bucket:         s3cfg.Bucket,
+			Prefix:         s3cfg.Prefix,
+			AccessKey:      s3cfg.AccessKey,
+			SecretKey:      s3cfg.SecretKey,
+			SessionToken:   s3cfg.SessionToken,
+			UseSSL:         s3cfg.UseSSL,
+			UsePathStyle:   s3cfg.UsePathStyle,
+			InlineMaxBytes: inlineMaxBytes,
+			TempDir:        s3cfg.TempDir,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("s3 backend: %w", err)
+		}
+		s.s3fs = fs
+		s.log.Info().
+			Str("bucket", s3cfg.Bucket).
+			Str("endpoint", s3cfg.Endpoint).
+			Str("prefix", s3cfg.Prefix).
+			Msg("storage backend: s3")
+		return httpcache.NewVFSCacheWithConfig(fs, cacheConfig), nil
+	default:
+		return nil, fmt.Errorf("unknown storage backend %q", s.config.Storage.Backend)
+	}
 }
 
 // buildCacheConfig creates a cache configuration from the application config

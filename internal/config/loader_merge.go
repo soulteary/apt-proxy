@@ -100,6 +100,43 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 		result.DistributionsConfigPath = override.DistributionsConfigPath
 	}
 
+	if ex.StorageBackend && override.Storage.Backend != "" {
+		result.Storage.Backend = override.Storage.Backend
+	}
+	if ex.S3Endpoint && override.Storage.S3.Endpoint != "" {
+		result.Storage.S3.Endpoint = override.Storage.S3.Endpoint
+	}
+	if ex.S3Region && override.Storage.S3.Region != "" {
+		result.Storage.S3.Region = override.Storage.S3.Region
+	}
+	if ex.S3Bucket && override.Storage.S3.Bucket != "" {
+		result.Storage.S3.Bucket = override.Storage.S3.Bucket
+	}
+	if ex.S3Prefix && override.Storage.S3.Prefix != "" {
+		result.Storage.S3.Prefix = override.Storage.S3.Prefix
+	}
+	if ex.S3AccessKey && override.Storage.S3.AccessKey != "" {
+		result.Storage.S3.AccessKey = override.Storage.S3.AccessKey
+	}
+	if ex.S3SecretKey && override.Storage.S3.SecretKey != "" {
+		result.Storage.S3.SecretKey = override.Storage.S3.SecretKey
+	}
+	if ex.S3SessionToken && override.Storage.S3.SessionToken != "" {
+		result.Storage.S3.SessionToken = override.Storage.S3.SessionToken
+	}
+	if ex.S3UseSSL {
+		result.Storage.S3.UseSSL = override.Storage.S3.UseSSL
+	}
+	if ex.S3UsePathStyle {
+		result.Storage.S3.UsePathStyle = override.Storage.S3.UsePathStyle
+	}
+	if ex.S3InlineMaxMB {
+		result.Storage.S3.InlineMaxMB = override.Storage.S3.InlineMaxMB
+	}
+	if ex.S3TempDir && override.Storage.S3.TempDir != "" {
+		result.Storage.S3.TempDir = override.Storage.S3.TempDir
+	}
+
 	return &result
 }
 
@@ -195,6 +232,45 @@ func MergeConfigs(base, override *Config) *Config {
 	// a true value from base.
 	if override.UpstreamKeepAlive {
 		result.UpstreamKeepAlive = override.UpstreamKeepAlive
+	}
+
+	// Storage backend: override only when non-empty/non-zero values are
+	// supplied. Same rationale as UpstreamKeepAlive applies to UseSSL et al.
+	if override.Storage.Backend != "" {
+		result.Storage.Backend = override.Storage.Backend
+	}
+	if override.Storage.S3.Endpoint != "" {
+		result.Storage.S3.Endpoint = override.Storage.S3.Endpoint
+	}
+	if override.Storage.S3.Region != "" {
+		result.Storage.S3.Region = override.Storage.S3.Region
+	}
+	if override.Storage.S3.Bucket != "" {
+		result.Storage.S3.Bucket = override.Storage.S3.Bucket
+	}
+	if override.Storage.S3.Prefix != "" {
+		result.Storage.S3.Prefix = override.Storage.S3.Prefix
+	}
+	if override.Storage.S3.AccessKey != "" {
+		result.Storage.S3.AccessKey = override.Storage.S3.AccessKey
+	}
+	if override.Storage.S3.SecretKey != "" {
+		result.Storage.S3.SecretKey = override.Storage.S3.SecretKey
+	}
+	if override.Storage.S3.SessionToken != "" {
+		result.Storage.S3.SessionToken = override.Storage.S3.SessionToken
+	}
+	if override.Storage.S3.UseSSL {
+		result.Storage.S3.UseSSL = override.Storage.S3.UseSSL
+	}
+	if override.Storage.S3.UsePathStyle {
+		result.Storage.S3.UsePathStyle = override.Storage.S3.UsePathStyle
+	}
+	if override.Storage.S3.InlineMaxMB > 0 {
+		result.Storage.S3.InlineMaxMB = override.Storage.S3.InlineMaxMB
+	}
+	if override.Storage.S3.TempDir != "" {
+		result.Storage.S3.TempDir = override.Storage.S3.TempDir
 	}
 
 	return &result

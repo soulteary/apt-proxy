@@ -46,10 +46,6 @@ func ValidateConfig(config *Config) error {
 		return fmt.Errorf("configuration cannot be nil")
 	}
 
-	if config.CacheDir == "" {
-		return fmt.Errorf("cache directory must be specified")
-	}
-
 	if config.Listen == "" {
 		return fmt.Errorf("listen address must be specified")
 	}
@@ -59,16 +55,41 @@ func ValidateConfig(config *Config) error {
 		return fmt.Errorf("invalid listen address %q: %w", config.Listen, err)
 	}
 
-	// Ensure cache directory exists and is writable
-	if err := os.MkdirAll(config.CacheDir, 0750); err != nil {
-		return fmt.Errorf("cache directory %q cannot be created: %w", config.CacheDir, err)
+	// Validate storage backend selection and corresponding fields. The
+	// CacheDir checks below only apply to the local-disk backend; S3 uses
+	// remote object storage and shouldn't be tied to a writable local path.
+	switch config.Storage.Backend {
+	case "", StorageBackendDisk:
+		if config.CacheDir == "" {
+			return fmt.Errorf("cache directory must be specified")
+		}
+		// Ensure cache directory exists and is writable
+		if err := os.MkdirAll(config.CacheDir, 0750); err != nil {
+			return fmt.Errorf("cache directory %q cannot be created: %w", config.CacheDir, err)
+		}
+		// Check writable by creating a temp file
+		testFile := filepath.Join(config.CacheDir, ".apt-proxy-write-test")
+		if err := os.WriteFile(testFile, nil, 0600); err != nil {
+			return fmt.Errorf("cache directory %q is not writable: %w", config.CacheDir, err)
+		}
+		_ = os.Remove(testFile)
+	case StorageBackendS3:
+		if config.Storage.S3.Endpoint == "" {
+			return fmt.Errorf("S3 endpoint must be specified when storage backend is %q", StorageBackendS3)
+		}
+		if config.Storage.S3.Bucket == "" {
+			return fmt.Errorf("S3 bucket must be specified when storage backend is %q", StorageBackendS3)
+		}
+		// Allow anonymous credentials for fully-public/shared buckets, but
+		// loudly require both keys when one is supplied: an empty secret
+		// against a populated access key almost always means a misconfig.
+		if (config.Storage.S3.AccessKey != "") != (config.Storage.S3.SecretKey != "") {
+			return fmt.Errorf("S3 access_key and secret_key must be set together")
+		}
+	default:
+		return fmt.Errorf("unknown storage backend %q (expected %q or %q)",
+			config.Storage.Backend, StorageBackendDisk, StorageBackendS3)
 	}
-	// Check writable by creating a temp file
-	testFile := filepath.Join(config.CacheDir, ".apt-proxy-write-test")
-	if err := os.WriteFile(testFile, nil, 0600); err != nil {
-		return fmt.Errorf("cache directory %q is not writable: %w", config.CacheDir, err)
-	}
-	_ = os.Remove(testFile)
 
 	// Validate TLS configuration
 	if config.TLS.Enabled {

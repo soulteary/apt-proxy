@@ -62,6 +62,23 @@ type YAMLConfig struct {
 		TrustedProxies        []string `yaml:"trusted_proxies"`
 	} `yaml:"security"`
 
+	Storage struct {
+		Backend string `yaml:"backend"`
+		S3      struct {
+			Endpoint     string `yaml:"endpoint"`
+			Region       string `yaml:"region"`
+			Bucket       string `yaml:"bucket"`
+			Prefix       string `yaml:"prefix"`
+			AccessKey    string `yaml:"access_key"`
+			SecretKey    string `yaml:"secret_key"`
+			SessionToken string `yaml:"session_token"`
+			UseSSL       bool   `yaml:"use_ssl"`
+			UsePathStyle bool   `yaml:"use_path_style"`
+			InlineMaxMB  int64  `yaml:"inline_max_mb"`
+			TempDir      string `yaml:"temp_dir"`
+		} `yaml:"s3"`
+	} `yaml:"storage"`
+
 	Mode                string `yaml:"mode"`
 	DistributionsConfig string `yaml:"distributions_config"`
 }
@@ -155,6 +172,22 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			EnableAPIAuth:         yamlCfg.Security.EnableAPIAuth,
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
+		},
+		Storage: StorageConfig{
+			Backend: yamlCfg.Storage.Backend,
+			S3: S3Config{
+				Endpoint:     yamlCfg.Storage.S3.Endpoint,
+				Region:       yamlCfg.Storage.S3.Region,
+				Bucket:       yamlCfg.Storage.S3.Bucket,
+				Prefix:       yamlCfg.Storage.S3.Prefix,
+				AccessKey:    yamlCfg.Storage.S3.AccessKey,
+				SecretKey:    yamlCfg.Storage.S3.SecretKey,
+				SessionToken: yamlCfg.Storage.S3.SessionToken,
+				UseSSL:       yamlCfg.Storage.S3.UseSSL,
+				UsePathStyle: yamlCfg.Storage.S3.UsePathStyle,
+				InlineMaxMB:  yamlCfg.Storage.S3.InlineMaxMB,
+				TempDir:      yamlCfg.Storage.S3.TempDir,
+			},
 		},
 		DistributionsConfigPath: yamlCfg.DistributionsConfig,
 	}

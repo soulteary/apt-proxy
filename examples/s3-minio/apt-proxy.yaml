@@ -1,0 +1,39 @@
+# Example apt-proxy.yaml using an S3-compatible bucket as the cache store.
+#
+# Save this file alongside the apt-proxy binary (or pass it via --config) and
+# point APT_PROXY_S3_ACCESS_KEY / APT_PROXY_S3_SECRET_KEY at credentials with
+# read+write access to the bucket. The bucket itself must already exist.
+#
+# This file uses ${VAR} style substitution: secrets stay out of YAML and live
+# in environment variables / your secret manager of choice.
+
+server:
+  host: "0.0.0.0"
+  port: "3142"
+
+mode: all
+
+storage:
+  backend: s3
+  s3:
+    endpoint: "${APT_PROXY_S3_ENDPOINT:-minio:9000}"
+    region: "${APT_PROXY_S3_REGION:-}"
+    bucket: "${APT_PROXY_S3_BUCKET:-apt-proxy}"
+    prefix: "apt-proxy/"
+    access_key: "${APT_PROXY_S3_ACCESS_KEY}"
+    secret_key: "${APT_PROXY_S3_SECRET_KEY}"
+    use_ssl: false
+    use_path_style: true   # MinIO/Ceph need path-style; AWS S3 typically false
+    inline_max_mb: 32      # writes <= 32 MiB stay in memory; larger spill to TempDir
+    temp_dir: ""           # empty = os.TempDir()
+
+cache:
+  # Max in-bucket footprint (httpcache-kit enforces this via LRU eviction).
+  max_size_gb: 50
+  ttl_hours: 168
+  cleanup_interval_min: 60
+
+mirrors:
+  # Optional: pin upstream mirrors. Empty = auto-benchmark on startup.
+  ubuntu: ""
+  debian: ""

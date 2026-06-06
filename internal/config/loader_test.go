@@ -432,3 +432,189 @@ func TestYamlConfigToConfig_PartialHostPort(t *testing.T) {
 		t.Errorf("expected Listen with default host, got '%s'", cfg2.Listen)
 	}
 }
+
+// TestValidateConfig_S3Backend covers the storage-backend branch added for
+// the S3 cache. CacheDir is intentionally left empty for s3-backend cases:
+// the validator must accept that.
+func TestValidateConfig_S3Backend(t *testing.T) {
+	t.Run("missing endpoint", func(t *testing.T) {
+		cfg := &Config{
+			Listen: "0.0.0.0:3142",
+			Storage: StorageConfig{
+				Backend: StorageBackendS3,
+				S3:      S3Config{Bucket: "b"},
+			},
+		}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("missing S3 endpoint should fail validation")
+		}
+	})
+	t.Run("missing bucket", func(t *testing.T) {
+		cfg := &Config{
+			Listen: "0.0.0.0:3142",
+			Storage: StorageConfig{
+				Backend: StorageBackendS3,
+				S3:      S3Config{Endpoint: "minio:9000"},
+			},
+		}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("missing S3 bucket should fail validation")
+		}
+	})
+	t.Run("orphan access key", func(t *testing.T) {
+		cfg := &Config{
+			Listen: "0.0.0.0:3142",
+			Storage: StorageConfig{
+				Backend: StorageBackendS3,
+				S3: S3Config{
+					Endpoint:  "minio:9000",
+					Bucket:    "b",
+					AccessKey: "ak",
+				},
+			},
+		}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("access_key without secret_key should fail validation")
+		}
+	})
+	t.Run("orphan secret key", func(t *testing.T) {
+		cfg := &Config{
+			Listen: "0.0.0.0:3142",
+			Storage: StorageConfig{
+				Backend: StorageBackendS3,
+				S3: S3Config{
+					Endpoint:  "minio:9000",
+					Bucket:    "b",
+					SecretKey: "sk",
+				},
+			},
+		}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("secret_key without access_key should fail validation")
+		}
+	})
+	t.Run("valid s3 config without CacheDir", func(t *testing.T) {
+		cfg := &Config{
+			Listen: "0.0.0.0:3142",
+			// CacheDir intentionally empty: not required for s3 backend.
+			Storage: StorageConfig{
+				Backend: StorageBackendS3,
+				S3: S3Config{
+					Endpoint:  "minio:9000",
+					Bucket:    "apt-proxy",
+					AccessKey: "ak",
+					SecretKey: "sk",
+				},
+			},
+		}
+		if err := ValidateConfig(cfg); err != nil {
+			t.Errorf("valid s3 config should pass validation: %v", err)
+		}
+	})
+	t.Run("unknown backend", func(t *testing.T) {
+		cfg := &Config{
+			Listen:   "0.0.0.0:3142",
+			CacheDir: t.TempDir(),
+			Storage:  StorageConfig{Backend: "blob"},
+		}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("unknown storage backend should fail validation")
+		}
+	})
+}
+
+func TestMergeConfigs_StorageFields(t *testing.T) {
+	base := &Config{
+		Storage: StorageConfig{
+			Backend: StorageBackendDisk,
+			S3: S3Config{
+				Prefix:      "old/",
+				InlineMaxMB: 16,
+				UseSSL:      false,
+			},
+		},
+	}
+	override := &Config{
+		Storage: StorageConfig{
+			Backend: StorageBackendS3,
+			S3: S3Config{
+				Endpoint:    "minio:9000",
+				Bucket:      "apt-proxy",
+				Prefix:      "new/",
+				AccessKey:   "ak",
+				SecretKey:   "sk",
+				InlineMaxMB: 64,
+				UseSSL:      true,
+			},
+		},
+	}
+	got := MergeConfigs(base, override)
+	if got.Storage.Backend != StorageBackendS3 {
+		t.Errorf("Backend should be overridden to s3, got %q", got.Storage.Backend)
+	}
+	if got.Storage.S3.Endpoint != "minio:9000" {
+		t.Errorf("Endpoint should be overridden, got %q", got.Storage.S3.Endpoint)
+	}
+	if got.Storage.S3.Prefix != "new/" {
+		t.Errorf("Prefix should be overridden, got %q", got.Storage.S3.Prefix)
+	}
+	if got.Storage.S3.InlineMaxMB != 64 {
+		t.Errorf("InlineMaxMB should be overridden, got %d", got.Storage.S3.InlineMaxMB)
+	}
+	if !got.Storage.S3.UseSSL {
+		t.Error("UseSSL should be overridden to true")
+	}
+}
+
+func TestYamlConfigToConfig_StorageS3(t *testing.T) {
+	yamlCfg := &YAMLConfig{}
+	yamlCfg.Storage.Backend = StorageBackendS3
+	yamlCfg.Storage.S3.Endpoint = "minio:9000"
+	yamlCfg.Storage.S3.Region = "us-east-1"
+	yamlCfg.Storage.S3.Bucket = "apt-proxy"
+	yamlCfg.Storage.S3.Prefix = "cache/"
+	yamlCfg.Storage.S3.AccessKey = "ak"
+	yamlCfg.Storage.S3.SecretKey = "sk"
+	yamlCfg.Storage.S3.UseSSL = true
+	yamlCfg.Storage.S3.UsePathStyle = true
+	yamlCfg.Storage.S3.InlineMaxMB = 8
+
+	cfg := yamlConfigToConfig(yamlCfg)
+	if cfg.Storage.Backend != StorageBackendS3 {
+		t.Errorf("Backend mismatch: %q", cfg.Storage.Backend)
+	}
+	if cfg.Storage.S3.Endpoint != "minio:9000" || cfg.Storage.S3.Region != "us-east-1" {
+		t.Errorf("endpoint/region mismatch: %+v", cfg.Storage.S3)
+	}
+	if cfg.Storage.S3.Bucket != "apt-proxy" || cfg.Storage.S3.Prefix != "cache/" {
+		t.Errorf("bucket/prefix mismatch: %+v", cfg.Storage.S3)
+	}
+	if cfg.Storage.S3.AccessKey != "ak" || cfg.Storage.S3.SecretKey != "sk" {
+		t.Error("access/secret key not propagated")
+	}
+	if !cfg.Storage.S3.UseSSL || !cfg.Storage.S3.UsePathStyle {
+		t.Error("use_ssl / use_path_style not propagated")
+	}
+	if cfg.Storage.S3.InlineMaxMB != 8 {
+		t.Errorf("InlineMaxMB mismatch: %d", cfg.Storage.S3.InlineMaxMB)
+	}
+}
+
+func TestApplyDefaults_S3Backend(t *testing.T) {
+	cfg := &Config{
+		Storage: StorageConfig{
+			Backend: StorageBackendS3,
+			S3: S3Config{
+				Endpoint: "minio:9000",
+				Bucket:   "apt-proxy",
+			},
+		},
+	}
+	got := applyDefaults(cfg)
+	if got.Storage.S3.Prefix != DefaultS3Prefix {
+		t.Errorf("prefix default not applied: %q", got.Storage.S3.Prefix)
+	}
+	if got.Storage.S3.InlineMaxMB != DefaultS3InlineMaxMB {
+		t.Errorf("inline_max_mb default not applied: %d", got.Storage.S3.InlineMaxMB)
+	}
+}

@@ -51,6 +51,24 @@ const (
 
 	// Distributions configuration (distributions.yaml) path
 	EnvDistributionsConfig = "APT_PROXY_DISTRIBUTIONS_CONFIG"
+
+	// Storage backend selection: "disk" (default) or "s3"
+	EnvStorageBackend = "APT_PROXY_STORAGE_BACKEND"
+
+	// S3 storage backend environment variables. Credentials default to the
+	// canonical AWS_* names so existing IAM tooling (instance role, IRSA,
+	// shared credentials) keeps working without explicit configuration.
+	EnvS3Endpoint     = "APT_PROXY_S3_ENDPOINT"
+	EnvS3Region       = "APT_PROXY_S3_REGION"
+	EnvS3Bucket       = "APT_PROXY_S3_BUCKET"
+	EnvS3Prefix       = "APT_PROXY_S3_PREFIX"
+	EnvS3AccessKey    = "APT_PROXY_S3_ACCESS_KEY" // #nosec G101 -- env var name, not a credential
+	EnvS3SecretKey    = "APT_PROXY_S3_SECRET_KEY" // #nosec G101 -- env var name, not a credential
+	EnvS3SessionToken = "APT_PROXY_S3_SESSION_TOKEN"
+	EnvS3UseSSL       = "APT_PROXY_S3_USE_SSL"
+	EnvS3UsePathStyle = "APT_PROXY_S3_USE_PATH_STYLE"
+	EnvS3InlineMaxMB  = "APT_PROXY_S3_INLINE_MAX_MB"
+	EnvS3TempDir      = "APT_PROXY_S3_TEMP_DIR"
 )
 
 // Default configuration values
@@ -72,6 +90,16 @@ const (
 
 	// Default API rate limit: requests per IP per minute (0 = disabled)
 	DefaultAPIRateLimitPerMinute = 60
+
+	// Default storage backend (local disk preserves prior behaviour).
+	DefaultStorageBackend = "disk"
+	// Default in-memory write threshold for the S3 backend, in mebibytes.
+	// Above this size a spill to TempDir occurs before PutObject runs.
+	DefaultS3InlineMaxMB = 32
+	// Default object-key prefix for the S3 backend. The trailing slash is
+	// significant: it keeps every cached body/header inside a single
+	// "folder" so the bucket can be shared with other tooling.
+	DefaultS3Prefix = "apt-proxy/"
 )
 
 // Environment variable names for logging configuration. The historical names
