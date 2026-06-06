@@ -21,119 +21,14 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
-	"os"
 	"testing"
 
-	logger "github.com/soulteary/logger-kit"
-
 	"github.com/soulteary/apt-proxy/internal/api"
-	"github.com/soulteary/apt-proxy/internal/distro"
-	"github.com/soulteary/apt-proxy/internal/proxy"
-	"github.com/soulteary/apt-proxy/internal/state"
-	httpcache "github.com/soulteary/httpcache-kit"
 )
-
-// testServer wraps an httptest.Server with common test utilities.
-type testServer struct {
-	*httptest.Server
-	cacheDir string
-	cache    httpcache.ExtendedCache
-}
-
-// newTestServer creates a new test server with a temporary cache directory.
-func newTestServer(t *testing.T) *testServer {
-	t.Helper()
-
-	// Create temporary cache directory
-	cacheDir, err := os.MkdirTemp("", "apt-proxy-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp cache dir: %v", err)
-	}
-
-	// Build per-test state with mock mirrors so the async benchmark
-	// inside NewPackageStruct doesn't try to reach real mirrors.
-	st := state.NewAppState()
-	st.SetProxyMode(distro.TypeAllDistros)
-	st.SetMirror(distro.TypeUbuntu, "http://mirrors.example.com/ubuntu/")
-	st.SetMirror(distro.TypeUbuntuPorts, "http://mirrors.example.com/ubuntu-ports/")
-	st.SetMirror(distro.TypeDebian, "http://mirrors.example.com/debian/")
-	st.SetMirror(distro.TypeCentOS, "http://mirrors.example.com/centos/")
-	st.SetMirror(distro.TypeAlpine, "http://mirrors.example.com/alpine/")
-	reg := distro.NewBuiltinRegistry()
-
-	// Create cache
-	cache, err := httpcache.NewDiskCacheWithConfig(cacheDir, httpcache.DefaultCacheConfig())
-	if err != nil {
-		os.RemoveAll(cacheDir)
-		t.Fatalf("failed to create cache: %v", err)
-	}
-
-	// Create logger
-	log := logger.New(logger.Config{
-		Level:  logger.ErrorLevel,
-		Output: io.Discard,
-	})
-
-	// Create proxy router
-	proxyRouter, err := proxy.NewPackageStruct(proxy.Options{
-		State:    st,
-		Registry: reg,
-		CacheDir: cacheDir,
-		Logger:   log,
-		Mode:     distro.TypeAllDistros,
-		Async:    true,
-	})
-	if err != nil {
-		os.RemoveAll(cacheDir)
-		t.Fatalf("failed to create proxy router: %v", err)
-	}
-
-	// Wrap with cache handler
-	cachedHandler := httpcache.NewHandler(cache, proxyRouter.Handler)
-	proxyRouter.Handler = cachedHandler
-
-	// Create handlers
-	cacheHandler := api.NewCacheHandler(cache, log)
-	mirrorsHandler := api.NewMirrorsHandler(log, proxyRouter.RefreshMirrors)
-	authMiddleware := api.NewAuthMiddleware(api.AuthConfig{
-		APIKey: "test-api-key",
-		Logger: log,
-	})
-
-	// Create router
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
-	mux.HandleFunc("/api/cache/stats", authMiddleware.WrapFunc(cacheHandler.HandleCacheStats))
-	mux.HandleFunc("/api/cache/purge", authMiddleware.WrapFunc(cacheHandler.HandleCachePurge))
-	mux.HandleFunc("/api/cache/cleanup", authMiddleware.WrapFunc(cacheHandler.HandleCacheCleanup))
-	mux.HandleFunc("/api/mirrors/refresh", authMiddleware.WrapFunc(mirrorsHandler.HandleMirrorsRefresh))
-
-	// Create test server
-	server := httptest.NewServer(mux)
-
-	return &testServer{
-		Server:   server,
-		cacheDir: cacheDir,
-		cache:    cache,
-	}
-}
-
-// cleanup cleans up test resources.
-func (ts *testServer) cleanup() {
-	ts.Close()
-	if ts.cache != nil {
-		ts.cache.Close()
-	}
-	os.RemoveAll(ts.cacheDir)
-}
 
 // TestHealthEndpoint tests the health check endpoint.
 func TestHealthEndpoint(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.cleanup()
 
 	resp, err := http.Get(ts.URL + "/healthz")
@@ -163,7 +58,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 // TestCacheStatsEndpointWithoutAuth tests that cache stats requires authentication.
 func TestCacheStatsEndpointWithoutAuth(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.cleanup()
 
 	resp, err := http.Get(ts.URL + "/api/cache/stats")
@@ -179,7 +74,7 @@ func TestCacheStatsEndpointWithoutAuth(t *testing.T) {
 
 // TestCacheStatsEndpointWithAuth tests that cache stats works with valid API key.
 func TestCacheStatsEndpointWithAuth(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.cleanup()
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/cache/stats", nil)
@@ -212,7 +107,7 @@ func TestCacheStatsEndpointWithAuth(t *testing.T) {
 
 // TestCachePurgeEndpoint tests the cache purge endpoint.
 func TestCachePurgeEndpoint(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.cleanup()
 
 	// Purge requires POST method
@@ -245,7 +140,7 @@ func TestCachePurgeEndpoint(t *testing.T) {
 
 // TestCachePurgeMethodNotAllowed tests that GET requests to purge are rejected.
 func TestCachePurgeMethodNotAllowed(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.cleanup()
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/cache/purge", nil)
@@ -267,7 +162,7 @@ func TestCachePurgeMethodNotAllowed(t *testing.T) {
 
 // TestMirrorsRefreshEndpoint tests the mirrors refresh endpoint.
 func TestMirrorsRefreshEndpoint(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.cleanup()
 
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/mirrors/refresh", nil)
@@ -299,7 +194,7 @@ func TestMirrorsRefreshEndpoint(t *testing.T) {
 
 // TestInvalidAPIKey tests that requests with invalid API key are rejected.
 func TestInvalidAPIKey(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.cleanup()
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/cache/stats", nil)
@@ -321,7 +216,7 @@ func TestInvalidAPIKey(t *testing.T) {
 
 // TestBearerTokenAuth tests that Bearer token authentication works.
 func TestBearerTokenAuth(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.cleanup()
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/cache/stats", nil)

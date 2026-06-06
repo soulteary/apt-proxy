@@ -43,6 +43,28 @@ func TestByteCountDecimal(t *testing.T) {
 	}
 }
 
+// TestByteCountBinary pins the 1024-based formatting used by the API stats
+// endpoint. Threshold values (1023/1024, 1MiB-1/1MiB) catch off-by-one
+// regressions when the unit boundary is touched.
+func TestByteCountBinary(t *testing.T) {
+	cases := []struct {
+		in   uint64
+		want string
+	}{
+		{0, "0 B"},
+		{1023, "1023 B"},
+		{1024, "1.00 KB"},
+		{1536, "1.50 KB"},
+		{1024 * 1024, "1.00 MB"},
+		{1024*1024*1024 + 512*1024*1024, "1.50 GB"},
+	}
+	for _, c := range cases {
+		if got := ByteCountBinary(c.in); got != c.want {
+			t.Errorf("ByteCountBinary(%d) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestDirSize(t *testing.T) {
 	dir := t.TempDir()
 

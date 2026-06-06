@@ -71,6 +71,14 @@ jobs:
           go test -race -short -count=1 -coverprofile=coverage.out -covermode=atomic ./...
           go tool cover -func=coverage.out | tail -n 1
 
+      # Rerun the cross-Server isolation cases with -count=3 to catch
+      # flakes that the single-pass unit run might miss. Kept on the
+      # default (untagged) test build so it stays cheap; the matching
+      # integration cases run in the dedicated job below.
+      - name: Cross-Server isolation (race x3)
+        if: matrix.os == 'ubuntu-latest'
+        run: go test -race -count=3 -run 'Isolation|TwoServers' ./internal/...
+
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

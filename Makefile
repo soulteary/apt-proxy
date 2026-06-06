@@ -23,6 +23,8 @@ help:
 	@echo "  make run          - go run the daemon"
 	@echo "  make test         - run unit tests with -race -short"
 	@echo "  make test-full    - run all tests (including integration)"
+	@echo "  make test-integration - run integration-tagged tests"
+	@echo "  make test-isolation   - rerun cross-Server isolation tests under -race -count=3"
 	@echo "  make cover        - generate coverage profile + summary"
 	@echo "  make lint         - run golangci-lint"
 	@echo "  make fmt          - run gofmt + goimports"
@@ -53,6 +55,17 @@ test-full:
 .PHONY: test-integration
 test-integration:
 	$(GO) test -tags=integration -race -count=1 -timeout=10m ./tests/integration/...
+
+# test-isolation reruns the per-Server isolation suite with -race and
+# -count=3 so flaky cross-Server bleed shows up locally and in CI. The
+# unit-level cases in internal/cli/server_isolation_test.go run on the
+# default tag; the matching integration cases (multi-server real-port
+# tests in tests/integration/multi_server_test.go) require the
+# `integration` tag.
+.PHONY: test-isolation
+test-isolation:
+	$(GO) test -race -count=3 -run 'Isolation|TwoServers' ./internal/...
+	$(GO) test -tags=integration -race -count=3 -run 'MultiServer' -timeout=5m ./tests/integration/...
 
 .PHONY: cover
 cover:

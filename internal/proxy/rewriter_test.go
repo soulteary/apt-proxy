@@ -23,23 +23,6 @@ import (
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
-// newTestState constructs a fresh AppState pre-populated with mock
-// mirrors, so tests don't have to set / reset shared globals.
-func newTestState() *state.AppState {
-	st := state.NewAppState()
-	st.SetMirror(distro.TypeUbuntu, "http://mirrors.example.com/ubuntu/")
-	st.SetMirror(distro.TypeUbuntuPorts, "http://mirrors.example.com/ubuntu-ports/")
-	st.SetMirror(distro.TypeDebian, "http://mirrors.example.com/debian/")
-	st.SetMirror(distro.TypeCentOS, "http://mirrors.example.com/centos/")
-	st.SetMirror(distro.TypeAlpine, "http://mirrors.example.com/alpine/")
-	return st
-}
-
-// newTestRegistry returns a registry seeded with the built-in distributions.
-func newTestRegistry() *distro.Registry {
-	return distro.NewBuiltinRegistry()
-}
-
 func TestCreateNewRewriters(t *testing.T) {
 	st := newTestState()
 	reg := newTestRegistry()

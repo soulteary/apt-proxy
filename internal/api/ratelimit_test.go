@@ -166,3 +166,36 @@ func TestRateLimitInvalidTrustedCIDR(t *testing.T) {
 		t.Errorf("expected 0 trusted proxies, got %d", len(m.clientIP.trustedProxies))
 	}
 }
+
+// TestRateLimitWrapFunc verifies the HandlerFunc adapter delegates through
+// the Handler-shaped Wrap path: same throttling semantics, no panic on the
+// HandlerFunc -> Handler bridge.
+func TestRateLimitWrapFunc(t *testing.T) {
+	m := NewRateLimitMiddleware(2, newTestLogger())
+	calls := 0
+	wrapped := m.WrapFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	})
+
+	hit := func() int {
+		req := httptest.NewRequest(http.MethodGet, "/x", nil)
+		req.RemoteAddr = "5.5.5.5:1234"
+		rr := httptest.NewRecorder()
+		wrapped.ServeHTTP(rr, req)
+		return rr.Code
+	}
+
+	if c := hit(); c != http.StatusOK {
+		t.Fatalf("first: %d", c)
+	}
+	if c := hit(); c != http.StatusOK {
+		t.Fatalf("second: %d", c)
+	}
+	if c := hit(); c != http.StatusTooManyRequests {
+		t.Fatalf("third (should throttle): %d", c)
+	}
+	if calls != 2 {
+		t.Errorf("inner handler should run only for the 2 allowed requests, got %d", calls)
+	}
+}
