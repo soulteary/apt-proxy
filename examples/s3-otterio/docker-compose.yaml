@@ -55,7 +55,7 @@ services:
     # Build from the repo root: `docker compose build` after a `git clone`.
     build:
       context: ../..
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     container_name: apt-proxy
     depends_on:
       otterio-init:
