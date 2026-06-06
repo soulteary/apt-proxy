@@ -30,7 +30,7 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 - **Lightweight**: Binary size is just less 10MB - minimal resource footprint
 - **Smart Mirror Selection**: Automatically benchmarks and selects the fastest mirror
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
-- **Drop-in Replacement**: Compatible with [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) configurations
+- **apt-cacher-ng Friendly**: Compatible with most [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) usage patterns (note: advanced features such as the Import/Maint web UI, full `acng.conf` syntax, and cross-distro deb deduplication are not implemented)
 - **Zero Configuration**: Works out of the box with sensible defaults
 - **Observability**: Built-in health checks, Prometheus metrics, structured logging, and optional OpenTelemetry tracing
 - **Cache Management**: REST API for cache statistics, purging, and cleanup, with API-key authentication and per-IP rate limiting
