@@ -527,6 +527,7 @@ storage:
     use_ssl: true
     use_path_style: false                # MinIO/Ceph need true; AWS/R2/B2 use false
     inline_max_mb: 32                    # writes <= 32 MiB stay in memory; larger spill to TempDir
+                                         # NOTE: per-write cap; RAM peak ~= concurrency * inline_max_mb (see "Resource sizing")
     temp_dir: ""                         # empty = os.TempDir()
 ```
 
@@ -583,6 +584,88 @@ APT_PROXY_S3_USE_PATH_STYLE=true
   `PutObject`. Tune `inline_max_mb` based on your typical package size.
 - `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` are **ignored** when the
   S3 backend is active. Only TLS cert/key files still need a local path.
+
+**Resource sizing & capacity planning (S3 backend):**
+
+The defaults are tuned for low-to-medium concurrency; under heavy concurrent
+ingest you must size memory and disk accordingly, otherwise you risk OOM kills
+or `temp_dir` exhaustion.
+
+- **Memory peak ≈ `concurrent_uploads × inline_max_mb`.** The `inline_max_mb`
+  threshold (default `32`) is a *per-write* cap, not a global one. Every
+  in-flight write that has not yet crossed the threshold holds its own buffer
+  in RAM. Worst-case examples:
+
+  | Concurrent uploads | `inline_max_mb` | Approx. RSS headroom needed |
+  | ------------------ | --------------- | --------------------------- |
+  | 50                 | `32`            | ~1.6 GiB                    |
+  | 200                | `32`            | ~6.4 GiB                    |
+  | 1000               | `32`            | ~32 GiB                     |
+  | 1000               | `4`             | ~4 GiB                      |
+
+  If your typical APT objects are small (`Packages.gz`, `.deb` < 4 MiB), drop
+  `inline_max_mb` to `4`–`8` to keep the inline path while shrinking the worst
+  case. If you regularly serve large packages (kernels, CUDA, LLVM toolchains
+  > 100 MiB), keep `inline_max_mb` modest and accept the spill — disk is
+  cheaper than RAM at the p99.
+
+- **Disk water-mark on `temp_dir`.** Anything larger than `inline_max_mb`
+  spills exactly once to `temp_dir` (default `os.TempDir()`, i.e. `/tmp`) and
+  is removed on `Close()`. The transient peak is roughly
+  `concurrent_large_uploads × max_object_size`. On Kubernetes this matters in
+  three places:
+
+  1. `/tmp` typically lives on the container's writable layer or an
+     `emptyDir` volume — both count against `ephemeral-storage` limits. Set
+     `resources.requests.ephemeral-storage` and `resources.limits.ephemeral-storage`
+     explicitly, or the kubelet may evict the pod under disk pressure with no
+     warning.
+  2. Prefer mounting an `emptyDir` (optionally `medium: Memory` only if you
+     have RAM to spare) at the path you point `temp_dir` to. This decouples
+     the spill water-mark from the image layer and gives you a predictable
+     ceiling.
+  3. Read-only root filesystems must still grant write access to `temp_dir`
+     (typical pattern: `readOnlyRootFilesystem: true` + a dedicated
+     `emptyDir` mount).
+
+- **Sample Pod sizing** (200 concurrent connections, mixed APT traffic with
+  occasional > 32 MiB packages):
+
+  ```yaml
+  resources:
+    requests:
+      memory: "1Gi"           # baseline + LRU + small-object inline path
+      cpu: "500m"
+      ephemeral-storage: "2Gi"
+    limits:
+      memory: "8Gi"           # 200 × 32 MiB inline worst case + headroom
+      cpu: "2"
+      ephemeral-storage: "8Gi"
+  volumeMounts:
+    - name: spill
+      mountPath: /var/cache/apt-proxy/tmp
+  volumes:
+    - name: spill
+      emptyDir:
+        sizeLimit: 8Gi
+  ```
+
+  And in `apt-proxy.yaml`:
+
+  ```yaml
+  storage:
+    backend: s3
+    s3:
+      inline_max_mb: 8         # smaller cap → lower memory peak
+      temp_dir: /var/cache/apt-proxy/tmp
+  ```
+
+- **Rule of thumb.** Pick `inline_max_mb` so that
+  `expected_concurrency × inline_max_mb` fits comfortably inside your memory
+  *limit* (not request), and size `temp_dir` to at least
+  `expected_concurrency × p99_package_size`. When in doubt, lower
+  `inline_max_mb` first: the disk path is well-tested and the only cost is one
+  extra `write→read` round-trip per large object.
 
 A complete working example (compose stack with OtterIO + auto-provisioned bucket
 + pre-wired apt-proxy) lives in [`examples/s3-otterio/`](examples/s3-otterio/).

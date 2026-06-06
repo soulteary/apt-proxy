@@ -58,6 +58,8 @@ storage:
     use_ssl: true         # use HTTPS to talk to the endpoint
     use_path_style: false # MinIO/Ceph need true; AWS/R2/B2 use false
     inline_max_mb: 32     # writes <= 32 MiB stay in RAM, larger spill to temp_dir
+                          # NOTE: this is a per-write cap; memory peak ~= concurrency * inline_max_mb.
+                          # Lower this (e.g. 4-8) under high concurrency. See README "Resource sizing".
     temp_dir: ""          # empty = os.TempDir()
 
 # Optional: path to distributions/mirrors YAML (distributions.yaml)

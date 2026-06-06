@@ -526,6 +526,7 @@ storage:
     use_ssl: true
     use_path_style: false                # MinIO/Ceph 需为 true；AWS/R2/B2 用 false
     inline_max_mb: 32                    # ≤32 MiB 走内存缓冲；超过则落盘临时文件
+                                         # 注意：是每个写入的上限；内存峰值 ≈ 并发数 × inline_max_mb（见"资源容量规划"）
     temp_dir: ""                         # 留空使用 os.TempDir()
 ```
 
@@ -579,6 +580,78 @@ APT_PROXY_S3_USE_PATH_STYLE=true
   阈值则落盘到临时文件再 `PutObject`。可根据典型包大小调整。
 - S3 模式下 `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` 会被**忽略**；只有
   TLS 证书路径仍然需要本地文件。
+
+**资源容量规划（S3 后端）：**
+
+默认参数面向中低并发场景。在高并发写入下，必须按以下方式显式规划内存与磁盘，
+否则可能触发 OOM 或 `temp_dir` 写满。
+
+- **内存峰值 ≈ 并发写入数 × `inline_max_mb`。** `inline_max_mb`（默认 `32`）
+  是**每个写入**的内存上限，不是全局上限。每一个尚未越过阈值的并发写入都会
+  独立持有自己的缓冲区。最坏情况估算：
+
+  | 并发写入数 | `inline_max_mb` | 预估所需 RSS  |
+  | ---------- | --------------- | ------------- |
+  | 50         | `32`            | ~1.6 GiB      |
+  | 200        | `32`            | ~6.4 GiB      |
+  | 1000       | `32`            | ~32 GiB       |
+  | 1000       | `4`             | ~4 GiB        |
+
+  如果你服务的主要是小对象（`Packages.gz`、< 4 MiB 的 `.deb`），可以把
+  `inline_max_mb` 下调到 `4`–`8`，仍走内存路径但显著缩小最坏内存占用；如果
+  经常分发大包（kernel、CUDA、LLVM 工具链 > 100 MiB），就把 `inline_max_mb`
+  保持较小、接受 spill——p99 时刻磁盘比内存便宜。
+
+- **`temp_dir` 的磁盘水位。** 大于 `inline_max_mb` 的写入会**一次性**落盘到
+  `temp_dir`（默认 `os.TempDir()`，即 `/tmp`），并在 `Close()` 时删除。瞬时
+  峰值约为 `大对象并发数 × 最大对象大小`。在 Kubernetes 上需要留意三点：
+
+  1. `/tmp` 通常落在容器可写层或 `emptyDir` 上——这些都计入
+     `ephemeral-storage` 限额。务必显式设置
+     `resources.requests.ephemeral-storage` 与
+     `resources.limits.ephemeral-storage`，否则 kubelet 可能在磁盘压力下
+     无声驱逐 Pod。
+  2. 推荐挂载一个 `emptyDir`（如内存够大也可使用 `medium: Memory`）到你
+     `temp_dir` 指向的路径，把 spill 水位与镜像层解耦，并获得可预期的上限。
+  3. 启用只读根文件系统（`readOnlyRootFilesystem: true`）时，必须给
+     `temp_dir` 单独挂载一个可写的 `emptyDir`。
+
+- **Pod 配置示例**（200 并发，混合流量，偶尔出现 > 32 MiB 的包）：
+
+  ```yaml
+  resources:
+    requests:
+      memory: "1Gi"           # 基线 + LRU + 小对象内联缓冲
+      cpu: "500m"
+      ephemeral-storage: "2Gi"
+    limits:
+      memory: "8Gi"           # 200 × 32 MiB 内联最坏情况 + 余量
+      cpu: "2"
+      ephemeral-storage: "8Gi"
+  volumeMounts:
+    - name: spill
+      mountPath: /var/cache/apt-proxy/tmp
+  volumes:
+    - name: spill
+      emptyDir:
+        sizeLimit: 8Gi
+  ```
+
+  以及 `apt-proxy.yaml` 中：
+
+  ```yaml
+  storage:
+    backend: s3
+    s3:
+      inline_max_mb: 8         # 收紧上限以压低内存峰值
+      temp_dir: /var/cache/apt-proxy/tmp
+  ```
+
+- **经验法则。** 选取的 `inline_max_mb` 应满足
+  `预期并发 × inline_max_mb` 能舒适地落在你的内存 *limit*（不是 request）以内；
+  `temp_dir` 至少要预留 `预期并发 × p99 包大小`。拿不准时优先调小
+  `inline_max_mb`：spill 路径经过良好测试，唯一代价不过是大对象多走一次
+  `write→read` 而已。
 
 完整可运行的示例（含 OtterIO + 自动建桶 + 接好的 apt-proxy）见
 [`examples/s3-otterio/`](examples/s3-otterio/)。

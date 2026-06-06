@@ -31,6 +31,7 @@ storage:
     use_ssl: false
     use_path_style: true   # OtterIO/MinIO/Ceph need path-style; AWS S3 typically false
     inline_max_mb: 32      # writes <= 32 MiB stay in memory; larger spill to TempDir
+                           # NOTE: per-write cap; RAM peak ~= concurrency * inline_max_mb.
     temp_dir: ""           # empty = os.TempDir()
 
 cache:
