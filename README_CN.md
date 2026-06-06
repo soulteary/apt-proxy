@@ -6,11 +6,15 @@
   <a href="README.md" target="_blank">ENGLISH</a> | <a href="README_CN.md">中文文档</a>
 </p>
 
-<img src="example/assets/logo.png" width="64"/>
+<p align="center">
+  <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
+</p>
 
 > 一个轻量级的 APT 缓存代理 - 仅仅只有 2MB 大小！
 
-<img src="example/assets/preview.png" width="600"/>
+<p align="center">
+  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
+</p>
 
 ## 概述
 

@@ -6,11 +6,15 @@
   <a href="README.md">ENGLISH</a> | <a href="README_CN.md"  target="_blank">中文文档</a>
 </p>
 
-<img src="example/assets/logo.png" width="64"/>
+<p align="center">
+  <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
+</p>
 
 > A lightweight **APT Cache Proxy** - just over 2MB in size!
 
-<img src="example/assets/preview.png" width="600"/>
+<p align="center">
+  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
+</p>
 
 ## Overview
 
