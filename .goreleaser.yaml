@@ -111,6 +111,8 @@ dockers:
   - image_templates:
       - "soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-amd64"
+      - "ghcr.io/soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
+      - "ghcr.io/soulteary/apt-proxy:linux-amd64"
     dockerfile: docker/Dockerfile.gorelease
     use: buildx
     goarch: amd64
@@ -129,6 +131,8 @@ dockers:
   - image_templates:
       - "soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-arm64"
+      - "ghcr.io/soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
+      - "ghcr.io/soulteary/apt-proxy:linux-arm64"
     dockerfile: docker/Dockerfile.gorelease
     use: buildx
     goos: linux
@@ -149,6 +153,8 @@ dockers:
   - image_templates:
       - "soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-armv7"
+      - "ghcr.io/soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
+      - "ghcr.io/soulteary/apt-proxy:linux-armv7"
     dockerfile: docker/Dockerfile.gorelease
     use: buildx
     goos: linux
@@ -178,6 +184,18 @@ docker_manifests:
       - "soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
       - "soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
+
+  - name_template: "ghcr.io/soulteary/apt-proxy:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
+      - "ghcr.io/soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
+      - "ghcr.io/soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
+
+  - name_template: "ghcr.io/soulteary/apt-proxy:latest"
+    image_templates:
+      - "ghcr.io/soulteary/apt-proxy:linux-amd64-{{ .Tag }}"
+      - "ghcr.io/soulteary/apt-proxy:linux-arm64-{{ .Tag }}"
+      - "ghcr.io/soulteary/apt-proxy:linux-armv7-{{ .Tag }}"
 
 release:
   github:

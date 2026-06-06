@@ -10,7 +10,7 @@
   <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
 </p>
 
-> A lightweight **APT Cache Proxy** - just over 2MB in size!
+> A lightweight **APT Cache Proxy** - just less 10MB in size!
 
 <p align="center">
   <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
@@ -27,7 +27,7 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 ### Key Features
 
 - **Multi-Distribution Support**: Works with APT (Ubuntu/Debian), YUM (CentOS), and APK (Alpine Linux)
-- **Lightweight**: Binary size is just over 2MB - minimal resource footprint
+- **Lightweight**: Binary size is just less 10MB - minimal resource footprint
 - **Smart Mirror Selection**: Automatically benchmarks and selects the fastest mirror
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
 - **Drop-in Replacement**: Compatible with [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) configurations
