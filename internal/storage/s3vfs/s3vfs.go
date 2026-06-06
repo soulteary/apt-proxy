@@ -334,18 +334,16 @@ func (s *S3VFS) statKey(key, logical string) (os.FileInfo, error) {
 func (s *S3VFS) dirExists(prefix string) bool {
 	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
-	for obj := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
+	ch := s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: true,
 		MaxKeys:   1,
-	}) {
-		if obj.Err != nil {
-			return false
-		}
-		_ = obj
-		return true
+	})
+	obj, ok := <-ch
+	if !ok {
+		return false
 	}
-	return false
+	return obj.Err == nil
 }
 
 // ReadDir lists the immediate children of the given vfs directory using a

@@ -16,6 +16,7 @@ package s3vfs
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -174,10 +175,10 @@ func TestIsNotFound(t *testing.T) {
 // any network I/O; this is important so operators get fast, deterministic
 // failure messages on misconfiguration.
 func TestNewRequiresFields(t *testing.T) {
-	if _, err := New(nil, Config{}); err == nil || !strings.Contains(err.Error(), "Endpoint") {
+	if _, err := New(context.TODO(), Config{}); err == nil || !strings.Contains(err.Error(), "Endpoint") {
 		t.Errorf("expected Endpoint required, got %v", err)
 	}
-	if _, err := New(nil, Config{Endpoint: "x"}); err == nil || !strings.Contains(err.Error(), "Bucket") {
+	if _, err := New(context.TODO(), Config{Endpoint: "x"}); err == nil || !strings.Contains(err.Error(), "Bucket") {
 		t.Errorf("expected Bucket required, got %v", err)
 	}
 }

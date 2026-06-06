@@ -62,9 +62,9 @@ const (
 	EnvS3Region       = "APT_PROXY_S3_REGION"
 	EnvS3Bucket       = "APT_PROXY_S3_BUCKET"
 	EnvS3Prefix       = "APT_PROXY_S3_PREFIX"
-	EnvS3AccessKey    = "APT_PROXY_S3_ACCESS_KEY" // #nosec G101 -- env var name, not a credential
-	EnvS3SecretKey    = "APT_PROXY_S3_SECRET_KEY" // #nosec G101 -- env var name, not a credential
-	EnvS3SessionToken = "APT_PROXY_S3_SESSION_TOKEN"
+	EnvS3AccessKey    = "APT_PROXY_S3_ACCESS_KEY"    // #nosec G101 -- env var name, not a credential
+	EnvS3SecretKey    = "APT_PROXY_S3_SECRET_KEY"    // #nosec G101 -- env var name, not a credential
+	EnvS3SessionToken = "APT_PROXY_S3_SESSION_TOKEN" // #nosec G101 -- env var name, not a credential
 	EnvS3UseSSL       = "APT_PROXY_S3_USE_SSL"
 	EnvS3UsePathStyle = "APT_PROXY_S3_USE_PATH_STYLE"
 	EnvS3InlineMaxMB  = "APT_PROXY_S3_INLINE_MAX_MB"
