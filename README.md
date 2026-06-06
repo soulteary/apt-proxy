@@ -37,9 +37,18 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 
 ## Supported Platforms
 
-- Linux: x86_64 / x86_32 / Ubuntu ARM64v8
-- ARM: ARM64v8 / ARM32v6 / ARM32v7
-- macOS: x86_64 / Apple Silicon (ARM64v8)
+Pre-built binaries (tar.gz on the [releases page](https://github.com/soulteary/apt-proxy/releases) and `.deb` / `.rpm` / `.apk` packages):
+
+- Linux: `amd64` (x86_64), `386` (i386), `arm64` (ARMv8), `arm` (ARMv6 and ARMv7)
+- macOS: `amd64` (Intel) and `arm64` (Apple Silicon)
+
+Multi-arch Docker images (`soulteary/apt-proxy` and `ghcr.io/soulteary/apt-proxy`):
+
+- `linux/amd64`
+- `linux/arm64`
+- `linux/arm/v7`
+
+> Note: ARMv6 is shipped as a standalone binary only; there is no ARMv6 Docker image.
 
 ## Quick Start
 

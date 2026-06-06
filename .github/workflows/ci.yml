@@ -95,10 +95,13 @@ jobs:
 
       - name: Build (cross-compile sanity)
         run: |
-          GOOS=linux   GOARCH=amd64 go build -trimpath -o /tmp/apt-proxy-linux-amd64   ./cmd/apt-proxy
-          GOOS=linux   GOARCH=arm64 go build -trimpath -o /tmp/apt-proxy-linux-arm64   ./cmd/apt-proxy
-          GOOS=darwin  GOARCH=amd64 go build -trimpath -o /tmp/apt-proxy-darwin-amd64  ./cmd/apt-proxy
-          GOOS=darwin  GOARCH=arm64 go build -trimpath -o /tmp/apt-proxy-darwin-arm64  ./cmd/apt-proxy
+          GOOS=linux   GOARCH=amd64              go build -trimpath -o /tmp/apt-proxy-linux-amd64   ./cmd/apt-proxy
+          GOOS=linux   GOARCH=arm64              go build -trimpath -o /tmp/apt-proxy-linux-arm64   ./cmd/apt-proxy
+          GOOS=linux   GOARCH=386                go build -trimpath -o /tmp/apt-proxy-linux-386     ./cmd/apt-proxy
+          GOOS=linux   GOARCH=arm   GOARM=6      go build -trimpath -o /tmp/apt-proxy-linux-armv6   ./cmd/apt-proxy
+          GOOS=linux   GOARCH=arm   GOARM=7      go build -trimpath -o /tmp/apt-proxy-linux-armv7   ./cmd/apt-proxy
+          GOOS=darwin  GOARCH=amd64              go build -trimpath -o /tmp/apt-proxy-darwin-amd64  ./cmd/apt-proxy
+          GOOS=darwin  GOARCH=arm64              go build -trimpath -o /tmp/apt-proxy-darwin-arm64  ./cmd/apt-proxy
 
   integration:
     name: Integration (e2e)

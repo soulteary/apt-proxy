@@ -25,6 +25,12 @@ import (
 // DiskAvailable returns the number of bytes available to the current user
 // in the filesystem hosting the given path. When path is empty it falls
 // back to the current working directory (legacy behaviour). Unix-only.
+//
+// Note: on all target architectures (linux/386, linux/arm, linux/arm64,
+// linux/amd64, darwin/amd64, darwin/arm64), unix.Statfs_t.Bavail is uint64
+// and Bsize is signed; the explicit uint64() cast on Bsize keeps the
+// multiplication well-defined on 32-bit builds, so no per-arch shim is
+// required here.
 func DiskAvailable(path ...string) (uint64, error) {
 	target := ""
 	if len(path) > 0 && path[0] != "" {
