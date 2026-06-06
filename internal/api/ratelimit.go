@@ -113,15 +113,3 @@ func (m *RateLimitMiddleware) allow(key string) bool {
 	b.count++
 	return true
 }
-
-// clientKey returns the rate-limit key for a request.
-// Delegates to the shared ClientIPExtractor so auth and rate-limit
-// middlewares observe the same client identity. Retained as a thin wrapper
-// because existing tests poke at it directly.
-func (m *RateLimitMiddleware) clientKey(r *http.Request) string {
-	return m.clientIP.ClientIP(r)
-}
-
-func (m *RateLimitMiddleware) isTrustedProxy(host string) bool {
-	return m.clientIP.isTrustedProxy(host)
-}
