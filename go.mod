@@ -3,9 +3,9 @@ module github.com/soulteary/apt-proxy
 go 1.26
 
 require (
-	github.com/gofiber/fiber/v2 v2.52.13
+	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/minio/minio-go/v7 v7.2.0
+	github.com/minio/minio-go/v7 v7.2.1
 	github.com/soulteary/cli-kit v1.6.0
 	github.com/soulteary/health-kit v1.2.0
 	github.com/soulteary/http-kit v1.1.0
@@ -17,8 +17,8 @@ require (
 	github.com/soulteary/version-kit v1.3.0
 	github.com/soulteary/vfs-kit v1.1.0
 	go.opentelemetry.io/otel v1.44.0
-	golang.org/x/sync v0.20.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/sync v0.21.0
+	golang.org/x/sys v0.46.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
