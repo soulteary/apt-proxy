@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -198,6 +199,14 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		Handler: &httputil.ReverseProxy{
 			Director:  func(r *http.Request) {},
 			Transport: transport,
+			ModifyResponse: func(r *http.Response) error {
+				if r.StatusCode == http.StatusFound && r.Request.Header.Get("Rewrite-HTTPS") != "" {
+					l := r.Header.Get("Location")
+					l = strings.Replace(l, "https://", "/HTTPS///", 1)
+					r.Header.Set("Location", l)
+				}
+				return nil
+			},
 		},
 	}
 	return ps, nil

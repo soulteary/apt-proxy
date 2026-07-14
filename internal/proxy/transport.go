@@ -71,6 +71,7 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		}
 		httpsReq.Header = req.Header.Clone()
 		httpsReq.Header.Set("Host", httpsReq.Host)
+		httpsReq.Header.Set("Rewrite-HTTPS", "true")
 		req = httpsReq
 	}
 
