@@ -17,6 +17,8 @@ package proxy
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	httpkit "github.com/soulteary/http-kit"
@@ -56,6 +58,21 @@ func NewRetryableTransport(baseTransport http.RoundTripper) *RetryableTransport 
 // a single attempt in that case rather than send a corrupt second request.
 func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
+
+	// Add http://
+	if req.URL.Scheme == "" {
+		httpURL, err := url.Parse("http://" + strings.Replace(req.URL.Path, "/", "", 1))
+		if err != nil {
+			return nil, err
+		}
+		httpReq, err := http.NewRequestWithContext(ctx, req.Method, httpURL.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		httpReq.Header = req.Header.Clone()
+		httpReq.Header.Set("Host", httpReq.Host)
+		req = httpReq
+	}
 
 	// Start tracing span
 	spanCtx, span := tracing.StartSpan(ctx, "proxy.upstream.request")
