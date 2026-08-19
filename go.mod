@@ -3,7 +3,7 @@ module github.com/soulteary/apt-proxy
 go 1.26
 
 require (
-	github.com/gofiber/fiber/v2 v2.52.13
+	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/minio/minio-go/v7 v7.2.0
 	github.com/soulteary/cli-kit v1.6.0
