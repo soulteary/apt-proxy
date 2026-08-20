@@ -61,7 +61,7 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 
 	// Rewrite HTTPS///
 	if strings.Contains(req.URL.Path, "HTTPS///") {
-		httpsURL, err := url.Parse(strings.Replace(req.URL.Path, "/HTTPS///", "https://", 1))
+		httpsURL, err := url.Parse(strings.Replace(req.URL.RequestURI(), "/HTTPS///", "https://", 1))
 		if err != nil {
 			return nil, err
 		}
