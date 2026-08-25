@@ -48,9 +48,9 @@ jobs:
           govulncheck ./...
 
       - name: Security Scan
-        # Pinned to gosec v2.27.1 commit SHA to mitigate supply-chain risk.
+        # Pinned to gosec v2.28.0 commit SHA to mitigate supply-chain risk.
         # Update this together with the version comment when bumping.
-        uses: securego/gosec@9e6a9843d7a4a6e3e9a8539b02612c8a4aa3f889 # v2.27.1
+        uses: securego/gosec@5bb2909d48fa8072136f38ad329b37575ab15c9f # v2.28.0
         with:
           args: '-fmt sarif -out results.sarif ./...'
 
