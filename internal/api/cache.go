@@ -17,10 +17,10 @@ package api
 import (
 	"net/http"
 
-	logger "github.com/soulteary/logger-kit"
+	logger "github.com/soulteary/logger-kit/v2"
 
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
-	httpcache "github.com/soulteary/httpcache-kit"
+	httpcache "github.com/soulteary/httpcache-kit/v2"
 )
 
 // CacheHandler handles cache-related API endpoints

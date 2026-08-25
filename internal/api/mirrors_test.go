@@ -20,7 +20,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	logger "github.com/soulteary/logger-kit"
+	logger "github.com/soulteary/logger-kit/v2"
 )
 
 func newTestMirrorsHandler(reload func()) *MirrorsHandler {

@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	logger "github.com/soulteary/logger-kit"
+	logger "github.com/soulteary/logger-kit/v2"
 
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 )

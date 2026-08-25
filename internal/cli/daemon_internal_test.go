@@ -17,7 +17,7 @@ package cli
 import (
 	"testing"
 
-	httpcache "github.com/soulteary/httpcache-kit"
+	httpcache "github.com/soulteary/httpcache-kit/v2"
 
 	"github.com/soulteary/apt-proxy/internal/config"
 )

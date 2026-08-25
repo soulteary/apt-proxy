@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
@@ -193,7 +194,7 @@ func TestServerStartAndShutdown(t *testing.T) {
 	serverErr := make(chan error, 1)
 	go func() {
 		close(serverStarted)
-		if err := srv.app.Listen(cfg.Listen); err != nil {
+		if err := srv.app.Listen(cfg.Listen, fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
 			serverErr <- err
 		}
 		close(serverErr)
