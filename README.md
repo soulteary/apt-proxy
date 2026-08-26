@@ -108,34 +108,36 @@ After the first download, all subsequent package operations will be significantl
 
 ### CentOS
 
-APT Proxy works with YUM repositories. Configure your CentOS system to use the proxy:
-
-**For CentOS 7:**
-
-```bash
-# Configure repository to use proxy
-cat /etc/yum.repos.d/CentOS-Base.repo | \
-  sed -e s/mirrorlist.*$// \
-      -e s/#baseurl/baseurl/ \
-      -e s#http://mirror.centos.org#http://your-domain-or-ip-address:3142# | \
-  tee /etc/yum.repos.d/CentOS-Base.repo
-
-# Verify configuration
-yum update
-```
-
-**For CentOS 8:**
+APT Proxy works with DNF/YUM repositories. CentOS Stream 9 and 10 use the
+[CentOS Stream mirror](https://mirror.stream.centos.org/) and metalink-based
+repository definitions. Configure apt-proxy with the Stream mirror first:
 
 ```bash
-# Update all CentOS repositories to use proxy
-sed -i -e "s#mirror.centos.org#http://your-domain-or-ip-address:3142#g" \
-       -e "s/#baseurl/baseurl/" \
-       -e "s#\$releasever/#8-stream/#" \
-       /etc/yum.repos.d/CentOS-*
-
-# Verify configuration
-yum update
+./apt-proxy \
+  --mode=centos \
+  --centos=https://mirror.stream.centos.org/
 ```
+
+On each CentOS Stream 9 or 10 client, disable the metalink entries and enable
+their matching base URLs through apt-proxy. The existing `$stream` and
+`$basearch` variables select the installed Stream release and architecture:
+
+```bash
+sudo sed -i \
+  -e '/^metalink=/s/^/#/' \
+  -e 's|^#baseurl=http://mirror.stream.centos.org|baseurl=http://your-domain-or-ip-address:3142/centos|' \
+  -e 's|^#baseurl=https://mirror.stream.centos.org|baseurl=http://your-domain-or-ip-address:3142/centos|' \
+  /etc/yum.repos.d/centos*.repo
+
+sudo dnf clean all
+sudo dnf makecache
+```
+
+Inspect the repository files before applying the command if they have been
+customized by an image vendor. apt-proxy does not currently process CentOS
+metalink responses; that work is tracked in [issue #70](https://github.com/soulteary/apt-proxy/issues/70).
+The client-facing URL intentionally uses HTTP while apt-proxy fetches from the
+configured HTTPS upstream.
 
 ### Alpine Linux
 
