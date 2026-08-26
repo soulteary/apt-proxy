@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -56,8 +57,10 @@ type YAMLConfig struct {
 	} `yaml:"tls"`
 
 	Security struct {
-		APIKey                string   `yaml:"api_key"`
-		EnableAPIAuth         bool     `yaml:"enable_api_auth"`
+		APIKey string `yaml:"api_key"`
+		// Pointer preserves the distinction between an omitted value (API key
+		// implies authentication) and an explicit false override.
+		EnableAPIAuth         *bool    `yaml:"enable_api_auth"`
 		APIRateLimitPerMinute int      `yaml:"api_rate_limit_per_minute"`
 		TrustedProxies        []string `yaml:"trusted_proxies"`
 	} `yaml:"security"`
@@ -152,6 +155,11 @@ func expandConfigEnv(src string) string {
 
 // yamlConfigToConfig converts a YAMLConfig to the internal Config structure.
 func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
+	enableAPIAuth := strings.TrimSpace(yamlCfg.Security.APIKey) != ""
+	if yamlCfg.Security.EnableAPIAuth != nil {
+		enableAPIAuth = *yamlCfg.Security.EnableAPIAuth
+	}
+
 	cfg := &Config{
 		Debug:    yamlCfg.Server.Debug,
 		CacheDir: yamlCfg.Cache.Dir,
@@ -174,7 +182,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 		},
 		Security: SecurityConfig{
 			APIKey:                yamlCfg.Security.APIKey,
-			EnableAPIAuth:         yamlCfg.Security.EnableAPIAuth,
+			EnableAPIAuth:         enableAPIAuth,
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
 		},
