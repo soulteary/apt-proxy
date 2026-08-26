@@ -20,6 +20,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/state"
@@ -64,6 +65,9 @@ func ValidateConfig(config *Config) error {
 	// Validate listen address format (host:port or :port)
 	if _, _, err := net.SplitHostPort(config.Listen); err != nil {
 		return fmt.Errorf("invalid listen address %q: %w", config.Listen, err)
+	}
+	if config.Security.EnableAPIAuth && strings.TrimSpace(config.Security.APIKey) == "" {
+		return fmt.Errorf("API authentication is enabled but api_key is empty")
 	}
 
 	// Validate storage backend selection and corresponding fields. The

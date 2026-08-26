@@ -17,6 +17,7 @@ package proxy
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
@@ -200,6 +201,36 @@ func TestRewriteRequestByModePathPrefix(t *testing.T) {
 				t.Errorf("Path = %q, want %q", req.URL.Path, tc.wantPath)
 			}
 		})
+	}
+}
+
+func TestRewriteRequestByModePreservesQueryAndEscapedPath(t *testing.T) {
+	st := state.NewAppState()
+	reg := newTestRegistry()
+	st.SetMirror(distro.TypeUbuntu, "https://mirror.example.com/repo/ubuntu/")
+	rewriters := CreateNewRewriters(distro.TypeUbuntu, st, reg)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		"http://localhost/ubuntu/pool/Foo%2FBar/pkg+name.deb?token=AbC&key=one&key=two",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	RewriteRequestByMode(req, rewriters, distro.TypeUbuntu)
+
+	if got, want := req.URL.Path, "/repo/ubuntu/pool/Foo/Bar/pkg+name.deb"; got != want {
+		t.Errorf("Path = %q, want %q", got, want)
+	}
+	if got, want := req.URL.RawPath, "/repo/ubuntu/pool/Foo%2FBar/pkg+name.deb"; got != want {
+		t.Errorf("RawPath = %q, want %q", got, want)
+	}
+	if got, want := req.URL.RawQuery, "token=AbC&key=one&key=two"; got != want {
+		t.Errorf("RawQuery = %q, want %q", got, want)
+	}
+	if got := req.URL.String(); strings.Count(got, "?") != 1 {
+		t.Fatalf("rewritten URL duplicated query: %q", got)
 	}
 }
 

@@ -340,22 +340,30 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 		return
 	}
 
-	uri := r.URL.String()
-	matches := rewriter.pattern.FindStringSubmatch(uri)
+	// Match only the escaped path. URL.String also contains RawQuery; matching
+	// it used to append the query to Path and then serialize RawQuery again.
+	escapedPath := r.URL.EscapedPath()
+	matches := rewriter.pattern.FindStringSubmatch(escapedPath)
 	if len(matches) == 0 {
 		return
 	}
 
-	queryRaw := matches[len(matches)-1]
-	unescapedQuery, err := url.PathUnescape(queryRaw)
+	suffixRaw := matches[len(matches)-1]
+	suffixPath, err := url.PathUnescape(suffixRaw)
 	if err != nil {
-		logger.Default().Debug().Err(err).Str("query", queryRaw).Msg("path unescape failed, using raw value")
-		unescapedQuery = queryRaw
+		logger.Default().Debug().Err(err).Str("path", suffixRaw).Msg("path unescape failed, using raw value")
+		suffixPath = suffixRaw
 	}
 
 	r.URL.Scheme = rewriter.mirror.Scheme
 	r.URL.Host = rewriter.mirror.Host
-	r.URL.Path = rewriter.mirror.Path + unescapedQuery
+	r.URL.Path = rewriter.mirror.Path + suffixPath
+	rawPath := rewriter.mirror.EscapedPath() + suffixRaw
+	if rawPath != r.URL.Path {
+		r.URL.RawPath = rawPath
+	} else {
+		r.URL.RawPath = ""
+	}
 }
 
 // MatchingRule finds a matching rule for the given path

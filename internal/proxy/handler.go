@@ -403,7 +403,12 @@ func (ap *PackageStruct) BenchmarkEngine() *benchmarks.Engine {
 // WriteHeader implements http.ResponseWriter interface. It injects cache control
 // headers based on the matched rule before writing the status code.
 func (rw *responseWriter) WriteHeader(status int) {
-	if rw.shouldSetCacheControl(status) {
+	if status == http.StatusNotFound && rw.rule != nil {
+		// Mirror publication is not atomic: a package or index can briefly be
+		// absent while the mirror synchronizes. Keep negative caching short and
+		// independent from immutable package TTLs.
+		rw.Header().Set("Cache-Control", "public, max-age=30")
+	} else if rw.shouldSetCacheControl(status) {
 		rw.Header().Set("Cache-Control", rw.rule.CacheControl)
 	}
 	rw.ResponseWriter.WriteHeader(status)
@@ -414,5 +419,5 @@ func (rw *responseWriter) WriteHeader(status int) {
 func (rw *responseWriter) shouldSetCacheControl(status int) bool {
 	return rw.rule != nil &&
 		rw.rule.CacheControl != "" &&
-		(status == http.StatusOK || status == http.StatusNotFound)
+		status == http.StatusOK
 }
