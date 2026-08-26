@@ -183,6 +183,63 @@ func TestProductionProxyRouteRewritesAndCaches(t *testing.T) {
 	}
 }
 
+func TestProductionProxyRouteSupportsHostPrefixedDebianPath(t *testing.T) {
+	var upstreamHits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits.Add(1)
+		if got, want := r.URL.Path, "/debian/dists/bookworm/InRelease"; got != want {
+			t.Errorf("upstream path = %q, want %q", got, want)
+		}
+		if got, want := r.URL.RawQuery, "arch=amd64"; got != want {
+			t.Errorf("upstream query = %q, want %q", got, want)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "debian-release")
+	}))
+	defer upstream.Close()
+
+	srv, err := NewServer(&config.Config{
+		CacheDir: t.TempDir(),
+		Mode:     distro.TypeDebian,
+		Listen:   "127.0.0.1:0",
+		Mirrors: config.MirrorConfig{
+			Debian: upstream.URL + "/debian/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.shutdown() })
+
+	request := func() *http.Response {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/ftp.uni-kl.de/debian/dists/bookworm/InRelease?arch=amd64", nil)
+		resp, err := srv.app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
+		return resp
+	}
+
+	for index, wantCache := range []string{"MISS", "HIT"} {
+		resp := request()
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatalf("read response %d: %v", index+1, err)
+		}
+		if resp.StatusCode != http.StatusOK || string(body) != "debian-release" {
+			t.Fatalf("response %d: status=%d body=%q", index+1, resp.StatusCode, body)
+		}
+		if got := resp.Header.Get("X-Cache"); got != wantCache {
+			t.Fatalf("response %d X-Cache = %q, want %s", index+1, got, wantCache)
+		}
+	}
+	if got := upstreamHits.Load(); got != 1 {
+		t.Fatalf("upstream hits = %d, want 1", got)
+	}
+}
+
 func TestServerInitialize(t *testing.T) {
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
