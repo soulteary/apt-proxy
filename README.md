@@ -716,7 +716,9 @@ APT Proxy provides REST API endpoints for monitoring and management:
 
 ### API Authentication
 
-When an API key is configured, all `/api/*` endpoints require authentication. Setting `--api-key` (or `APT_PROXY_API_KEY`) implicitly enables auth; pass `--enable-api-auth=false` to force-disable it. Provide the API key using one of these methods:
+When an API key is configured and authentication is enabled, all `/api/*` endpoints require authentication. Setting `--api-key` (or `APT_PROXY_API_KEY`) implicitly enables auth unless `--enable-api-auth=false` is explicitly supplied. Enabling authentication without a non-empty key is rejected as an invalid configuration.
+
+The read-only `/api/cache/stats` endpoint remains available when authentication is disabled. Mutating endpoints (`purge`, `cleanup`, and mirror `refresh`) fail closed with HTTP 503 until API authentication is configured; an unauthenticated network listener can therefore not modify proxy state. Provide the API key using one of these methods:
 
 1. **X-API-Key Header** (recommended):
    ```bash

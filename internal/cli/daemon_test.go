@@ -17,6 +17,7 @@ package cli
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -476,6 +477,7 @@ func TestCachePurgeAPI(t *testing.T) {
 		CacheDir: tmpDir,
 		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
+		Security: config.SecurityConfig{EnableAPIAuth: true, APIKey: "test-api-key"},
 	}
 
 	srv, err := NewServer(withTestMirrors(cfg))
@@ -517,6 +519,7 @@ func TestCachePurgeAPI(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			req.Host = "localhost"
+			req.Header.Set("X-API-Key", "test-api-key")
 
 			resp, err := srv.app.Test(req)
 			if err != nil {
@@ -546,6 +549,59 @@ func TestCachePurgeAPI(t *testing.T) {
 	}
 }
 
+func TestMutatingManagementAPIFailsClosedWithoutAuth(t *testing.T) {
+	cfg := withTestMirrors(&config.Config{
+		CacheDir: t.TempDir(),
+		Mode:     distro.TypeAllDistros,
+		Listen:   "127.0.0.1:0",
+	})
+	srv, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	for _, path := range []string{"/api/cache/purge", "/api/cache/cleanup", "/api/mirrors/refresh"} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		resp, err := srv.app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test(%s): %v", path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			t.Errorf("%s status = %d, want %d", path, resp.StatusCode, http.StatusServiceUnavailable)
+		}
+	}
+
+	resp, err := srv.app.Test(httptest.NewRequest(http.MethodGet, "/api/cache/stats", nil))
+	if err != nil {
+		t.Fatalf("stats app.Test: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("read-only stats status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestServerUsesSharedCacheWithoutWriteDeadline(t *testing.T) {
+	srv, err := NewServer(withTestMirrors(&config.Config{
+		CacheDir: t.TempDir(),
+		Mode:     distro.TypeAllDistros,
+		Listen:   "127.0.0.1:0",
+	}))
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	if srv.cacheProxy == nil || !srv.cacheProxy.Shared {
+		t.Fatal("apt-proxy cache handler must be configured as a shared cache")
+	}
+	if defaultWriteTimeout != 0 {
+		t.Fatalf("defaultWriteTimeout = %v, want disabled for streaming downloads", defaultWriteTimeout)
+	}
+	if got := srv.app.Config().WriteTimeout; got != 0 {
+		t.Fatalf("Fiber WriteTimeout = %s, want disabled for streaming downloads", got)
+	}
+}
+
 func TestCacheCleanupAPI(t *testing.T) {
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
@@ -559,6 +615,7 @@ func TestCacheCleanupAPI(t *testing.T) {
 		CacheDir: tmpDir,
 		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
+		Security: config.SecurityConfig{EnableAPIAuth: true, APIKey: "test-api-key"},
 	}
 
 	srv, err := NewServer(withTestMirrors(cfg))
@@ -600,6 +657,7 @@ func TestCacheCleanupAPI(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			req.Host = "localhost"
+			req.Header.Set("X-API-Key", "test-api-key")
 
 			resp, err := srv.app.Test(req)
 			if err != nil {
@@ -644,6 +702,7 @@ func TestMirrorsRefreshAPI(t *testing.T) {
 		CacheDir: tmpDir,
 		Mode:     distro.TypeAllDistros,
 		Listen:   "127.0.0.1:0",
+		Security: config.SecurityConfig{EnableAPIAuth: true, APIKey: "test-api-key"},
 	}
 
 	srv, err := NewServer(withTestMirrors(cfg))
@@ -685,6 +744,7 @@ func TestMirrorsRefreshAPI(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			req.Host = "localhost"
+			req.Header.Set("X-API-Key", "test-api-key")
 
 			resp, err := srv.app.Test(req)
 			if err != nil {

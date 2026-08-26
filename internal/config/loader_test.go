@@ -372,6 +372,17 @@ func TestYamlConfigToConfig_HostPort(t *testing.T) {
 }
 
 func TestValidateConfig(t *testing.T) {
+	t.Run("auth enabled without key", func(t *testing.T) {
+		cfg := &Config{
+			Listen:   "127.0.0.1:3142",
+			CacheDir: t.TempDir(),
+			Security: SecurityConfig{EnableAPIAuth: true},
+		}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("ValidateConfig should reject enabled API auth without a key")
+		}
+	})
+
 	t.Run("nil config", func(t *testing.T) {
 		if err := ValidateConfig(nil); err == nil {
 			t.Error("ValidateConfig(nil) should return error")

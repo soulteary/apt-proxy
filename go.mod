@@ -9,9 +9,9 @@ require (
 	github.com/soulteary/cli-kit v1.7.0
 	github.com/soulteary/health-kit/v2 v2.0.0-20260825184657-5abf6d7d57aa
 	github.com/soulteary/http-kit v1.2.0
-	github.com/soulteary/httpcache-kit/v2 v2.0.0-20260825191144-4ea95a94840b
-	github.com/soulteary/logger-kit/v2 v2.0.0-20260825184349-8667e28f7f2a
-	github.com/soulteary/metrics-kit/v2 v2.0.0-20260825190213-a45f1f3040f0
+	github.com/soulteary/httpcache-kit/v2 v2.0.1-0.20260826061340-f94527052973
+	github.com/soulteary/logger-kit/v2 v2.0.0
+	github.com/soulteary/metrics-kit/v2 v2.0.0
 	github.com/soulteary/middleware-kit/v2 v2.0.0-20260825190703-ab8d8cfae74a
 	github.com/soulteary/tracing-kit v1.2.0
 	github.com/soulteary/version-kit/v2 v2.0.0-20260825185013-b8322bc21a84

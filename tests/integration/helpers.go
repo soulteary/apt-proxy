@@ -17,12 +17,14 @@
 package integration
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	logger "github.com/soulteary/logger-kit/v2"
 
@@ -60,11 +62,12 @@ func getSharedTestLogger() *logger.Logger {
 // integration test on the same canonical shape.
 type testServer struct {
 	*httptest.Server
-	cacheDir string
-	cache    httpcache.ExtendedCache
-	proxy    *proxy.PackageStruct
-	state    *state.AppState
-	apiKey   string
+	cacheDir   string
+	cache      httpcache.ExtendedCache
+	cacheProxy *httpcache.Handler
+	proxy      *proxy.PackageStruct
+	state      *state.AppState
+	apiKey     string
 }
 
 // testServerOptions tweaks a single testServer instance. Defaults are
@@ -139,6 +142,7 @@ func newTestServer(t *testing.T, opts *testServerOptions) *testServer {
 	}
 
 	cachedHandler := httpcache.NewHandler(cache, proxyRouter.Handler)
+	cachedHandler.Shared = true
 	proxyRouter.Handler = cachedHandler
 
 	cacheHandler := api.NewCacheHandler(cache, log)
@@ -166,12 +170,13 @@ func newTestServer(t *testing.T, opts *testServerOptions) *testServer {
 	server := httptest.NewServer(mux)
 
 	return &testServer{
-		Server:   server,
-		cacheDir: cacheDir,
-		cache:    cache,
-		proxy:    proxyRouter,
-		state:    st,
-		apiKey:   apiKey,
+		Server:     server,
+		cacheDir:   cacheDir,
+		cache:      cache,
+		cacheProxy: cachedHandler,
+		proxy:      proxyRouter,
+		state:      st,
+		apiKey:     apiKey,
 	}
 }
 
@@ -179,6 +184,11 @@ func newTestServer(t *testing.T, opts *testServerOptions) *testServer {
 // directory. Safe to call from a deferred statement.
 func (ts *testServer) cleanup() {
 	ts.Close()
+	if ts.cacheProxy != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = ts.cacheProxy.Shutdown(ctx)
+		cancel()
+	}
 	if ts.cache != nil {
 		_ = ts.cache.Close()
 	}
