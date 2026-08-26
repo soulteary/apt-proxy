@@ -73,24 +73,6 @@ var builtinByMode = map[int]builtinDistro{
 // for the given proxy mode. When reg is non-nil, registry-loaded
 // mirrors are preferred over the compile-time built-ins.
 func GetGeoMirrorUrlsByMode(reg *distro.Registry, mode int) (mirrors []string) {
-	// Ubuntu/UbuntuPorts: prefer geo-derived mirrors (real point of the
-	// `mirrors.txt` lookup). Fall back to registry/built-in on failure so
-	// the proxy still has *some* upstream list when the geo API is down.
-	if mode == distro.TypeUbuntu || mode == distro.TypeUbuntuPorts {
-		online, err := GetUbuntuMirrorUrlsByGeo()
-		if err == nil && len(online) > 0 {
-			if mode == distro.TypeUbuntu {
-				return online
-			}
-			results := make([]string, 0, len(online))
-			for _, m := range online {
-				results = append(results, strings.ReplaceAll(m, "/ubuntu/", "/ubuntu-ports/"))
-			}
-			return results
-		}
-		// Geo failed: fall through to registry/built-in.
-	}
-
 	// Prefer registry (config-loaded) mirrors when present
 	if reg != nil {
 		if d, ok := reg.GetByType(mode); ok && len(d.Mirrors) > 0 {
@@ -101,6 +83,17 @@ func GetGeoMirrorUrlsByMode(reg *distro.Registry, mode int) (mirrors []string) {
 				return mirrors
 			}
 		}
+	}
+
+	// Ubuntu's mirrors.txt endpoint lists archive mirrors. It does not
+	// guarantee that those hosts also publish the distinct ubuntu-ports
+	// archive, so only use geo-discovered candidates for regular Ubuntu.
+	if mode == distro.TypeUbuntu {
+		online, err := GetUbuntuMirrorUrlsByGeo()
+		if err == nil && len(online) > 0 {
+			return online
+		}
+		// Geo failed: fall through to the built-in archive mirrors.
 	}
 
 	// Other single-distro modes: just return their built-in list.
