@@ -15,11 +15,14 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,6 +42,57 @@ const (
 	DefaultIdleConnTimeout       = 90 * time.Second
 	DefaultMaxIdleConns          = 100
 )
+
+func detachRequest(ctx context.Context, r *http.Request) *http.Request {
+	detached := r.Clone(ctx)
+	detached.Method = strings.Clone(detached.Method)
+	detached.Host = strings.Clone(detached.Host)
+	detached.RemoteAddr = strings.Clone(detached.RemoteAddr)
+	detached.RequestURI = strings.Clone(detached.RequestURI)
+
+	if detached.URL != nil {
+		u := *detached.URL
+		u.Scheme = strings.Clone(u.Scheme)
+		u.Opaque = strings.Clone(u.Opaque)
+		u.Host = strings.Clone(u.Host)
+		u.Path = strings.Clone(u.Path)
+		u.RawPath = strings.Clone(u.RawPath)
+		u.RawQuery = strings.Clone(u.RawQuery)
+		u.Fragment = strings.Clone(u.Fragment)
+		u.RawFragment = strings.Clone(u.RawFragment)
+		if u.User != nil {
+			username := strings.Clone(u.User.Username())
+			if password, ok := u.User.Password(); ok {
+				u.User = url.UserPassword(username, strings.Clone(password))
+			} else {
+				u.User = url.User(username)
+			}
+		}
+		detached.URL = &u
+	}
+
+	detached.Header = detachHeader(detached.Header)
+	detached.Trailer = detachHeader(detached.Trailer)
+	for i := range detached.TransferEncoding {
+		detached.TransferEncoding[i] = strings.Clone(detached.TransferEncoding[i])
+	}
+	return detached
+}
+
+func detachHeader(header http.Header) http.Header {
+	if header == nil {
+		return nil
+	}
+	detached := make(http.Header, len(header))
+	for key, values := range header {
+		cloned := make([]string, len(values))
+		for i, value := range values {
+			cloned[i] = strings.Clone(value)
+		}
+		detached[strings.Clone(key)] = cloned
+	}
+	return detached
+}
 
 // hostPatternEntry pairs a compiled URL pattern with its rules and is used
 // instead of map[*regexp.Regexp][]Rule on the request hot path. A slice
@@ -267,7 +321,11 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		"http.remote_addr": r.RemoteAddr,
 	})
 
-	r = r.WithContext(spanCtx)
+	// Fiber/fasthttp reuses its request buffers after ServeHTTP returns, while
+	// the cache may finish a write asynchronously and retain the request URL as
+	// part of its key. Clone here so background cache work never references
+	// memory that the adapter can reuse for the next request.
+	r = detachRequest(spanCtx, r)
 
 	rule := ap.handleExternalURLs(r)
 	if rule != nil {

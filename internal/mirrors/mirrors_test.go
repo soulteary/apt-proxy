@@ -15,11 +15,44 @@
 package mirrors
 
 import (
+	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 )
+
+func TestUbuntuPortsUsesRegistryMirrors(t *testing.T) {
+	reg := distro.NewRegistry()
+	want := []string{
+		"https://ports-one.example.com/ubuntu-ports/",
+		"https://ports-two.example.com/ubuntu-ports/",
+	}
+	if err := reg.Register(&distro.RegisteredDistribution{
+		ID:         "ubuntu-ports",
+		Name:       "Ubuntu Ports",
+		Type:       distro.TypeUbuntuPorts,
+		URLPattern: regexp.MustCompile(`/ubuntu-ports/`),
+		Mirrors: []distro.URLWithAlias{
+			{URL: want[0], Scheme: "https"},
+			{URL: want[1], Scheme: "https"},
+		},
+	}); err != nil {
+		t.Fatalf("register ubuntu ports: %v", err)
+	}
+
+	if got := GetGeoMirrorUrlsByMode(reg, distro.TypeUbuntuPorts); !reflect.DeepEqual(got, want) {
+		t.Fatalf("configured Ubuntu Ports mirrors = %v, want %v", got, want)
+	}
+}
+
+func TestUbuntuPortsUsesDedicatedBuiltins(t *testing.T) {
+	want := builtinMirrorURLs(distro.BuiltinUbuntuPortsMirrors)
+	if got := GetGeoMirrorUrlsByMode(nil, distro.TypeUbuntuPorts); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Ubuntu Ports mirrors = %v, want dedicated built-ins %v", got, want)
+	}
+}
 
 func TestGetUbuntuMirrorByAliases(t *testing.T) {
 	alias := GetMirrorURLByAliases(nil, distro.TypeUbuntu, "cn:tsinghua")
