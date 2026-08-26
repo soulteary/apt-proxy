@@ -69,18 +69,23 @@ var builtinByMode = map[int]builtinDistro{
 	},
 }
 
+var ubuntuGeoMirrorLookup = GetUbuntuMirrorUrlsByGeo
+
 // GetGeoMirrorUrlsByMode returns the candidate upstream mirror URLs
 // for the given proxy mode. When reg is non-nil, registry-loaded
 // mirrors are preferred over the compile-time built-ins.
 func GetGeoMirrorUrlsByMode(reg *distro.Registry, mode int) (mirrors []string) {
-	// Prefer registry (config-loaded) mirrors when present
+	// Prefer user-configured registry mirrors. The daemon also seeds the
+	// registry with built-ins, which must not suppress Ubuntu geo discovery.
 	if reg != nil {
 		if d, ok := reg.GetByType(mode); ok && len(d.Mirrors) > 0 {
-			for _, m := range d.Mirrors {
-				mirrors = append(mirrors, GetFullMirrorURL(m))
-			}
-			if len(mirrors) > 0 {
-				return mirrors
+			if mode != distro.TypeUbuntu || !d.Builtin {
+				for _, m := range d.Mirrors {
+					mirrors = append(mirrors, GetFullMirrorURL(m))
+				}
+				if len(mirrors) > 0 {
+					return mirrors
+				}
 			}
 		}
 	}
@@ -89,7 +94,7 @@ func GetGeoMirrorUrlsByMode(reg *distro.Registry, mode int) (mirrors []string) {
 	// guarantee that those hosts also publish the distinct ubuntu-ports
 	// archive, so only use geo-discovered candidates for regular Ubuntu.
 	if mode == distro.TypeUbuntu {
-		online, err := GetUbuntuMirrorUrlsByGeo()
+		online, err := ubuntuGeoMirrorLookup()
 		if err == nil && len(online) > 0 {
 			return online
 		}
