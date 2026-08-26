@@ -43,7 +43,7 @@ const (
 	DefaultMaxIdleConns          = 100
 )
 
-func detachRequest(r *http.Request, ctx context.Context) *http.Request {
+func detachRequest(ctx context.Context, r *http.Request) *http.Request {
 	detached := r.Clone(ctx)
 	detached.Method = strings.Clone(detached.Method)
 	detached.Host = strings.Clone(detached.Host)
@@ -325,7 +325,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	// the cache may finish a write asynchronously and retain the request URL as
 	// part of its key. Clone here so background cache work never references
 	// memory that the adapter can reuse for the next request.
-	r = detachRequest(r, spanCtx)
+	r = detachRequest(spanCtx, r)
 
 	rule := ap.handleExternalURLs(r)
 	if rule != nil {
