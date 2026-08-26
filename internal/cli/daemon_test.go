@@ -20,6 +20,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -101,6 +102,84 @@ func TestNewServer(t *testing.T) {
 				t.Error("NewServer() returned nil server for valid config")
 			}
 		})
+	}
+}
+
+func TestProductionProxyRouteRewritesAndCaches(t *testing.T) {
+	var upstreamHits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits.Add(1)
+		if got, want := r.URL.Path, "/ubuntu/dists/jammy/InRelease"; got != want {
+			t.Errorf("upstream path = %q, want %q", got, want)
+		}
+		if got, want := r.URL.RawQuery, "arch=amd64"; got != want {
+			t.Errorf("upstream query = %q, want %q", got, want)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "release-data")
+	}))
+	defer upstream.Close()
+
+	srv, err := NewServer(&config.Config{
+		CacheDir: t.TempDir(),
+		Mode:     distro.TypeUbuntu,
+		Listen:   "127.0.0.1:0",
+		Mirrors: config.MirrorConfig{
+			Ubuntu: upstream.URL + "/ubuntu/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.shutdown() })
+
+	request := func() *http.Response {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/ubuntu/dists/jammy/InRelease?arch=amd64", nil)
+		resp, err := srv.app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
+		return resp
+	}
+
+	first := request()
+	firstBody, err := io.ReadAll(first.Body)
+	_ = first.Body.Close()
+	if err != nil {
+		t.Fatalf("read first response: %v", err)
+	}
+	if first.StatusCode != http.StatusOK || string(firstBody) != "release-data" {
+		t.Fatalf("first response: status=%d body=%q", first.StatusCode, firstBody)
+	}
+	if got := first.Header.Get("X-Cache"); got != "MISS" {
+		t.Fatalf("first X-Cache = %q, want MISS", got)
+	}
+
+	second := request()
+	secondBody, err := io.ReadAll(second.Body)
+	_ = second.Body.Close()
+	if err != nil {
+		t.Fatalf("read second response: %v", err)
+	}
+	if second.StatusCode != http.StatusOK || string(secondBody) != "release-data" {
+		t.Fatalf("second response: status=%d body=%q", second.StatusCode, secondBody)
+	}
+	if got := second.Header.Get("X-Cache"); got != "HIT" {
+		t.Fatalf("second X-Cache = %q, want HIT", got)
+	}
+	if got := upstreamHits.Load(); got != 1 {
+		t.Fatalf("upstream hits = %d, want 1", got)
+	}
+
+	unknown := httptest.NewRequest(http.MethodGet, "/not-a-supported-repository/file", nil)
+	unknownResp, err := srv.app.Test(unknown)
+	if err != nil {
+		t.Fatalf("unknown app.Test: %v", err)
+	}
+	defer unknownResp.Body.Close()
+	if unknownResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown status = %d, want 404", unknownResp.StatusCode)
 	}
 }
 
