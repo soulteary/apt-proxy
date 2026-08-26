@@ -106,9 +106,27 @@ func TestAppStateDebianSecurityMirror(t *testing.T) {
 	if got := clone.GetDebianSecurityMirror(); got == nil || got.String() != mirror {
 		t.Fatalf("clone security mirror = %v, want %q", got, mirror)
 	}
+	if clone.DebianSecurityMirrorResolvedAlias() {
+		t.Fatal("literal security mirror marked as alias")
+	}
 	st.ResetAll()
 	if got := st.GetDebianSecurityMirror(); got != nil {
 		t.Fatalf("security mirror after ResetAll = %v, want nil", got)
+	}
+}
+
+func TestAppStateDebianSecurityAliasMetadata(t *testing.T) {
+	st := NewAppState()
+	st.SetDebianSecurityMirrorWithRegistry("cn:tsinghua", distro.NewBuiltinRegistry())
+	if !st.DebianSecurityMirrorResolvedAlias() {
+		t.Fatal("Debian security alias metadata was not retained")
+	}
+	if clone := st.Clone(); !clone.DebianSecurityMirrorResolvedAlias() {
+		t.Fatal("clone lost Debian security alias metadata")
+	}
+	st.ResetAll()
+	if st.DebianSecurityMirrorResolvedAlias() {
+		t.Fatal("reset retained Debian security alias metadata")
 	}
 }
 

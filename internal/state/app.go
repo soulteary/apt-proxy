@@ -38,8 +38,13 @@ import (
 // pointer atomically. We never mutate a *url.URL after publishing it, so
 // callers can hold the returned pointer without racing future writers.
 type MirrorState struct {
-	url      atomic.Pointer[url.URL]
+	value    atomic.Pointer[mirrorValue]
 	distType int
+}
+
+type mirrorValue struct {
+	url           *url.URL
+	resolvedAlias bool
 }
 
 // NewMirrorState creates a new MirrorState for the given distro type.
@@ -61,13 +66,15 @@ func (m *MirrorState) Set(input string) {
 // resolution.
 func (m *MirrorState) SetWithRegistry(input string, reg *distro.Registry) {
 	if input == "" {
-		m.url.Store(nil)
+		m.value.Store(nil)
 		return
 	}
 
 	mirror := input
+	resolvedAlias := false
 	if alias := mirrors.GetMirrorURLByAliases(reg, m.distType, input); alias != "" {
 		mirror = alias
+		resolvedAlias = true
 	}
 
 	parsed, err := url.Parse(mirror)
@@ -77,31 +84,44 @@ func (m *MirrorState) SetWithRegistry(input string, reg *distro.Registry) {
 			Int("dist_type", m.distType).
 			Str("input", input).
 			Msg("invalid mirror URL, clearing state")
-		m.url.Store(nil)
+		m.value.Store(nil)
 		return
 	}
-	m.url.Store(parsed)
+	m.value.Store(&mirrorValue{url: parsed, resolvedAlias: resolvedAlias})
 }
 
 // Get returns the current mirror URL, or nil if unset.
 //
 // Callers receive the same *url.URL the writer published; never mutate it.
 func (m *MirrorState) Get() *url.URL {
-	return m.url.Load()
+	if current := m.value.Load(); current != nil {
+		return current.url
+	}
+	return nil
+}
+
+// ResolvedAlias reports whether the current URL came from a registry alias.
+// It is read from the same immutable snapshot as the URL, so callers never
+// observe metadata from a different Set operation.
+func (m *MirrorState) ResolvedAlias() bool {
+	if current := m.value.Load(); current != nil {
+		return current.resolvedAlias
+	}
+	return false
 }
 
 // Reset clears the mirror URL.
 func (m *MirrorState) Reset() {
-	m.url.Store(nil)
+	m.value.Store(nil)
 }
 
 // Clone returns an independent MirrorState that contains a deep copy of
 // the stored URL.
 func (m *MirrorState) Clone() *MirrorState {
 	clone := NewMirrorState(m.distType)
-	if cur := m.url.Load(); cur != nil {
-		urlCopy := *cur
-		clone.url.Store(&urlCopy)
+	if current := m.value.Load(); current != nil {
+		urlCopy := *current.url
+		clone.value.Store(&mirrorValue{url: &urlCopy, resolvedAlias: current.resolvedAlias})
 	}
 	return clone
 }
@@ -174,6 +194,12 @@ func (s *AppState) SetDebianSecurityMirrorWithRegistry(input string, reg *distro
 // GetDebianSecurityMirror returns the dedicated Debian security upstream.
 func (s *AppState) GetDebianSecurityMirror() *url.URL {
 	return s.DebianSecurity.Get()
+}
+
+// DebianSecurityMirrorResolvedAlias reports whether the dedicated security
+// mirror was configured through a Debian registry alias.
+func (s *AppState) DebianSecurityMirrorResolvedAlias() bool {
+	return s.DebianSecurity.ResolvedAlias()
 }
 
 // mirrorByType returns the *MirrorState backing the given distro type,
