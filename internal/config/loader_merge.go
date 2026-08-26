@@ -53,6 +53,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	if ex.DebianMirror {
 		result.Mirrors.Debian = override.Mirrors.Debian
 	}
+	if ex.DebianSecurityMirror {
+		result.Mirrors.DebianSecurity = override.Mirrors.DebianSecurity
+	}
 	if ex.CentOSMirror {
 		result.Mirrors.CentOS = override.Mirrors.CentOS
 	}
@@ -180,6 +183,9 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 	if override.Mirrors.Debian != "" {
 		result.Mirrors.Debian = override.Mirrors.Debian
+	}
+	if override.Mirrors.DebianSecurity != "" {
+		result.Mirrors.DebianSecurity = override.Mirrors.DebianSecurity
 	}
 	if override.Mirrors.CentOS != "" {
 		result.Mirrors.CentOS = override.Mirrors.CentOS

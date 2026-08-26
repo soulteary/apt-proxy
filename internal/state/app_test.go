@@ -35,6 +35,9 @@ func TestNewAppState(t *testing.T) {
 	if st.Debian == nil {
 		t.Error("Debian mirror state is nil")
 	}
+	if st.DebianSecurity == nil {
+		t.Error("DebianSecurity mirror state is nil")
+	}
 	if st.CentOS == nil {
 		t.Error("CentOS mirror state is nil")
 	}
@@ -89,6 +92,23 @@ func TestAppStateSetMirrorUnknownType(t *testing.T) {
 	st.SetMirror(9999, "https://mirrors.example.com/whatever/")
 	if got := st.GetMirror(9999); got != nil {
 		t.Errorf("GetMirror(9999) = %q, want nil", got.String())
+	}
+}
+
+func TestAppStateDebianSecurityMirror(t *testing.T) {
+	st := NewAppState()
+	const mirror = "https://security.example.com/debian-security/"
+	st.SetDebianSecurityMirrorWithRegistry(mirror, nil)
+	if got := st.GetDebianSecurityMirror(); got == nil || got.String() != mirror {
+		t.Fatalf("GetDebianSecurityMirror() = %v, want %q", got, mirror)
+	}
+	clone := st.Clone()
+	if got := clone.GetDebianSecurityMirror(); got == nil || got.String() != mirror {
+		t.Fatalf("clone security mirror = %v, want %q", got, mirror)
+	}
+	st.ResetAll()
+	if got := st.GetDebianSecurityMirror(); got != nil {
+		t.Fatalf("security mirror after ResetAll = %v, want nil", got)
 	}
 }
 

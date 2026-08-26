@@ -39,16 +39,17 @@ type (
 
 // Re-export constants from internal/config for backward compatibility
 const (
-	EnvHost        = config.EnvHost
-	EnvPort        = config.EnvPort
-	EnvMode        = config.EnvMode
-	EnvCacheDir    = config.EnvCacheDir
-	EnvDebug       = config.EnvDebug
-	EnvUbuntu      = config.EnvUbuntu
-	EnvUbuntuPorts = config.EnvUbuntuPorts
-	EnvDebian      = config.EnvDebian
-	EnvCentOS      = config.EnvCentOS
-	EnvAlpine      = config.EnvAlpine
+	EnvHost           = config.EnvHost
+	EnvPort           = config.EnvPort
+	EnvMode           = config.EnvMode
+	EnvCacheDir       = config.EnvCacheDir
+	EnvDebug          = config.EnvDebug
+	EnvUbuntu         = config.EnvUbuntu
+	EnvUbuntuPorts    = config.EnvUbuntuPorts
+	EnvDebian         = config.EnvDebian
+	EnvDebianSecurity = config.EnvDebianSecurity
+	EnvCentOS         = config.EnvCentOS
+	EnvAlpine         = config.EnvAlpine
 
 	EnvCacheMaxSize         = config.EnvCacheMaxSize
 	EnvCacheTTL             = config.EnvCacheTTL

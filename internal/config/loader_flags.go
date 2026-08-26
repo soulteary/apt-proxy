@@ -76,6 +76,7 @@ func defineFlags(flags *flag.FlagSet) {
 	flags.String("ubuntu", "", "the ubuntu mirror for fetching packages")
 	flags.String("ubuntu-ports", "", "the ubuntu ports mirror for fetching packages")
 	flags.String("debian", "", "the debian mirror for fetching packages")
+	flags.String("debian-security", "", "the Debian security mirror for fetching security updates")
 	flags.String("centos", "", "the centos mirror for fetching packages")
 	flags.String("alpine", "", "the alpine mirror for fetching packages")
 	flags.String("distributions-config", "", "path to distributions YAML (distributions.yaml)")
@@ -143,7 +144,7 @@ var flagGroups = []struct {
 	},
 	{
 		title: "Mirrors",
-		flags: []string{"ubuntu", "ubuntu-ports", "debian", "centos", "alpine"},
+		flags: []string{"ubuntu", "ubuntu-ports", "debian", "debian-security", "centos", "alpine"},
 	},
 	{
 		title: "TLS",
@@ -250,6 +251,7 @@ type cliExplicit struct {
 	UbuntuMirror          bool
 	UbuntuPortsMirror     bool
 	DebianMirror          bool
+	DebianSecurityMirror  bool
 	CentOSMirror          bool
 	AlpineMirror          bool
 	CacheMaxSize          bool
@@ -315,6 +317,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 		UbuntuMirror:          flagOrEnvSet(flags, "ubuntu", EnvUbuntu),
 		UbuntuPortsMirror:     flagOrEnvSet(flags, "ubuntu-ports", EnvUbuntuPorts),
 		DebianMirror:          flagOrEnvSet(flags, "debian", EnvDebian),
+		DebianSecurityMirror:  flagOrEnvSet(flags, "debian-security", EnvDebianSecurity),
 		CentOSMirror:          flagOrEnvSet(flags, "centos", EnvCentOS),
 		AlpineMirror:          flagOrEnvSet(flags, "alpine", EnvAlpine),
 		CacheMaxSize:          flagOrEnvSet(flags, "cache-max-size", EnvCacheMaxSize),
@@ -362,6 +365,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	ubuntu := configutil.ResolveString(flags, "ubuntu", EnvUbuntu, "", true)
 	ubuntuPorts := configutil.ResolveString(flags, "ubuntu-ports", EnvUbuntuPorts, "", true)
 	debian := configutil.ResolveString(flags, "debian", EnvDebian, "", true)
+	debianSecurity := configutil.ResolveString(flags, "debian-security", EnvDebianSecurity, "", true)
 	centos := configutil.ResolveString(flags, "centos", EnvCentOS, "", true)
 	alpine := configutil.ResolveString(flags, "alpine", EnvAlpine, "", true)
 
@@ -418,11 +422,12 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 		CacheDir:          cacheDir,
 		UpstreamKeepAlive: upstreamKeepAlive,
 		Mirrors: MirrorConfig{
-			Ubuntu:      ubuntu,
-			UbuntuPorts: ubuntuPorts,
-			Debian:      debian,
-			CentOS:      centos,
-			Alpine:      alpine,
+			Ubuntu:         ubuntu,
+			UbuntuPorts:    ubuntuPorts,
+			Debian:         debian,
+			DebianSecurity: debianSecurity,
+			CentOS:         centos,
+			Alpine:         alpine,
 		},
 		Cache: CacheConfig{
 			MaxSize:         cacheMaxSizeGB * 1024 * 1024 * 1024,
