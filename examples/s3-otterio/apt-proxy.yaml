@@ -44,3 +44,4 @@ mirrors:
   # Optional: pin upstream mirrors. Empty = auto-benchmark on startup.
   ubuntu: ""
   debian: ""
+  debian_security: ""

@@ -43,11 +43,12 @@ type YAMLConfig struct {
 	} `yaml:"cache"`
 
 	Mirrors struct {
-		Ubuntu      string `yaml:"ubuntu"`
-		UbuntuPorts string `yaml:"ubuntu_ports"`
-		Debian      string `yaml:"debian"`
-		CentOS      string `yaml:"centos"`
-		Alpine      string `yaml:"alpine"`
+		Ubuntu         string `yaml:"ubuntu"`
+		UbuntuPorts    string `yaml:"ubuntu_ports"`
+		Debian         string `yaml:"debian"`
+		DebianSecurity string `yaml:"debian_security"`
+		CentOS         string `yaml:"centos"`
+		Alpine         string `yaml:"alpine"`
 	} `yaml:"mirrors"`
 
 	TLS struct {
@@ -164,11 +165,12 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 		Debug:    yamlCfg.Server.Debug,
 		CacheDir: yamlCfg.Cache.Dir,
 		Mirrors: MirrorConfig{
-			Ubuntu:      yamlCfg.Mirrors.Ubuntu,
-			UbuntuPorts: yamlCfg.Mirrors.UbuntuPorts,
-			Debian:      yamlCfg.Mirrors.Debian,
-			CentOS:      yamlCfg.Mirrors.CentOS,
-			Alpine:      yamlCfg.Mirrors.Alpine,
+			Ubuntu:         yamlCfg.Mirrors.Ubuntu,
+			UbuntuPorts:    yamlCfg.Mirrors.UbuntuPorts,
+			Debian:         yamlCfg.Mirrors.Debian,
+			DebianSecurity: yamlCfg.Mirrors.DebianSecurity,
+			CentOS:         yamlCfg.Mirrors.CentOS,
+			Alpine:         yamlCfg.Mirrors.Alpine,
 		},
 		Cache: CacheConfig{
 			MaxSizeGB:          yamlCfg.Cache.MaxSizeGB,

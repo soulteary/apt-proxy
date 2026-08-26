@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 
 	logger "github.com/soulteary/logger-kit/v2"
@@ -32,8 +33,40 @@ import (
 
 // URLRewriter holds the mirror and pattern for URL rewriting
 type URLRewriter struct {
-	mirror  *url.URL
-	pattern *regexp.Regexp
+	mirror         *url.URL
+	securityMirror *url.URL
+	pattern        *regexp.Regexp
+}
+
+func debianSecurityMirror(archive, configured *url.URL) *url.URL {
+	source := configured
+	if source == nil {
+		source = archive
+	}
+	if source == nil {
+		return nil
+	}
+
+	security := *source
+	path := strings.TrimSuffix(security.Path, "/")
+	switch {
+	case strings.HasSuffix(path, "/debian-security"):
+		// Already points at the security archive.
+	case strings.HasSuffix(path, "/debian"):
+		path = strings.TrimSuffix(path, "/debian") + "/debian-security"
+	default:
+		path += "/debian-security"
+	}
+	security.Path = path + "/"
+	security.RawPath = ""
+	return &security
+}
+
+func attachDebianSecurityMirror(mode int, st *state.AppState, rewriter *URLRewriter) *URLRewriter {
+	if mode == distro.TypeDebian && rewriter != nil {
+		rewriter.securityMirror = debianSecurityMirror(rewriter.mirror, st.GetDebianSecurityMirror())
+	}
+	return rewriter
 }
 
 // URLRewriters manages rewriters for different distributions
@@ -164,7 +197,7 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 	if mirror != nil {
 		log.Info().Str("distro", name).Str("mirror", mirror.String()).Msg("using specified mirror")
 		rewriter.mirror = mirror
-		return rewriter
+		return attachDebianSecurityMirror(mode, st, rewriter)
 	}
 
 	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(reg, mode)
@@ -180,7 +213,7 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 		rewriter.mirror = mirror
 	}
 
-	return rewriter
+	return attachDebianSecurityMirror(mode, st, rewriter)
 }
 
 // createRewriterAsync creates a new URLRewriter for a specific distribution using async benchmark.
@@ -201,7 +234,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 	if mirror != nil {
 		log.Info().Str("distro", name).Str("mirror", mirror.String()).Msg("using specified mirror")
 		rewriter.mirror = mirror
-		return rewriter
+		return attachDebianSecurityMirror(mode, st, rewriter)
 	}
 
 	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(reg, mode)
@@ -211,7 +244,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		if parsedMirror, err := url.Parse(cached); err == nil {
 			log.Info().Str("distro", name).Str("mirror", cached).Msg("using cached mirror")
 			rewriter.mirror = parsedMirror
-			return rewriter
+			return attachDebianSecurityMirror(mode, st, rewriter)
 		}
 	}
 
@@ -220,6 +253,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		log.Info().Str("distro", name).Str("mirror", defaultMirror).Msg("using default mirror (async benchmark pending)")
 		rewriter.mirror = parsedMirror
 	}
+	attachDebianSecurityMirror(mode, st, rewriter)
 
 	// Run benchmark in background and update when complete.
 	//
@@ -251,7 +285,11 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		// concurrent RefreshRewriters cannot accidentally lose its newer
 		// pattern when this stale callback fires.
 		oldPattern := (*p).pattern
-		*p = &URLRewriter{mirror: parsedMirror, pattern: oldPattern}
+		securityMirror := (*p).securityMirror
+		if mode == distro.TypeDebian && st.GetDebianSecurityMirror() == nil {
+			securityMirror = debianSecurityMirror(parsedMirror, nil)
+		}
+		*p = &URLRewriter{mirror: parsedMirror, securityMirror: securityMirror, pattern: oldPattern}
 		rewriters.Mu.Unlock()
 
 		log.Info().Str("distro", name).Str("mirror", result.FastestMirror).Msg("async benchmark completed, mirror updated")
@@ -355,10 +393,15 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 		suffixPath = suffixRaw
 	}
 
-	r.URL.Scheme = rewriter.mirror.Scheme
-	r.URL.Host = rewriter.mirror.Host
-	r.URL.Path = rewriter.mirror.Path + suffixPath
-	rawPath := rewriter.mirror.EscapedPath() + suffixRaw
+	target := rewriter.mirror
+	if mode == distro.TypeDebian && strings.HasPrefix(escapedPath, "/debian-security/") && rewriter.securityMirror != nil {
+		target = rewriter.securityMirror
+	}
+
+	r.URL.Scheme = target.Scheme
+	r.URL.Host = target.Host
+	r.URL.Path = target.Path + suffixPath
+	rawPath := target.EscapedPath() + suffixRaw
 	if rawPath != r.URL.Path {
 		r.URL.RawPath = rawPath
 	} else {

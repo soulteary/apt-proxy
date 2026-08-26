@@ -109,23 +109,25 @@ func (m *MirrorState) Clone() *MirrorState {
 // AppState manages the complete runtime state for a single Server: the
 // proxy mode and the mirror configuration for every supported distro.
 type AppState struct {
-	proxyMode   atomic.Int64
-	Ubuntu      *MirrorState
-	UbuntuPorts *MirrorState
-	Debian      *MirrorState
-	CentOS      *MirrorState
-	Alpine      *MirrorState
+	proxyMode      atomic.Int64
+	Ubuntu         *MirrorState
+	UbuntuPorts    *MirrorState
+	Debian         *MirrorState
+	DebianSecurity *MirrorState
+	CentOS         *MirrorState
+	Alpine         *MirrorState
 }
 
 // NewAppState constructs a fresh AppState with empty MirrorStates for
 // every supported distro.
 func NewAppState() *AppState {
 	return &AppState{
-		Ubuntu:      NewMirrorState(distro.TypeUbuntu),
-		UbuntuPorts: NewMirrorState(distro.TypeUbuntuPorts),
-		Debian:      NewMirrorState(distro.TypeDebian),
-		CentOS:      NewMirrorState(distro.TypeCentOS),
-		Alpine:      NewMirrorState(distro.TypeAlpine),
+		Ubuntu:         NewMirrorState(distro.TypeUbuntu),
+		UbuntuPorts:    NewMirrorState(distro.TypeUbuntuPorts),
+		Debian:         NewMirrorState(distro.TypeDebian),
+		DebianSecurity: NewMirrorState(distro.TypeDebian),
+		CentOS:         NewMirrorState(distro.TypeCentOS),
+		Alpine:         NewMirrorState(distro.TypeAlpine),
 	}
 }
 
@@ -162,6 +164,18 @@ func (s *AppState) GetMirror(distType int) *url.URL {
 	return nil
 }
 
+// SetDebianSecurityMirrorWithRegistry sets the optional dedicated upstream
+// used for /debian-security/ requests. Debian aliases are accepted and their
+// archive path is normalized by the proxy rewriter.
+func (s *AppState) SetDebianSecurityMirrorWithRegistry(input string, reg *distro.Registry) {
+	s.DebianSecurity.SetWithRegistry(input, reg)
+}
+
+// GetDebianSecurityMirror returns the dedicated Debian security upstream.
+func (s *AppState) GetDebianSecurityMirror() *url.URL {
+	return s.DebianSecurity.Get()
+}
+
 // mirrorByType returns the *MirrorState backing the given distro type,
 // or nil for unknown types. Centralising the switch avoids drift between
 // SetMirror/GetMirror/ResetAll.
@@ -187,6 +201,7 @@ func (s *AppState) ResetAll() {
 	s.Ubuntu.Reset()
 	s.UbuntuPorts.Reset()
 	s.Debian.Reset()
+	s.DebianSecurity.Reset()
 	s.CentOS.Reset()
 	s.Alpine.Reset()
 }
@@ -195,11 +210,12 @@ func (s *AppState) ResetAll() {
 // mutable state with the original.
 func (s *AppState) Clone() *AppState {
 	clone := &AppState{
-		Ubuntu:      s.Ubuntu.Clone(),
-		UbuntuPorts: s.UbuntuPorts.Clone(),
-		Debian:      s.Debian.Clone(),
-		CentOS:      s.CentOS.Clone(),
-		Alpine:      s.Alpine.Clone(),
+		Ubuntu:         s.Ubuntu.Clone(),
+		UbuntuPorts:    s.UbuntuPorts.Clone(),
+		Debian:         s.Debian.Clone(),
+		DebianSecurity: s.DebianSecurity.Clone(),
+		CentOS:         s.CentOS.Clone(),
+		Alpine:         s.Alpine.Clone(),
 	}
 	clone.proxyMode.Store(s.proxyMode.Load())
 	return clone

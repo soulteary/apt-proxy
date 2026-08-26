@@ -81,6 +81,9 @@ mirrors:
   
   # Debian mirror
   debian: cn:ustc
+
+  # Optional dedicated Debian Security mirror (derived from Debian when empty)
+  debian_security: ""
   
   # CentOS mirror
   centos: ""

@@ -46,6 +46,7 @@ func ApplyToState(config *Config, st *state.AppState, reg *distro.Registry) erro
 	st.SetMirrorWithRegistry(distro.TypeUbuntu, config.Mirrors.Ubuntu, reg)
 	st.SetMirrorWithRegistry(distro.TypeUbuntuPorts, config.Mirrors.UbuntuPorts, reg)
 	st.SetMirrorWithRegistry(distro.TypeDebian, config.Mirrors.Debian, reg)
+	st.SetDebianSecurityMirrorWithRegistry(config.Mirrors.DebianSecurity, reg)
 	st.SetMirrorWithRegistry(distro.TypeCentOS, config.Mirrors.CentOS, reg)
 	st.SetMirrorWithRegistry(distro.TypeAlpine, config.Mirrors.Alpine, reg)
 	return nil

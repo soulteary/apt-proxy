@@ -46,7 +46,7 @@ func clearConfigEnv(t *testing.T) {
 	for _, v := range []string{
 		EnvHost, EnvPort, EnvCacheDir, EnvMode,
 		EnvCacheMaxSize, EnvCacheTTL, EnvCacheCleanupInterval,
-		EnvDebug, EnvUbuntu, EnvUbuntuPorts, EnvDebian,
+		EnvDebug, EnvUbuntu, EnvUbuntuPorts, EnvDebian, EnvDebianSecurity,
 		EnvCentOS, EnvAlpine,
 		EnvAPIKey, EnvAPIRateLimitPerMinute, EnvEnableAPIAuth, EnvTrustedProxies,
 		EnvUpstreamKeepAlive, EnvDistributionsConfig,
@@ -77,6 +77,20 @@ func TestParseFlagsDefaults(t *testing.T) {
 		}
 		if cfg.Cache.MaxSize == 0 {
 			t.Error("Cache.MaxSize should be defaulted, got 0")
+		}
+	})
+}
+
+func TestParseFlagsDebianSecurityMirror(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv(EnvDebianSecurity, "https://env.example.com/debian-security/")
+	withArgs(t, []string{"apt-proxy", "--debian-security=https://cli.example.com/debian-security/"}, func() {
+		cfg, err := ParseFlags()
+		if err != nil {
+			t.Fatalf("ParseFlags: %v", err)
+		}
+		if got, want := cfg.Mirrors.DebianSecurity, "https://cli.example.com/debian-security/"; got != want {
+			t.Fatalf("DebianSecurity = %q, want CLI value %q", got, want)
 		}
 	})
 }

@@ -310,6 +310,7 @@ http_proxy=http://host.docker.internal:3142 \
 | `-ubuntu` | Ubuntu 镜像 URL 或快捷方式 | （自动选择） |
 | `-ubuntu-ports` | Ubuntu Ports 镜像 URL 或快捷方式 | （自动选择） |
 | `-debian` | Debian 镜像 URL 或快捷方式 | （自动选择） |
+| `-debian-security` | 独立的 Debian Security 镜像 URL 或快捷方式 | （从 `-debian` 推导） |
 | `-centos` | CentOS 镜像 URL 或快捷方式 | （自动选择） |
 | `-alpine` | Alpine 镜像 URL 或快捷方式 | （自动选择） |
 | `-distributions-config` | 发行版/镜像配置文件路径（distributions.yaml） | （可选） |
@@ -367,6 +368,7 @@ http_proxy=http://host.docker.internal:3142 \
 | `APT_PROXY_UBUNTU` | `-ubuntu` | Ubuntu 镜像 URL 或快捷方式 |
 | `APT_PROXY_UBUNTU_PORTS` | `-ubuntu-ports` | Ubuntu Ports 镜像 |
 | `APT_PROXY_DEBIAN` | `-debian` | Debian 镜像 |
+| `APT_PROXY_DEBIAN_SECURITY` | `-debian-security` | 独立的 Debian Security 镜像 |
 | `APT_PROXY_CENTOS` | `-centos` | CentOS 镜像 |
 | `APT_PROXY_ALPINE` | `-alpine` | Alpine 镜像 |
 | `APT_PROXY_UPSTREAM_KEEP_ALIVE` | `-upstream-keep-alive` | 上游 HTTP keep-alive |
@@ -468,6 +470,7 @@ mirrors:
   ubuntu: cn:tsinghua
   ubuntu_ports: ""
   debian: cn:ustc
+  debian_security: https://mirrors.ustc.edu.cn/debian-security/
   centos: ""
   alpine: ""
 

@@ -144,13 +144,14 @@ func TestRewriteRequestByMode(t *testing.T) {
 // the mirror path prefix.
 func TestRewriteRequestByModePathPrefix(t *testing.T) {
 	cases := []struct {
-		name     string
-		mirror   string
-		mode     int
-		distType int
-		path     string
-		wantHost string
-		wantPath string
+		name           string
+		mirror         string
+		securityMirror string
+		mode           int
+		distType       int
+		path           string
+		wantHost       string
+		wantPath       string
 	}{
 		{
 			name:     "ubuntu with sub-path mirror",
@@ -171,13 +172,33 @@ func TestRewriteRequestByModePathPrefix(t *testing.T) {
 			wantPath: "/repo/debian/dists/bookworm/Release",
 		},
 		{
-			name:     "debian-security routed via security mirror",
+			name:           "regular debian keeps archive mirror",
+			mirror:         "http://archive.example.com/debian/",
+			securityMirror: "http://security.example.com/debian-security/",
+			mode:           distro.TypeDebian,
+			distType:       distro.TypeDebian,
+			path:           "/debian/dists/bookworm/Release",
+			wantHost:       "archive.example.com",
+			wantPath:       "/debian/dists/bookworm/Release",
+		},
+		{
+			name:           "debian-security routed via dedicated mirror",
+			mirror:         "http://archive.example.com/debian/",
+			securityMirror: "http://security.example.com/debian-security/",
+			mode:           distro.TypeDebian,
+			distType:       distro.TypeDebian,
+			path:           "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
+			wantHost:       "security.example.com",
+			wantPath:       "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
+		},
+		{
+			name:     "debian-security derived without duplicate suffix",
 			mirror:   "http://security.example.com/debian-security/",
 			mode:     distro.TypeDebian,
 			distType: distro.TypeDebian,
-			path:     "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
+			path:     "/debian-security/dists/bookworm-security/Release",
 			wantHost: "security.example.com",
-			wantPath: "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
+			wantPath: "/debian-security/dists/bookworm-security/Release",
 		},
 	}
 
@@ -186,6 +207,7 @@ func TestRewriteRequestByModePathPrefix(t *testing.T) {
 			st := state.NewAppState()
 			reg := newTestRegistry()
 			st.SetMirror(tc.distType, tc.mirror)
+			st.SetDebianSecurityMirrorWithRegistry(tc.securityMirror, reg)
 
 			rewriters := CreateNewRewriters(tc.mode, st, reg)
 			req, err := http.NewRequest("GET", "http://localhost"+tc.path, nil)

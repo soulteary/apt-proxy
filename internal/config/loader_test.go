@@ -41,6 +41,7 @@ cache:
 mirrors:
   ubuntu: "https://mirrors.test.com/ubuntu"
   debian: "https://mirrors.test.com/debian"
+  debian_security: "https://security.test.com/debian-security"
 
 tls:
   enabled: true
@@ -97,6 +98,9 @@ mode: "ubuntu"
 	}
 	if cfg.Mirrors.Debian != "https://mirrors.test.com/debian" {
 		t.Errorf("expected Debian mirror 'https://mirrors.test.com/debian', got '%s'", cfg.Mirrors.Debian)
+	}
+	if cfg.Mirrors.DebianSecurity != "https://security.test.com/debian-security" {
+		t.Errorf("expected Debian security mirror, got %q", cfg.Mirrors.DebianSecurity)
 	}
 
 	// Verify TLS config
@@ -221,8 +225,9 @@ func TestMergeConfigs(t *testing.T) {
 		Listen:   "0.0.0.0:3142",
 		Mode:     1,
 		Mirrors: MirrorConfig{
-			Ubuntu: "https://base.ubuntu.com",
-			Debian: "https://base.debian.org",
+			Ubuntu:         "https://base.ubuntu.com",
+			Debian:         "https://base.debian.org",
+			DebianSecurity: "https://base.security.debian.org/debian-security/",
 		},
 		Cache: CacheConfig{
 			MaxSize: 10 * 1024 * 1024 * 1024,
@@ -235,7 +240,8 @@ func TestMergeConfigs(t *testing.T) {
 		CacheDir: "",   // Don't override (empty)
 		Listen:   "127.0.0.1:8080",
 		Mirrors: MirrorConfig{
-			Ubuntu: "https://override.ubuntu.com", // Override
+			Ubuntu:         "https://override.ubuntu.com", // Override
+			DebianSecurity: "https://override.security.debian.org/debian-security/",
 			// Debian not set, should keep base
 		},
 		Cache: CacheConfig{
@@ -262,6 +268,9 @@ func TestMergeConfigs(t *testing.T) {
 	}
 	if result.Mirrors.Debian != "https://base.debian.org" {
 		t.Errorf("Debian mirror should be kept from base, got '%s'", result.Mirrors.Debian)
+	}
+	if result.Mirrors.DebianSecurity != "https://override.security.debian.org/debian-security/" {
+		t.Errorf("Debian security mirror should be overridden, got %q", result.Mirrors.DebianSecurity)
 	}
 	if result.Cache.MaxSize != 20*1024*1024*1024 {
 		t.Errorf("Cache.MaxSize should be overridden, got %d", result.Cache.MaxSize)

@@ -109,11 +109,12 @@ type TLSConfig struct {
 
 // MirrorConfig holds mirror-specific configuration
 type MirrorConfig struct {
-	Ubuntu      string `yaml:"ubuntu"`
-	UbuntuPorts string `yaml:"ubuntu_ports"`
-	Debian      string `yaml:"debian"`
-	CentOS      string `yaml:"centos"`
-	Alpine      string `yaml:"alpine"`
+	Ubuntu         string `yaml:"ubuntu"`
+	UbuntuPorts    string `yaml:"ubuntu_ports"`
+	Debian         string `yaml:"debian"`
+	DebianSecurity string `yaml:"debian_security"`
+	CentOS         string `yaml:"centos"`
+	Alpine         string `yaml:"alpine"`
 }
 
 // CacheConfig holds cache-specific configuration.

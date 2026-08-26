@@ -310,6 +310,7 @@ View all available options:
 | `-ubuntu` | Ubuntu mirror URL or shortcut | (auto-select) |
 | `-ubuntu-ports` | Ubuntu Ports mirror URL or shortcut | (auto-select) |
 | `-debian` | Debian mirror URL or shortcut | (auto-select) |
+| `-debian-security` | Dedicated Debian Security mirror URL or shortcut | (derived from `-debian`) |
 | `-centos` | CentOS mirror URL or shortcut | (auto-select) |
 | `-alpine` | Alpine mirror URL or shortcut | (auto-select) |
 | `-distributions-config` | Path to distributions/mirrors YAML (distributions.yaml) | (optional) |
@@ -366,6 +367,7 @@ Every CLI flag has an equivalent environment variable. Plus a few extras for log
 | `APT_PROXY_UBUNTU` | `-ubuntu` | Ubuntu mirror URL or shortcut |
 | `APT_PROXY_UBUNTU_PORTS` | `-ubuntu-ports` | Ubuntu Ports mirror URL or shortcut |
 | `APT_PROXY_DEBIAN` | `-debian` | Debian mirror URL or shortcut |
+| `APT_PROXY_DEBIAN_SECURITY` | `-debian-security` | Dedicated Debian Security mirror URL or shortcut |
 | `APT_PROXY_CENTOS` | `-centos` | CentOS mirror URL or shortcut |
 | `APT_PROXY_ALPINE` | `-alpine` | Alpine mirror URL or shortcut |
 | `APT_PROXY_UPSTREAM_KEEP_ALIVE` | `-upstream-keep-alive` | HTTP keep-alive to upstream mirrors |
@@ -468,6 +470,7 @@ mirrors:
   ubuntu: cn:tsinghua
   ubuntu_ports: ""
   debian: cn:ustc
+  debian_security: https://mirrors.ustc.edu.cn/debian-security/
   centos: ""
   alpine: ""
 
