@@ -196,7 +196,7 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		bench:     bench,
 		transport: transport,
 		Handler: &httputil.ReverseProxy{
-			Director:  func(r *http.Request) {},
+			Rewrite:   func(*httputil.ProxyRequest) {},
 			Transport: transport,
 		},
 	}
