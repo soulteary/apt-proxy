@@ -108,34 +108,35 @@ apt-get install vim -y
 
 ### CentOS
 
-APT Proxy 支持 YUM 仓库。配置你的 CentOS 系统使用代理：
-
-**CentOS 7：**
-
-```bash
-# 配置仓库使用代理
-cat /etc/yum.repos.d/CentOS-Base.repo | \
-  sed -e s/mirrorlist.*$// \
-      -e s/#baseurl/baseurl/ \
-      -e s#http://mirror.centos.org#http://your-domain-or-ip-address:3142# | \
-  tee /etc/yum.repos.d/CentOS-Base.repo
-
-# 验证配置
-yum update
-```
-
-**CentOS 8：**
+APT Proxy 支持 DNF/YUM 仓库。CentOS Stream 9 和 10 使用
+[CentOS Stream 镜像](https://mirror.stream.centos.org/)和基于 metalink 的仓库定义。
+首先为 apt-proxy 指定 Stream 镜像：
 
 ```bash
-# 更新所有 CentOS 仓库使用代理
-sed -i -e "s#mirror.centos.org#http://your-domain-or-ip-address:3142#g" \
-       -e "s/#baseurl/baseurl/" \
-       -e "s#\$releasever/#8-stream/#" \
-       /etc/yum.repos.d/CentOS-*
-
-# 验证配置
-yum update
+./apt-proxy \
+  --mode=centos \
+  --centos=https://mirror.stream.centos.org/
 ```
+
+在每台 CentOS Stream 9 或 10 客户端上，禁用 metalink，并通过 apt-proxy
+启用对应的 base URL。原有的 `$stream` 和 `$basearch` 变量会选择当前系统的
+Stream 版本和架构：
+
+```bash
+sudo sed -i \
+  -e '/^metalink=/s/^/#/' \
+  -e 's|^#baseurl=http://mirror.stream.centos.org|baseurl=http://your-domain-or-ip-address:3142/centos|' \
+  -e 's|^#baseurl=https://mirror.stream.centos.org|baseurl=http://your-domain-or-ip-address:3142/centos|' \
+  /etc/yum.repos.d/centos*.repo
+
+sudo dnf clean all
+sudo dnf makecache
+```
+
+如果镜像提供方已经修改过仓库文件，请在执行命令前先检查文件内容。apt-proxy
+当前尚不处理 CentOS metalink 响应，相关工作由
+[Issue #70](https://github.com/soulteary/apt-proxy/issues/70)跟踪。客户端使用 HTTP
+访问 apt-proxy，apt-proxy 再从配置好的 HTTPS 上游获取内容。
 
 ### Alpine Linux
 
