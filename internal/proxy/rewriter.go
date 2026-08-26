@@ -413,7 +413,11 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	}
 
 	target := rewriter.mirror
-	if mode == distro.TypeDebian && strings.HasPrefix(escapedPath, "/debian-security/") && rewriter.securityMirror != nil {
+	// matches[0] is the full distribution path selected by the rewrite pattern.
+	// Check it instead of the complete request path so apt-cacher-ng-style host
+	// prefixes (for example /security.debian.org/debian-security/...) still use
+	// the dedicated Debian Security mirror.
+	if mode == distro.TypeDebian && strings.HasPrefix(matches[0], "/debian-security/") && rewriter.securityMirror != nil {
 		target = rewriter.securityMirror
 	}
 
