@@ -41,9 +41,16 @@ type URLRewriter struct {
 func debianSecurityMirror(archive, configured *url.URL, configuredAlias bool) *url.URL {
 	if configured != nil && !configuredAlias {
 		security := *configured
-		security.Path = strings.TrimSuffix(security.Path, "/") + "/"
 		if security.RawPath != "" {
 			security.RawPath = strings.TrimSuffix(security.RawPath, "/") + "/"
+			if decoded, err := url.PathUnescape(security.RawPath); err == nil {
+				security.Path = decoded
+			} else {
+				security.RawPath = ""
+				security.Path = strings.TrimSuffix(security.Path, "/") + "/"
+			}
+		} else {
+			security.Path = strings.TrimSuffix(security.Path, "/") + "/"
 		}
 		return &security
 	}
