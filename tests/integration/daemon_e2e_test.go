@@ -53,10 +53,18 @@ func freeListenPort(t *testing.T) (string, string) {
 
 func waitForServer(t *testing.T, url string, timeout time.Duration) {
 	t.Helper()
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	defer client.CloseIdleConnections()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(url)
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatalf("create readiness request: %v", err)
+		}
+		req.Close = true
+		resp, err := client.Do(req)
 		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
 			if resp.StatusCode < 500 {
 				return
@@ -164,12 +172,27 @@ func TestDaemonE2EHealthCheckPersists(t *testing.T) {
 	baseURL := fmt.Sprintf("http://%s:%s", host, port)
 	waitForServer(t, baseURL+"/healthz", 5*time.Second)
 
-	resp, err := http.Get(baseURL + "/healthz")
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("create GET /healthz request: %v", err)
+	}
+	// The test sends SIGTERM before returning. Do not leave its own idle
+	// keep-alive connection open while asserting that Fiber shuts down.
+	req.Close = true
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	defer client.CloseIdleConnections()
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("GET /healthz: %v", err)
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		t.Fatalf("read /healthz response: %v", readErr)
+	}
+	if closeErr != nil {
+		t.Fatalf("close /healthz response: %v", closeErr)
+	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
 	}
