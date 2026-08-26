@@ -183,6 +183,71 @@ func TestProductionProxyRouteRewritesAndCaches(t *testing.T) {
 	}
 }
 
+func TestProductionProxyRouteRewritesAndCachesAlpineIndex(t *testing.T) {
+	var upstreamHits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits.Add(1)
+		if got, want := r.URL.Path, "/alpine/v3.22/main/x86_64/APKINDEX.tar.gz"; got != want {
+			t.Errorf("upstream path = %q, want %q", got, want)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "alpine-index")
+	}))
+	defer upstream.Close()
+
+	srv, err := NewServer(&config.Config{
+		CacheDir: t.TempDir(),
+		Mode:     distro.TypeAlpine,
+		Listen:   "127.0.0.1:0",
+		Mirrors: config.MirrorConfig{
+			Alpine: upstream.URL + "/alpine/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.shutdown() })
+
+	request := func() *http.Response {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/alpine/v3.22/main/x86_64/APKINDEX.tar.gz", nil)
+		resp, err := srv.app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
+		return resp
+	}
+
+	first := request()
+	firstBody, err := io.ReadAll(first.Body)
+	_ = first.Body.Close()
+	if err != nil {
+		t.Fatalf("read first response: %v", err)
+	}
+	if first.StatusCode != http.StatusOK || string(firstBody) != "alpine-index" {
+		t.Fatalf("first response: status=%d body=%q", first.StatusCode, firstBody)
+	}
+	if got := first.Header.Get("X-Cache"); got != "MISS" {
+		t.Fatalf("first X-Cache = %q, want MISS", got)
+	}
+
+	second := request()
+	secondBody, err := io.ReadAll(second.Body)
+	_ = second.Body.Close()
+	if err != nil {
+		t.Fatalf("read second response: %v", err)
+	}
+	if second.StatusCode != http.StatusOK || string(secondBody) != "alpine-index" {
+		t.Fatalf("second response: status=%d body=%q", second.StatusCode, secondBody)
+	}
+	if got := second.Header.Get("X-Cache"); got != "HIT" {
+		t.Fatalf("second X-Cache = %q, want HIT", got)
+	}
+	if got := upstreamHits.Load(); got != 1 {
+		t.Fatalf("upstream hits = %d, want 1", got)
+	}
+}
+
 func TestServerInitialize(t *testing.T) {
 	// Create a temporary cache directory
 	tmpDir, err := os.MkdirTemp("", "apt-proxy-test-*")
