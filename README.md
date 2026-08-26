@@ -153,6 +153,21 @@ apk update
 
 ## Advanced Configuration
 
+### apt-cacher-ng-style host-prefixed paths
+
+For known distributions, apt-proxy accepts the host-prefixed path form commonly
+used with apt-cacher-ng. For example:
+
+```text
+deb http://apt-proxy.example:3142/ftp.uni-kl.de/debian bookworm main
+```
+
+The embedded hostname is a compatibility prefix only. A request such as
+`/ftp.uni-kl.de/debian/dists/bookworm/InRelease` is routed to the Debian mirror
+configured in apt-proxy; it does **not** grant access to `ftp.uni-kl.de` or turn
+the service into an unrestricted origin proxy. Query parameters are preserved,
+and paths that do not match a configured distribution return `404`.
+
 ### Distributions and Mirrors Config (distributions.yaml)
 
 You can maintain distributions and mirror lists via an external YAML file without changing code or recompiling.
