@@ -17,8 +17,8 @@ package cli
 import (
 	"context"
 
-	"github.com/gofiber/fiber/v2"
-	health "github.com/soulteary/health-kit"
+	"github.com/gofiber/fiber/v3"
+	health "github.com/soulteary/health-kit/v2"
 )
 
 // fiberHealthHandler is a Fiber-native replacement for health.FiberHandler that
@@ -33,7 +33,7 @@ import (
 // timeout via Aggregator.config.Timeout; the request lifetime is irrelevant
 // to a health probe.
 func fiberHealthHandler(aggregator *health.Aggregator) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		cfg := aggregator.Config()
 
 		if len(cfg.IPWhitelist) > 0 {

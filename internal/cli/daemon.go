@@ -25,14 +25,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
-	health "github.com/soulteary/health-kit"
-	logger "github.com/soulteary/logger-kit"
-	metrics "github.com/soulteary/metrics-kit"
-	middleware "github.com/soulteary/middleware-kit"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	health "github.com/soulteary/health-kit/v2"
+	logger "github.com/soulteary/logger-kit/v2"
+	metrics "github.com/soulteary/metrics-kit/v2"
+	middleware "github.com/soulteary/middleware-kit/v2"
 	tracing "github.com/soulteary/tracing-kit"
-	version "github.com/soulteary/version-kit"
+	version "github.com/soulteary/version-kit/v2"
 
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
@@ -41,7 +41,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
-	httpcache "github.com/soulteary/httpcache-kit"
+	httpcache "github.com/soulteary/httpcache-kit/v2"
 	vfs "github.com/soulteary/vfs-kit"
 )
 
@@ -376,11 +376,10 @@ func cacheLabelFromHeader(h string) string {
 // createFiberApp creates the Fiber application with all routes and middleware.
 func (s *Server) createFiberApp() *fiber.App {
 	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-		ReadTimeout:           defaultReadTimeout,
-		WriteTimeout:          defaultWriteTimeout,
-		IdleTimeout:           defaultIdleTimeout,
-		ReadBufferSize:        defaultReadBufSize,
+		ReadTimeout:    defaultReadTimeout,
+		WriteTimeout:   defaultWriteTimeout,
+		IdleTimeout:    defaultIdleTimeout,
+		ReadBufferSize: defaultReadBufSize,
 	})
 
 	// Version headers for all responses
@@ -396,7 +395,7 @@ func (s *Server) createFiberApp() *fiber.App {
 		logCfg.IncludeHeaders = true
 		logCfg.IncludeBody = true
 	}
-	logCfg.CustomFieldsFiber = func(c *fiber.Ctx) map[string]interface{} {
+	logCfg.CustomFieldsFiber = func(c fiber.Ctx) map[string]interface{} {
 		// Use Content-Length header when available so we don't pull the
 		// (potentially streamed) body into memory just to record its size.
 		size := c.Response().Header.ContentLength()
@@ -440,7 +439,7 @@ func (s *Server) createFiberApp() *fiber.App {
 	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(apiHandler(s.mirrorsHandler.HandleMirrorsRefresh)))
 
 	// Ping (/_/ping and /_/ping/ and /_/ping/...)
-	pingHandler := func(c *fiber.Ctx) error {
+	pingHandler := func(c fiber.Ctx) error {
 		c.Set("Content-Type", "text/plain; charset=utf-8")
 		return c.SendString("pong")
 	}
@@ -448,7 +447,7 @@ func (s *Server) createFiberApp() *fiber.App {
 	app.All("/_/ping/*", pingHandler)
 
 	// Root "/" -> home page (Fiber native)
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		tpl, status := proxy.RenderInternalUrls("/", s.config.CacheDir)
 		c.Set("Content-Type", "text/html; charset=utf-8")
 		c.Status(status)
@@ -495,9 +494,13 @@ func (s *Server) Start() error {
 				Str("cert", s.config.TLS.CertFile).
 				Str("key", s.config.TLS.KeyFile).
 				Msg("starting HTTPS server with TLS")
-			err = s.app.ListenTLS(s.config.Listen, s.config.TLS.CertFile, s.config.TLS.KeyFile)
+			err = s.app.Listen(s.config.Listen, fiber.ListenConfig{
+				DisableStartupMessage: true,
+				CertFile:              s.config.TLS.CertFile,
+				CertKeyFile:           s.config.TLS.KeyFile,
+			})
 		} else {
-			err = s.app.Listen(s.config.Listen)
+			err = s.app.Listen(s.config.Listen, fiber.ListenConfig{DisableStartupMessage: true})
 		}
 		if err != nil {
 			serverErr <- err

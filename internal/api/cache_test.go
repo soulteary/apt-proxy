@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	httpcache "github.com/soulteary/httpcache-kit"
-	logger "github.com/soulteary/logger-kit"
+	httpcache "github.com/soulteary/httpcache-kit/v2"
+	logger "github.com/soulteary/logger-kit/v2"
 )
 
 // fakeCache is a lightweight in-memory ExtendedCache stub. It implements only

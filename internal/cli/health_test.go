@@ -21,8 +21,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
-	health "github.com/soulteary/health-kit"
+	"github.com/gofiber/fiber/v3"
+	health "github.com/soulteary/health-kit/v2"
 )
 
 // healthCheckerFunc adapts a closure into the health.Checker interface so

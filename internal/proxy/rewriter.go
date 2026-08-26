@@ -22,7 +22,7 @@ import (
 	"regexp"
 	"sync"
 
-	logger "github.com/soulteary/logger-kit"
+	logger "github.com/soulteary/logger-kit/v2"
 
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"

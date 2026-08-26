@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	logger "github.com/soulteary/logger-kit"
+	logger "github.com/soulteary/logger-kit/v2"
 	tracing "github.com/soulteary/tracing-kit"
 
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
