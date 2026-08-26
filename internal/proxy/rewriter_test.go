@@ -152,6 +152,7 @@ func TestRewriteRequestByModePathPrefix(t *testing.T) {
 		path           string
 		wantHost       string
 		wantPath       string
+		wantRawPath    string
 	}{
 		{
 			name:     "ubuntu with sub-path mirror",
@@ -212,6 +213,17 @@ func TestRewriteRequestByModePathPrefix(t *testing.T) {
 			wantPath:       "/debian-security/dists/bookworm-security/Release",
 		},
 		{
+			name:           "explicit debian-security mirror preserves escaped terminal slash",
+			mirror:         "http://archive.example.com/debian/",
+			securityMirror: "http://artifactory.example/repo%2F",
+			mode:           distro.TypeDebian,
+			distType:       distro.TypeDebian,
+			path:           "/debian-security/dists/bookworm-security/Release",
+			wantHost:       "artifactory.example",
+			wantPath:       "/repo//dists/bookworm-security/Release",
+			wantRawPath:    "/repo%2F/dists/bookworm-security/Release",
+		},
+		{
 			name:     "debian-security derived without duplicate suffix",
 			mirror:   "http://security.example.com/debian-security/",
 			mode:     distro.TypeDebian,
@@ -241,6 +253,9 @@ func TestRewriteRequestByModePathPrefix(t *testing.T) {
 			}
 			if req.URL.Path != tc.wantPath {
 				t.Errorf("Path = %q, want %q", req.URL.Path, tc.wantPath)
+			}
+			if req.URL.RawPath != tc.wantRawPath {
+				t.Errorf("RawPath = %q, want %q", req.URL.RawPath, tc.wantRawPath)
 			}
 		})
 	}
