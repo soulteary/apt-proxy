@@ -54,6 +54,50 @@ func TestUbuntuPortsUsesDedicatedBuiltins(t *testing.T) {
 	}
 }
 
+func TestUbuntuBuiltinRegistryStillUsesGeoDiscovery(t *testing.T) {
+	want := []string{"https://geo.example.com/ubuntu/"}
+	original := ubuntuGeoMirrorLookup
+	ubuntuGeoMirrorLookup = func() ([]string, error) {
+		return want, nil
+	}
+	t.Cleanup(func() { ubuntuGeoMirrorLookup = original })
+
+	reg := distro.NewBuiltinRegistry()
+	if got := GetGeoMirrorUrlsByMode(reg, distro.TypeUbuntu); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Ubuntu mirrors = %v, want geo-discovered mirrors %v", got, want)
+	}
+}
+
+func TestUbuntuConfiguredRegistryOverridesGeoDiscovery(t *testing.T) {
+	want := []string{"https://configured.example.com/ubuntu/"}
+	called := false
+	original := ubuntuGeoMirrorLookup
+	ubuntuGeoMirrorLookup = func() ([]string, error) {
+		called = true
+		return []string{"https://geo.example.com/ubuntu/"}, nil
+	}
+	t.Cleanup(func() { ubuntuGeoMirrorLookup = original })
+
+	reg := distro.NewRegistry()
+	if err := reg.Register(&distro.RegisteredDistribution{
+		ID:   "ubuntu",
+		Name: "Ubuntu",
+		Type: distro.TypeUbuntu,
+		Mirrors: []distro.URLWithAlias{
+			{URL: want[0], Scheme: "https"},
+		},
+	}); err != nil {
+		t.Fatalf("register Ubuntu: %v", err)
+	}
+
+	if got := GetGeoMirrorUrlsByMode(reg, distro.TypeUbuntu); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Ubuntu mirrors = %v, want configured mirrors %v", got, want)
+	}
+	if called {
+		t.Fatal("geo discovery called despite configured Ubuntu mirrors")
+	}
+}
+
 func TestGetUbuntuMirrorByAliases(t *testing.T) {
 	alias := GetMirrorURLByAliases(nil, distro.TypeUbuntu, "cn:tsinghua")
 	if !strings.Contains(alias, "mirrors.tuna.tsinghua.edu.cn/ubuntu/") {

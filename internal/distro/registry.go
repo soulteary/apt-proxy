@@ -39,6 +39,7 @@ type RegisteredDistribution struct {
 	ID           string
 	Name         string
 	Type         int
+	Builtin      bool
 	URLPattern   *regexp.Regexp
 	BenchmarkURL string
 	GeoMirrorAPI string
@@ -193,6 +194,7 @@ func RegisterBuiltins(reg *Registry) {
 			ID:           DistroUbuntu,
 			Name:         "Ubuntu",
 			Type:         TypeUbuntu,
+			Builtin:      true,
 			URLPattern:   UbuntuHostPattern,
 			BenchmarkURL: UbuntuBenchmarkURL,
 			GeoMirrorAPI: UbuntuGeoMirrorAPI,
@@ -203,6 +205,7 @@ func RegisterBuiltins(reg *Registry) {
 			ID:           DistroUbuntuPorts,
 			Name:         "Ubuntu Ports",
 			Type:         TypeUbuntuPorts,
+			Builtin:      true,
 			URLPattern:   UbuntuPortsHostPattern,
 			BenchmarkURL: UbuntuPortsBenchmarkURL,
 			GeoMirrorAPI: UbuntuPortsGeoMirrorAPI,
@@ -213,6 +216,7 @@ func RegisterBuiltins(reg *Registry) {
 			ID:           DistroDebian,
 			Name:         "Debian",
 			Type:         TypeDebian,
+			Builtin:      true,
 			URLPattern:   DebianHostPattern,
 			BenchmarkURL: DebianBenchmarkURL,
 			CacheRules:   DebianDefaultCacheRules,
@@ -222,6 +226,7 @@ func RegisterBuiltins(reg *Registry) {
 			ID:           DistroCentOS,
 			Name:         "CentOS",
 			Type:         TypeCentOS,
+			Builtin:      true,
 			URLPattern:   CentosHostPattern,
 			BenchmarkURL: CentosBenchmarkURL,
 			CacheRules:   CentosDefaultCacheRules,
@@ -231,6 +236,7 @@ func RegisterBuiltins(reg *Registry) {
 			ID:           DistroAlpine,
 			Name:         "Alpine Linux",
 			Type:         TypeAlpine,
+			Builtin:      true,
 			URLPattern:   AlpineHostPattern,
 			BenchmarkURL: AlpineBenchmarkURL,
 			CacheRules:   AlpineDefaultCacheRules,
