@@ -38,8 +38,8 @@ type URLRewriter struct {
 	pattern        *regexp.Regexp
 }
 
-func debianSecurityMirror(archive, configured *url.URL) *url.URL {
-	if configured != nil {
+func debianSecurityMirror(archive, configured *url.URL, configuredAlias bool) *url.URL {
+	if configured != nil && !configuredAlias {
 		security := *configured
 		security.Path = strings.TrimSuffix(security.Path, "/") + "/"
 		if security.RawPath != "" {
@@ -47,11 +47,15 @@ func debianSecurityMirror(archive, configured *url.URL) *url.URL {
 		}
 		return &security
 	}
-	if archive == nil {
+	source := archive
+	if configured != nil {
+		source = configured
+	}
+	if source == nil {
 		return nil
 	}
 
-	security := *archive
+	security := *source
 	path := strings.TrimSuffix(security.Path, "/")
 	switch {
 	case strings.HasSuffix(path, "/debian-security"):
@@ -68,7 +72,11 @@ func debianSecurityMirror(archive, configured *url.URL) *url.URL {
 
 func attachDebianSecurityMirror(mode int, st *state.AppState, rewriter *URLRewriter) *URLRewriter {
 	if mode == distro.TypeDebian && rewriter != nil {
-		rewriter.securityMirror = debianSecurityMirror(rewriter.mirror, st.GetDebianSecurityMirror())
+		rewriter.securityMirror = debianSecurityMirror(
+			rewriter.mirror,
+			st.GetDebianSecurityMirror(),
+			st.DebianSecurityMirrorResolvedAlias(),
+		)
 	}
 	return rewriter
 }
@@ -291,7 +299,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		oldPattern := (*p).pattern
 		securityMirror := (*p).securityMirror
 		if mode == distro.TypeDebian && st.GetDebianSecurityMirror() == nil {
-			securityMirror = debianSecurityMirror(parsedMirror, nil)
+			securityMirror = debianSecurityMirror(parsedMirror, nil, false)
 		}
 		*p = &URLRewriter{mirror: parsedMirror, securityMirror: securityMirror, pattern: oldPattern}
 		rewriters.Mu.Unlock()

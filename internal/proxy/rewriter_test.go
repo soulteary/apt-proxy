@@ -202,6 +202,16 @@ func TestRewriteRequestByModePathPrefix(t *testing.T) {
 			wantPath:       "/apt/security/dists/bookworm-security/Release",
 		},
 		{
+			name:           "debian-security alias translates archive path",
+			mirror:         "http://archive.example.com/debian/",
+			securityMirror: "cn:tsinghua",
+			mode:           distro.TypeDebian,
+			distType:       distro.TypeDebian,
+			path:           "/debian-security/dists/bookworm-security/Release",
+			wantHost:       "mirrors.tuna.tsinghua.edu.cn",
+			wantPath:       "/debian-security/dists/bookworm-security/Release",
+		},
+		{
 			name:     "debian-security derived without duplicate suffix",
 			mirror:   "http://security.example.com/debian-security/",
 			mode:     distro.TypeDebian,
