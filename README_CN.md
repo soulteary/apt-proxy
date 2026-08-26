@@ -701,7 +701,9 @@ APT Proxy 提供 REST API 端点用于监控和管理：
 
 ### API 认证
 
-配置 API 密钥后，所有 `/api/*` 端点都需要认证。设置 `--api-key`（或 `APT_PROXY_API_KEY`）会隐式启用鉴权；如需强制关闭，可显式传 `--enable-api-auth=false`。可通过以下方式提供 API 密钥：
+配置 API 密钥并启用认证后，所有 `/api/*` 端点都需要认证。设置 `--api-key`（或 `APT_PROXY_API_KEY`）会隐式启用鉴权，除非显式传入 `--enable-api-auth=false`。如果启用认证但没有配置非空密钥，程序会将其视为无效配置并拒绝启动。
+
+认证关闭时，只读的 `/api/cache/stats` 仍可访问；`purge`、`cleanup` 和镜像 `refresh` 等修改类接口默认关闭并返回 HTTP 503，避免未认证的网络监听端口修改代理状态。可通过以下方式提供 API 密钥：
 
 1. **X-API-Key Header**（推荐）：
    ```bash

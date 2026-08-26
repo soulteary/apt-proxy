@@ -119,6 +119,46 @@ mode: "ubuntu"
 	}
 }
 
+func TestLoadConfigFileAPIAuthTriState(t *testing.T) {
+	tests := []struct {
+		name        string
+		toggle      string
+		wantEnabled bool
+	}{
+		{
+			name:        "API key implicitly enables auth when toggle is omitted",
+			wantEnabled: true,
+		},
+		{
+			name:        "explicit false disables auth",
+			toggle:      "  enable_api_auth: false\n",
+			wantEnabled: false,
+		},
+		{
+			name:        "explicit true enables auth",
+			toggle:      "  enable_api_auth: true\n",
+			wantEnabled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "apt-proxy.yaml")
+			content := "security:\n  api_key: test-api-key\n" + tt.toggle
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			cfg, err := LoadConfigFile(path)
+			if err != nil {
+				t.Fatalf("LoadConfigFile: %v", err)
+			}
+			if cfg.Security.EnableAPIAuth != tt.wantEnabled {
+				t.Fatalf("EnableAPIAuth = %v, want %v", cfg.Security.EnableAPIAuth, tt.wantEnabled)
+			}
+		})
+	}
+}
+
 func TestLoadConfigFile_NotFound(t *testing.T) {
 	cfg, err := LoadConfigFile("/nonexistent/path/config.yaml")
 	if err != nil {
@@ -372,6 +412,17 @@ func TestYamlConfigToConfig_HostPort(t *testing.T) {
 }
 
 func TestValidateConfig(t *testing.T) {
+	t.Run("auth enabled without key", func(t *testing.T) {
+		cfg := &Config{
+			Listen:   "127.0.0.1:3142",
+			CacheDir: t.TempDir(),
+			Security: SecurityConfig{EnableAPIAuth: true},
+		}
+		if err := ValidateConfig(cfg); err == nil {
+			t.Error("ValidateConfig should reject enabled API auth without a key")
+		}
+	})
+
 	t.Run("nil config", func(t *testing.T) {
 		if err := ValidateConfig(nil); err == nil {
 			t.Error("ValidateConfig(nil) should return error")

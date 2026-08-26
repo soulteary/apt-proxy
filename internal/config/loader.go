@@ -26,7 +26,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
 	"github.com/soulteary/cli-kit/configutil"
-	httpcache "github.com/soulteary/httpcache-kit"
+	httpcache "github.com/soulteary/httpcache-kit/v2"
 )
 
 // ParseFlags parses command-line flags and returns a Config struct with all

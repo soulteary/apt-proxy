@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	logger "github.com/soulteary/logger-kit"
+	logger "github.com/soulteary/logger-kit/v2"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 )
@@ -63,7 +63,8 @@ func TestPackageStructAccessors(t *testing.T) {
 }
 
 // TestResponseWriterCacheControl asserts that the responseWriter only
-// injects a Cache-Control header for cacheable status codes (200/404)
+// injects the rule Cache-Control header for 200 and a short independent TTL
+// for 404 responses.
 // and otherwise leaves the header alone. Together these cover both
 // branches of shouldSetCacheControl.
 func TestResponseWriterCacheControl(t *testing.T) {
@@ -76,7 +77,7 @@ func TestResponseWriterCacheControl(t *testing.T) {
 		wantHeader string
 	}{
 		{"200 with rule injects header", rule, http.StatusOK, "max-age=3600"},
-		{"404 with rule injects header", rule, http.StatusNotFound, "max-age=3600"},
+		{"404 uses short negative TTL", rule, http.StatusNotFound, "public, max-age=30"},
 		{"500 with rule does NOT inject header", rule, http.StatusInternalServerError, ""},
 		{"200 with nil rule does NOT inject header", nil, http.StatusOK, ""},
 		{"200 with rule but empty CacheControl does NOT inject header", &distro.Rule{}, http.StatusOK, ""},

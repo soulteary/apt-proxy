@@ -25,14 +25,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
-	health "github.com/soulteary/health-kit"
-	logger "github.com/soulteary/logger-kit"
-	metrics "github.com/soulteary/metrics-kit"
-	middleware "github.com/soulteary/middleware-kit"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	health "github.com/soulteary/health-kit/v2"
+	logger "github.com/soulteary/logger-kit/v2"
+	metrics "github.com/soulteary/metrics-kit/v2"
+	middleware "github.com/soulteary/middleware-kit/v2"
 	tracing "github.com/soulteary/tracing-kit"
-	version "github.com/soulteary/version-kit"
+	version "github.com/soulteary/version-kit/v2"
 
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
@@ -41,7 +41,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
-	httpcache "github.com/soulteary/httpcache-kit"
+	httpcache "github.com/soulteary/httpcache-kit/v2"
 	vfs "github.com/soulteary/vfs-kit"
 )
 
@@ -50,6 +50,7 @@ import (
 type Server struct {
 	config              *config.Config           // Application configuration
 	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
+	cacheProxy          *httpcache.Handler       // Shared HTTP cache wrapper; drained before backend close
 	s3fs                *s3vfs.S3VFS             // Active S3 backend (only set when storage backend == "s3")
 	state               *state.AppState          // Per-server runtime state (proxy mode, mirror URLs)
 	registry            *distro.Registry         // Per-server distribution registry
@@ -155,6 +156,10 @@ func (s *Server) initTracing() {
 // logging, and HTTP server configuration. This method is called automatically
 // by NewServer and should not be called directly.
 func (s *Server) initialize() error {
+	if s.config.Security.EnableAPIAuth && strings.TrimSpace(s.config.Security.APIKey) == "" {
+		return wrapErr(apperrors.ErrConfigInvalid, "API authentication is enabled but no API key is configured", nil)
+	}
+
 	// Optional: log vfs file-close errors (e.g. from finalizer)
 	if s.log != nil {
 		vfs.LogCloseError = func(err error) { s.log.Error().Err(err).Msg("vfs: error closing file") }
@@ -225,6 +230,10 @@ func (s *Server) initialize() error {
 
 	// Wrap proxy with cache (request logging is done by logger-kit FiberMiddleware)
 	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, &httpcache.HandlerOptions{Logger: s.log})
+	// apt-proxy serves multiple clients and is therefore a shared cache. This
+	// activates RFC shared-cache protections for Authorization/private data.
+	cachedHandler.Shared = true
+	s.cacheProxy = cachedHandler
 	s.proxy.Handler = cachedHandler
 
 	if s.config.Debug {
@@ -243,8 +252,12 @@ func (s *Server) initialize() error {
 	// impossible to correlate forensic events.
 	clientIP := api.NewClientIPExtractor(s.config.Security.TrustedProxies)
 
+	apiKey := ""
+	if s.config.Security.EnableAPIAuth {
+		apiKey = s.config.Security.APIKey
+	}
 	s.authMiddleware = api.NewAuthMiddleware(api.AuthConfig{
-		APIKey:   s.config.Security.APIKey,
+		APIKey:   apiKey,
 		Logger:   s.log,
 		ClientIP: clientIP,
 	})
@@ -352,8 +365,11 @@ func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
 
 // Default Fiber server timeouts and buffer sizes.
 const (
-	defaultReadTimeout  = 50 * time.Second
-	defaultWriteTimeout = 100 * time.Second
+	defaultReadTimeout = 50 * time.Second
+	// Package downloads may legitimately take hours on slow links. A whole-
+	// response write deadline terminates healthy streaming transfers, so rely
+	// on the idle timeout and request cancellation instead.
+	defaultWriteTimeout = 0
 	defaultIdleTimeout  = 120 * time.Second
 	defaultReadBufSize  = 4096 * 4 // 16KB, align with former ReadHeaderTimeout behavior
 )
@@ -376,11 +392,10 @@ func cacheLabelFromHeader(h string) string {
 // createFiberApp creates the Fiber application with all routes and middleware.
 func (s *Server) createFiberApp() *fiber.App {
 	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-		ReadTimeout:           defaultReadTimeout,
-		WriteTimeout:          defaultWriteTimeout,
-		IdleTimeout:           defaultIdleTimeout,
-		ReadBufferSize:        defaultReadBufSize,
+		ReadTimeout:    defaultReadTimeout,
+		WriteTimeout:   defaultWriteTimeout,
+		IdleTimeout:    defaultIdleTimeout,
+		ReadBufferSize: defaultReadBufSize,
 	})
 
 	// Version headers for all responses
@@ -396,7 +411,7 @@ func (s *Server) createFiberApp() *fiber.App {
 		logCfg.IncludeHeaders = true
 		logCfg.IncludeBody = true
 	}
-	logCfg.CustomFieldsFiber = func(c *fiber.Ctx) map[string]interface{} {
+	logCfg.CustomFieldsFiber = func(c fiber.Ctx) map[string]interface{} {
 		// Use Content-Length header when available so we don't pull the
 		// (potentially streamed) body into memory just to record its size.
 		size := c.Response().Header.ContentLength()
@@ -430,17 +445,30 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Metrics (wrap net/http handler via adaptor)
 	app.Get("/metrics", adaptor.HTTPHandler(metrics.HandlerFor(s.metricsRegistry)))
 
-	// Cache & mirrors API (rate limit then auth)
+	// Cache & mirrors API (rate limit then auth). Read-only statistics may be
+	// exposed without a key for compatibility, but mutating management routes
+	// fail closed unless authentication is configured.
 	apiHandler := func(h http.HandlerFunc) http.Handler {
 		return s.rateLimitMiddleware.Wrap(s.authMiddleware.WrapFunc(h))
 	}
+	mutatingAPIHandler := func(h http.HandlerFunc) http.Handler {
+		if !s.authMiddleware.IsEnabled() {
+			return s.rateLimitMiddleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				api.WriteAppError(w, apperrors.New(
+					apperrors.ErrAuthInsufficient,
+					"management API is disabled until API authentication is configured",
+				).WithHTTPStatus(http.StatusServiceUnavailable))
+			}))
+		}
+		return apiHandler(h)
+	}
 	app.All("/api/cache/stats", adaptor.HTTPHandler(apiHandler(s.cacheHandler.HandleCacheStats)))
-	app.All("/api/cache/purge", adaptor.HTTPHandler(apiHandler(s.cacheHandler.HandleCachePurge)))
-	app.All("/api/cache/cleanup", adaptor.HTTPHandler(apiHandler(s.cacheHandler.HandleCacheCleanup)))
-	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(apiHandler(s.mirrorsHandler.HandleMirrorsRefresh)))
+	app.All("/api/cache/purge", adaptor.HTTPHandler(mutatingAPIHandler(s.cacheHandler.HandleCachePurge)))
+	app.All("/api/cache/cleanup", adaptor.HTTPHandler(mutatingAPIHandler(s.cacheHandler.HandleCacheCleanup)))
+	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(mutatingAPIHandler(s.mirrorsHandler.HandleMirrorsRefresh)))
 
 	// Ping (/_/ping and /_/ping/ and /_/ping/...)
-	pingHandler := func(c *fiber.Ctx) error {
+	pingHandler := func(c fiber.Ctx) error {
 		c.Set("Content-Type", "text/plain; charset=utf-8")
 		return c.SendString("pong")
 	}
@@ -448,7 +476,7 @@ func (s *Server) createFiberApp() *fiber.App {
 	app.All("/_/ping/*", pingHandler)
 
 	// Root "/" -> home page (Fiber native)
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		tpl, status := proxy.RenderInternalUrls("/", s.config.CacheDir)
 		c.Set("Content-Type", "text/html; charset=utf-8")
 		c.Status(status)
@@ -495,9 +523,13 @@ func (s *Server) Start() error {
 				Str("cert", s.config.TLS.CertFile).
 				Str("key", s.config.TLS.KeyFile).
 				Msg("starting HTTPS server with TLS")
-			err = s.app.ListenTLS(s.config.Listen, s.config.TLS.CertFile, s.config.TLS.KeyFile)
+			err = s.app.Listen(s.config.Listen, fiber.ListenConfig{
+				DisableStartupMessage: true,
+				CertFile:              s.config.TLS.CertFile,
+				CertKeyFile:           s.config.TLS.KeyFile,
+			})
 		} else {
-			err = s.app.Listen(s.config.Listen)
+			err = s.app.Listen(s.config.Listen, fiber.ListenConfig{DisableStartupMessage: true})
 		}
 		if err != nil {
 			serverErr <- err
@@ -597,10 +629,17 @@ func (s *Server) shutdown() error {
 		errs = append(errs, wrapErr(apperrors.ErrInternal, "failed to shutdown server gracefully", err))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 5*time.Second)
+	if s.cacheProxy != nil {
+		if err := s.cacheProxy.Shutdown(drainCtx); err != nil {
+			s.log.Warn().Err(err).Msg("failed to drain cache writes")
+			errs = append(errs, wrapErr(apperrors.ErrCacheWrite, "failed to drain cache writes", err))
+		}
+	}
+	cancelDrain()
 
-	// Close cache to stop cleanup goroutines and release file locks.
+	// Close cache only after background writes have drained, then stop cleanup
+	// goroutines and release file locks.
 	if s.cache != nil {
 		if err := s.cache.Close(); err != nil {
 			s.log.Warn().Err(err).Msg("failed to close cache")
@@ -609,7 +648,9 @@ func (s *Server) shutdown() error {
 	}
 
 	// Shutdown tracing (flush spans). Always attempt even on prior errors.
-	if err := tracing.Shutdown(ctx); err != nil {
+	traceCtx, cancelTrace := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelTrace()
+	if err := tracing.Shutdown(traceCtx); err != nil {
 		s.log.Warn().Err(err).Msg("failed to shutdown tracing")
 		errs = append(errs, wrapErr(apperrors.ErrInternal, "failed to shutdown tracing", err))
 	}

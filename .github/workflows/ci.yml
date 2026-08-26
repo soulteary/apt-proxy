@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.4"
+  GO_VERSION: "1.27.0"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -35,7 +35,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: v2.13.1
           args: --timeout=5m
 
       - name: go vet
@@ -110,6 +110,17 @@ jobs:
           GOOS=linux   GOARCH=arm   GOARM=7      go build -trimpath -o /tmp/apt-proxy-linux-armv7   ./cmd/apt-proxy
           GOOS=darwin  GOARCH=amd64              go build -trimpath -o /tmp/apt-proxy-darwin-amd64  ./cmd/apt-proxy
           GOOS=darwin  GOARCH=arm64              go build -trimpath -o /tmp/apt-proxy-darwin-arm64  ./cmd/apt-proxy
+
+  container:
+    name: Container
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build container image
+        run: docker build --file docker/Dockerfile --tag apt-proxy:test .
 
   integration:
     name: Integration (e2e)
