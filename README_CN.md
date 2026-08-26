@@ -153,6 +153,20 @@ apk update
 
 ## 高级配置
 
+### apt-cacher-ng 风格的主机名前缀路径
+
+对于已知发行版，apt-proxy 兼容 apt-cacher-ng 常用的主机名前缀路径形式。例如：
+
+```text
+deb http://apt-proxy.example:3142/ftp.uni-kl.de/debian bookworm main
+```
+
+路径中的主机名仅作为兼容前缀。
+`/ftp.uni-kl.de/debian/dists/bookworm/InRelease` 这类请求仍会被路由到
+apt-proxy 中配置的 Debian 镜像；它不会授权访问 `ftp.uni-kl.de`，也不会将服务
+变成不受限制的来源代理。查询参数会被保留，无法匹配已配置发行版的路径返回
+`404`。
+
 ### 发行版与镜像配置文件（distributions.yaml）
 
 通过外部 YAML 文件可维护发行版和镜像列表，无需改代码或重新编译。
