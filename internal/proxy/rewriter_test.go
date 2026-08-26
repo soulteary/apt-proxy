@@ -192,6 +192,16 @@ func TestRewriteRequestByModePathPrefix(t *testing.T) {
 			wantPath:       "/debian-security/dists/bookworm-security/main/binary-amd64/Release",
 		},
 		{
+			name:           "explicit debian-security mirror preserves arbitrary root",
+			mirror:         "http://archive.example.com/debian/",
+			securityMirror: "http://artifactory.example/apt/security",
+			mode:           distro.TypeDebian,
+			distType:       distro.TypeDebian,
+			path:           "/debian-security/dists/bookworm-security/Release",
+			wantHost:       "artifactory.example",
+			wantPath:       "/apt/security/dists/bookworm-security/Release",
+		},
+		{
 			name:     "debian-security derived without duplicate suffix",
 			mirror:   "http://security.example.com/debian-security/",
 			mode:     distro.TypeDebian,

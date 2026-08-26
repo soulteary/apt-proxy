@@ -39,15 +39,19 @@ type URLRewriter struct {
 }
 
 func debianSecurityMirror(archive, configured *url.URL) *url.URL {
-	source := configured
-	if source == nil {
-		source = archive
+	if configured != nil {
+		security := *configured
+		security.Path = strings.TrimSuffix(security.Path, "/") + "/"
+		if security.RawPath != "" {
+			security.RawPath = strings.TrimSuffix(security.RawPath, "/") + "/"
+		}
+		return &security
 	}
-	if source == nil {
+	if archive == nil {
 		return nil
 	}
 
-	security := *source
+	security := *archive
 	path := strings.TrimSuffix(security.Path, "/")
 	switch {
 	case strings.HasSuffix(path, "/debian-security"):
