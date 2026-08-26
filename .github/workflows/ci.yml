@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.6"
+  GO_VERSION: "1.27.0"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -110,6 +110,17 @@ jobs:
           GOOS=linux   GOARCH=arm   GOARM=7      go build -trimpath -o /tmp/apt-proxy-linux-armv7   ./cmd/apt-proxy
           GOOS=darwin  GOARCH=amd64              go build -trimpath -o /tmp/apt-proxy-darwin-amd64  ./cmd/apt-proxy
           GOOS=darwin  GOARCH=arm64              go build -trimpath -o /tmp/apt-proxy-darwin-arm64  ./cmd/apt-proxy
+
+  container:
+    name: Container
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Build container image
+        run: docker build --file docker/Dockerfile --tag apt-proxy:test .
 
   integration:
     name: Integration (e2e)
