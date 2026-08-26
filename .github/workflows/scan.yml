@@ -48,11 +48,9 @@ jobs:
           govulncheck ./...
 
       - name: Security Scan
-        # Pinned to gosec v2.28.0 commit SHA to mitigate supply-chain risk.
-        # Update this together with the version comment when bumping.
-        uses: securego/gosec@5bb2909d48fa8072136f38ad329b37575ab15c9f # v2.28.0
-        with:
-          args: '-fmt sarif -out results.sarif ./...'
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
+          gosec -fmt sarif -out results.sarif ./...
 
       - name: Temp sarif workaround
         if: always()
