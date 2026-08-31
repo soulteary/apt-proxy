@@ -6,17 +6,17 @@ require (
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/minio/minio-go/v7 v7.3.0
-	github.com/soulteary/cli-kit v1.7.0
-	github.com/soulteary/health-kit/v2 v2.0.0-20260825184657-5abf6d7d57aa
-	github.com/soulteary/http-kit v1.2.0
-	github.com/soulteary/httpcache-kit/v2 v2.0.1
-	github.com/soulteary/logger-kit/v2 v2.0.0
-	github.com/soulteary/metrics-kit/v2 v2.0.0
-	github.com/soulteary/middleware-kit/v2 v2.0.0-20260825190703-ab8d8cfae74a
-	github.com/soulteary/tracing-kit v1.2.0
-	github.com/soulteary/version-kit/v2 v2.0.0-20260825185013-b8322bc21a84
-	github.com/soulteary/vfs-kit v1.2.0
-	go.opentelemetry.io/otel v1.45.0
+	github.com/soulteary/cli-kit v1.8.0
+	github.com/soulteary/health-kit/v2 v2.1.0
+	github.com/soulteary/http-kit v1.4.0
+	github.com/soulteary/httpcache-kit/v2 v2.1.0
+	github.com/soulteary/logger-kit/v2 v2.1.0
+	github.com/soulteary/metrics-kit/v2 v2.1.0
+	github.com/soulteary/middleware-kit/v2 v2.1.0
+	github.com/soulteary/tracing-kit v1.4.0
+	github.com/soulteary/version-kit/v2 v2.1.0
+	github.com/soulteary/vfs-kit v1.3.0
+	go.opentelemetry.io/otel v1.46.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -33,10 +33,11 @@ require (
 	github.com/gofiber/schema v1.8.4 // indirect
 	github.com/gofiber/utils/v2 v2.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
@@ -56,20 +57,20 @@ require (
 	github.com/valyala/fasthttp v1.73.0 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.45.0 // indirect
-	go.opentelemetry.io/otel/metric v1.45.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
-	go.opentelemetry.io/otel/trace v1.45.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0 // indirect
+	go.opentelemetry.io/otel/metric v1.46.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
+	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
-	google.golang.org/grpc v1.83.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260825221802-da73d73af1c5 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
+	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 )
