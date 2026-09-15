@@ -233,3 +233,59 @@ func TestShippedConfigKeepsDebianHostRouting(t *testing.T) {
 		t.Errorf("rewrote to %q, want %q (a YAML entry without host_pattern must inherit the built-in)", got, want)
 	}
 }
+
+// The combination the two changes exist for: a distribution added through
+// distributions.yaml whose archive lives at a host root. It needs the
+// registry-defined rewriter (custom distro types) and Host matching at the
+// same time, so neither change delivers it alone. This is issue #24's shape
+// (apt.armbian.com serves /dists/... straight off the host root).
+func TestCustomHostRootDistroEndToEnd(t *testing.T) {
+	var gotPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte("InRelease"))
+	}))
+	defer upstream.Close()
+
+	reg := distro.NewBuiltinRegistry()
+	if err := reg.LoadFromConfig(&distro.DistributionConfig{
+		ID:           "armbian",
+		Name:         "Armbian",
+		Type:         77,
+		URLPattern:   `/armbian/(.+)$`,
+		HostPattern:  `^apt\.armbian\.com(:\d+)?$`,
+		BenchmarkURL: "dists/bookworm/main/binary-arm64/Release",
+		CacheRules: []distro.CacheRuleConfig{
+			{Pattern: `InRelease$`, CacheControl: "max-age=3600", Rewrite: true},
+			{Pattern: `deb$`, CacheControl: "max-age=100000", Rewrite: true},
+		},
+		Mirrors: distro.MirrorListConfig{Official: []string{upstream.URL + "/"}},
+	}); err != nil {
+		t.Fatalf("LoadFromConfig: %v", err)
+	}
+
+	st := newTestState()
+	st.SetProxyMode(distro.TypeAllDistros)
+	ps, err := NewPackageStruct(Options{
+		State:    st,
+		Registry: reg,
+		CacheDir: t.TempDir(),
+		Logger:   logger.Default(),
+		Mode:     distro.TypeAllDistros,
+	})
+	if err != nil {
+		t.Fatalf("NewPackageStruct: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/dists/bookworm/InRelease", nil)
+	req.Host = "apt.armbian.com"
+	rec := httptest.NewRecorder()
+	ps.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if want := "/dists/bookworm/InRelease"; gotPath != want {
+		t.Errorf("upstream saw %q, want %q", gotPath, want)
+	}
+}
