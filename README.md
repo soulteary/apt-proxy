@@ -955,6 +955,14 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Troubleshooting
 
+### `501` on `HTTPS///` URLs
+
+apt-proxy does not implement apt-cacher-ng's `HTTPS///` rewrite marker
+(`deb http://HTTPS///example.com/repo ...`). Such a request is refused with
+`501 Not Implemented` rather than being routed somewhere else. Point the
+`sources.list` entry at the `https://` URL directly; note that apt-proxy
+cannot cache a TLS-terminated upstream it does not proxy.
+
 ### Debug Mode
 
 Enable debug logging to troubleshoot issues:
