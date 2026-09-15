@@ -936,6 +936,10 @@ go tool cover -html=coverage.out
 
 ## 故障排除
 
+### `HTTPS///` 形式的 URL 返回 `501`
+
+apt-proxy 不支持 apt-cacher-ng 的 `HTTPS///` 重写标记（`deb http://HTTPS///example.com/repo ...`）。这类请求会被明确拒绝并返回 `501 Not Implemented`，而不是被路由到其他地方。请直接在 `sources.list` 中写 `https://` 地址；注意 apt-proxy 无法缓存未经其代理的 TLS 上游。
+
 ### 调试模式
 
 启用调试日志来排查问题：
