@@ -296,7 +296,7 @@ func TestRewriteRequestByModeNilRewriters(t *testing.T) {
 	RewriteRequestByMode(req, nil, distro.TypeUbuntu)
 }
 
-func TestGetRewriterConfig(t *testing.T) {
+func TestResolveDescriptor(t *testing.T) {
 	tests := []struct {
 		mode     int
 		wantName string
@@ -312,7 +312,7 @@ func TestGetRewriterConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.wantName, func(t *testing.T) {
-			descriptor, name := getRewriterConfig(tt.mode)
+			descriptor, name := resolveDescriptor(tt.mode, nil)
 			if tt.wantNil {
 				if descriptor != nil {
 					t.Error("Expected nil descriptor for unknown mode")
