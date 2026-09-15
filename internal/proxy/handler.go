@@ -410,14 +410,19 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	return nil
 }
 
-// requestHost returns the host the client addressed. net/http moves the Host
-// header into r.Host and leaves r.URL.Host empty for server requests, but a
-// proxied absolute-form request populates r.URL.Host, so prefer that.
+// requestHost returns the host the client addressed, lower-cased. net/http
+// moves the Host header into r.Host and leaves r.URL.Host empty for server
+// requests, but a proxied absolute-form request populates r.URL.Host, so
+// prefer that. DNS names are case-insensitive, so the result is normalised and
+// host patterns are written in lower case.
 func requestHost(r *http.Request) string {
-	if r.URL != nil && r.URL.Host != "" {
-		return r.URL.Host
+	if r == nil {
+		return ""
 	}
-	return r.Host
+	if r.URL != nil && r.URL.Host != "" {
+		return strings.ToLower(r.URL.Host)
+	}
+	return strings.ToLower(r.Host)
 }
 
 // processMatchingRule processes a request that matches a distribution pattern.

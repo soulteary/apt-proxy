@@ -146,3 +146,90 @@ func TestDebianSecurityRootPathEndToEnd(t *testing.T) {
 		t.Errorf("upstream saw %q, want %q", gotPath, want)
 	}
 }
+
+// Codex review finding: DNS names are case-insensitive, so a sources.list
+// written as http://Security.Debian.Org must route like the lower-case form.
+func TestHostRoutingIsCaseInsensitive(t *testing.T) {
+	rewriters := debianRewriters(t)
+
+	for _, host := range []string{
+		"security.debian.org",
+		"Security.Debian.Org",
+		"SECURITY.DEBIAN.ORG",
+		"Security.Debian.Org:80",
+	} {
+		r := &http.Request{Host: host, URL: &url.URL{Path: "/dists/trixie-security/InRelease"}}
+		RewriteRequestByMode(r, rewriters, distro.TypeDebian)
+
+		want := "http://mirrors.example.com/debian-security/dists/trixie-security/InRelease"
+		if got := r.URL.String(); got != want {
+			t.Errorf("host %q: rewrote to %q, want %q", host, got, want)
+		}
+	}
+}
+
+// Codex review finding: a distributions.yaml entry may point type 3 at some
+// other host-root archive. A Host match on that pattern must resolve to the
+// configured mirror, not to the derived /debian-security/ path -- only the
+// built-in security host selects the security mirror.
+func TestCustomDebianHostPatternUsesItsOwnMirror(t *testing.T) {
+	reg := distro.NewBuiltinRegistry()
+	if err := reg.LoadFromConfig(&distro.DistributionConfig{
+		ID:           "debian",
+		Name:         "Debian",
+		Type:         distro.TypeDebian,
+		URLPattern:   `/debian(-security)?/(.+)$`,
+		HostPattern:  `^apt\.internal(:\d+)?$`,
+		BenchmarkURL: "dists/trixie/main/binary-amd64/Release",
+		CacheRules: []distro.CacheRuleConfig{
+			{Pattern: `InRelease$`, CacheControl: "max-age=3600", Rewrite: true},
+		},
+		Mirrors: distro.MirrorListConfig{Official: []string{"http://apt.internal/debian/"}},
+	}); err != nil {
+		t.Fatalf("LoadFromConfig: %v", err)
+	}
+
+	st := newTestState()
+	st.SetMirror(distro.TypeDebian, "http://apt.internal/debian/")
+	rewriters := CreateNewRewriters(distro.TypeDebian, st, reg)
+
+	r := &http.Request{Host: "apt.internal", URL: &url.URL{Path: "/dists/trixie/InRelease"}}
+	RewriteRequestByMode(r, rewriters, distro.TypeDebian)
+
+	want := "http://apt.internal/debian/dists/trixie/InRelease"
+	if got := r.URL.String(); got != want {
+		t.Errorf("rewrote to %q, want %q (must not be sent to the derived security path)", got, want)
+	}
+}
+
+// Codex review finding: the shipped config/distributions.yaml has a debian
+// entry that predates host_pattern. Loading it must not disable Host routing,
+// or #97 stays broken for every deployment using distributions_config.
+func TestShippedConfigKeepsDebianHostRouting(t *testing.T) {
+	reg := distro.NewBuiltinRegistry()
+	if err := reg.LoadFromConfig(&distro.DistributionConfig{
+		ID:           "debian",
+		Name:         "Debian",
+		Type:         distro.TypeDebian,
+		URLPattern:   `/debian(-security)?/(.+)$`,
+		BenchmarkURL: "dists/bullseye/main/binary-amd64/Release",
+		CacheRules: []distro.CacheRuleConfig{
+			{Pattern: `InRelease$`, CacheControl: "max-age=3600", Rewrite: true},
+		},
+		Mirrors: distro.MirrorListConfig{Official: []string{"mirrors.example.com/debian/"}},
+	}); err != nil {
+		t.Fatalf("LoadFromConfig: %v", err)
+	}
+
+	st := newTestState()
+	st.SetMirror(distro.TypeDebian, "http://mirrors.example.com/debian/")
+	rewriters := CreateNewRewriters(distro.TypeDebian, st, reg)
+
+	r := &http.Request{Host: "security.debian.org", URL: &url.URL{Path: "/dists/trixie-security/InRelease"}}
+	RewriteRequestByMode(r, rewriters, distro.TypeDebian)
+
+	want := "http://mirrors.example.com/debian-security/dists/trixie-security/InRelease"
+	if got := r.URL.String(); got != want {
+		t.Errorf("rewrote to %q, want %q (a YAML entry without host_pattern must inherit the built-in)", got, want)
+	}
+}

@@ -263,12 +263,18 @@ func (r *Registry) LoadFromConfig(config *DistributionConfig) error {
 		return fmt.Errorf("failed to compile URL pattern: %w", err)
 	}
 
+	// An omitted host_pattern inherits the built-in matcher for this type, so
+	// a pre-existing distributions.yaml (including the one shipped in this
+	// repo, whose debian entry predates the field) does not silently disable
+	// Host routing for that distribution.
 	var hostPattern *regexp.Regexp
 	if config.HostPattern != "" {
 		hostPattern, err = regexp.Compile(config.HostPattern)
 		if err != nil {
 			return fmt.Errorf("failed to compile host pattern: %w", err)
 		}
+	} else {
+		hostPattern = BuiltinHostPattern(config.Type)
 	}
 
 	cacheRules := make([]Rule, 0, len(config.CacheRules))

@@ -137,3 +137,40 @@ func TestLoaderParsesHostPatternFromYAML(t *testing.T) {
 		t.Errorf("HostPattern = %q, want %q", got, want)
 	}
 }
+
+// An omitted host_pattern inherits the built-in matcher, so a pre-existing
+// distributions.yaml does not silently disable Host routing.
+func TestOmittedHostPatternInheritsBuiltin(t *testing.T) {
+	reg := NewRegistry()
+	if err := reg.LoadFromConfig(&DistributionConfig{
+		ID: "debian", Name: "Debian", Type: TypeDebian,
+		URLPattern: `/debian(-security)?/(.+)$`, BenchmarkURL: "x",
+	}); err != nil {
+		t.Fatalf("LoadFromConfig: %v", err)
+	}
+	d, _ := reg.GetByType(TypeDebian)
+	if d.HostPattern == nil {
+		t.Fatal("omitting host_pattern must inherit the built-in Debian matcher")
+	}
+	if !d.HostPattern.MatchString("security.debian.org") {
+		t.Error("inherited pattern should match the security host")
+	}
+
+	// An explicit host_pattern still wins.
+	reg2 := NewRegistry()
+	if err := reg2.LoadFromConfig(&DistributionConfig{
+		ID: "debian", Name: "Debian", Type: TypeDebian,
+		URLPattern: `/debian/(.+)$`, HostPattern: `^apt\.internal$`, BenchmarkURL: "x",
+	}); err != nil {
+		t.Fatalf("LoadFromConfig: %v", err)
+	}
+	d2, _ := reg2.GetByType(TypeDebian)
+	if !d2.HostPattern.MatchString("apt.internal") || d2.HostPattern.MatchString("security.debian.org") {
+		t.Error("an explicit host_pattern must replace the built-in")
+	}
+
+	// Types without a built-in matcher stay nil.
+	if BuiltinHostPattern(TypeAlpine) != nil {
+		t.Error("alpine should have no built-in host pattern")
+	}
+}

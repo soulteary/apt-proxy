@@ -40,6 +40,11 @@ type URLRewriter struct {
 	// root. When it matches (and pattern did not), the whole request path is
 	// the mirror-relative suffix.
 	hostPattern *regexp.Regexp
+	// securityHostPattern is the built-in Debian security host matcher. Only a
+	// match on *this* selects securityMirror: a distributions.yaml entry may
+	// point type 3 at some other host-root archive, and that one must resolve
+	// to its configured mirror, not to the derived /debian-security/ path.
+	securityHostPattern *regexp.Regexp
 }
 
 // hostPatternForMode returns the Host matcher for a distribution, preferring
@@ -50,10 +55,7 @@ func hostPatternForMode(reg *distro.Registry, mode int) *regexp.Regexp {
 			return d.HostPattern
 		}
 	}
-	if mode == distro.TypeDebian {
-		return distro.DebianSecurityHostPattern
-	}
-	return nil
+	return distro.BuiltinHostPattern(mode)
 }
 
 func debianSecurityMirror(archive, configured *url.URL, configuredAlias bool) *url.URL {
@@ -228,7 +230,7 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 	}
 
 	benchmarkURL, pattern := mirrors.GetPredefinedConfiguration(reg, mode)
-	rewriter := &URLRewriter{pattern: pattern, hostPattern: hostPatternForMode(reg, mode)}
+	rewriter := &URLRewriter{pattern: pattern, hostPattern: hostPatternForMode(reg, mode), securityHostPattern: distro.BuiltinHostPattern(mode)}
 	mirror := d.getMirror(st)
 
 	if mirror != nil {
@@ -265,7 +267,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 	engine := benchEngine(bench)
 
 	benchmarkURL, pattern := mirrors.GetPredefinedConfiguration(reg, mode)
-	rewriter := &URLRewriter{pattern: pattern, hostPattern: hostPatternForMode(reg, mode)}
+	rewriter := &URLRewriter{pattern: pattern, hostPattern: hostPatternForMode(reg, mode), securityHostPattern: distro.BuiltinHostPattern(mode)}
 	mirror := d.getMirror(st)
 
 	if mirror != nil {
@@ -323,11 +325,18 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		// pattern when this stale callback fires.
 		oldPattern := (*p).pattern
 		oldHostPattern := (*p).hostPattern
+		oldSecurityHostPattern := (*p).securityHostPattern
 		securityMirror := (*p).securityMirror
 		if mode == distro.TypeDebian && st.GetDebianSecurityMirror() == nil {
 			securityMirror = debianSecurityMirror(parsedMirror, nil, false)
 		}
-		*p = &URLRewriter{mirror: parsedMirror, securityMirror: securityMirror, pattern: oldPattern, hostPattern: oldHostPattern}
+		*p = &URLRewriter{
+			mirror:              parsedMirror,
+			securityMirror:      securityMirror,
+			pattern:             oldPattern,
+			hostPattern:         oldHostPattern,
+			securityHostPattern: oldSecurityHostPattern,
+		}
 		rewriters.Mu.Unlock()
 
 		log.Info().Str("distro", name).Str("mirror", result.FastestMirror).Msg("async benchmark completed, mirror updated")
@@ -423,13 +432,15 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 
 	// matchedPath is the full distribution path selected by the rewrite
 	// pattern; hostMatched records that we fell back to Host matching.
+	host := requestHost(r)
+
 	var suffixRaw, matchedPath string
 	var hostMatched bool
 	switch {
 	case len(matches) > 0:
 		suffixRaw = matches[len(matches)-1]
 		matchedPath = matches[0]
-	case rewriter.hostPattern != nil && rewriter.hostPattern.MatchString(requestHost(r)):
+	case rewriter.hostPattern != nil && rewriter.hostPattern.MatchString(host):
 		// Archive served from the host root: the entire path is the
 		// mirror-relative suffix.
 		suffixRaw = strings.TrimPrefix(escapedPath, "/")
@@ -448,10 +459,14 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	// Check matchedPath instead of the complete request path so
 	// apt-cacher-ng-style host prefixes (for example
 	// /security.debian.org/debian-security/...) still use the dedicated Debian
-	// Security mirror. A Host match on Debian can only come from
-	// DebianSecurityHostPattern, so it means the security archive too.
+	// Security mirror. A Host match only counts when it is the built-in
+	// security host: a YAML-configured host-root archive on type 3 belongs on
+	// its own configured mirror.
+	securityHostMatch := hostMatched &&
+		rewriter.securityHostPattern != nil &&
+		rewriter.securityHostPattern.MatchString(host)
 	if mode == distro.TypeDebian && rewriter.securityMirror != nil &&
-		(hostMatched || strings.HasPrefix(matchedPath, "/debian-security/")) {
+		(securityHostMatch || strings.HasPrefix(matchedPath, "/debian-security/")) {
 		target = rewriter.securityMirror
 	}
 
