@@ -36,11 +36,16 @@ type Registry struct {
 
 // RegisteredDistribution represents a registered distribution with its configuration.
 type RegisteredDistribution struct {
-	ID           string
-	Name         string
-	Type         int
-	Builtin      bool
-	URLPattern   *regexp.Regexp
+	ID         string
+	Name       string
+	Type       int
+	Builtin    bool
+	URLPattern *regexp.Regexp
+	// HostPattern optionally matches the request's Host header for archives
+	// served from the host root (no distinguishing path prefix, so
+	// URLPattern alone can never match). When it matches, the whole request
+	// path is treated as the mirror-relative suffix.
+	HostPattern  *regexp.Regexp
 	BenchmarkURL string
 	GeoMirrorAPI string
 	CacheRules   []Rule
@@ -218,6 +223,7 @@ func RegisterBuiltins(reg *Registry) {
 			Type:         TypeDebian,
 			Builtin:      true,
 			URLPattern:   DebianHostPattern,
+			HostPattern:  DebianSecurityHostPattern,
 			BenchmarkURL: DebianBenchmarkURL,
 			CacheRules:   DebianDefaultCacheRules,
 			Mirrors:      BuiltinDebianMirrors,
@@ -257,6 +263,14 @@ func (r *Registry) LoadFromConfig(config *DistributionConfig) error {
 		return fmt.Errorf("failed to compile URL pattern: %w", err)
 	}
 
+	var hostPattern *regexp.Regexp
+	if config.HostPattern != "" {
+		hostPattern, err = regexp.Compile(config.HostPattern)
+		if err != nil {
+			return fmt.Errorf("failed to compile host pattern: %w", err)
+		}
+	}
+
 	cacheRules := make([]Rule, 0, len(config.CacheRules))
 	for _, ruleConfig := range config.CacheRules {
 		pattern, err := regexp.Compile(ruleConfig.Pattern)
@@ -285,6 +299,7 @@ func (r *Registry) LoadFromConfig(config *DistributionConfig) error {
 		Name:         config.Name,
 		Type:         config.Type,
 		URLPattern:   urlPattern,
+		HostPattern:  hostPattern,
 		BenchmarkURL: config.BenchmarkURL,
 		GeoMirrorAPI: config.GeoMirrorAPI,
 		CacheRules:   cacheRules,

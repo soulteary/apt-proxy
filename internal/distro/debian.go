@@ -22,6 +22,17 @@ const (
 
 var DebianHostPattern = regexp.MustCompile(`/debian(-security)?/(.+)$`)
 
+// DebianSecurityHostPattern matches requests addressed to the Debian security
+// archive host. The classic sources.list form
+//
+//	deb http://security.debian.org <suite>-security main
+//
+// requests paths like /dists/trixie-security/InRelease, with no
+// /debian-security/ prefix for DebianHostPattern to latch onto, so these
+// requests are recognised by Host instead. An optional :port is tolerated
+// because Host carries whatever the client dialled.
+var DebianSecurityHostPattern = regexp.MustCompile(`^security\.debian\.org(:\d+)?$`)
+
 // https://www.debian.org/mirror/list 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol
 var DebianOfficialMirrors = []string{

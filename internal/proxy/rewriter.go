@@ -36,6 +36,24 @@ type URLRewriter struct {
 	mirror         *url.URL
 	securityMirror *url.URL
 	pattern        *regexp.Regexp
+	// hostPattern matches the request Host for archives served from the host
+	// root. When it matches (and pattern did not), the whole request path is
+	// the mirror-relative suffix.
+	hostPattern *regexp.Regexp
+}
+
+// hostPatternForMode returns the Host matcher for a distribution, preferring
+// the registry entry so distributions.yaml can define one.
+func hostPatternForMode(reg *distro.Registry, mode int) *regexp.Regexp {
+	if reg != nil {
+		if d, ok := reg.GetByType(mode); ok {
+			return d.HostPattern
+		}
+	}
+	if mode == distro.TypeDebian {
+		return distro.DebianSecurityHostPattern
+	}
+	return nil
 }
 
 func debianSecurityMirror(archive, configured *url.URL, configuredAlias bool) *url.URL {
@@ -210,7 +228,7 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 	}
 
 	benchmarkURL, pattern := mirrors.GetPredefinedConfiguration(reg, mode)
-	rewriter := &URLRewriter{pattern: pattern}
+	rewriter := &URLRewriter{pattern: pattern, hostPattern: hostPatternForMode(reg, mode)}
 	mirror := d.getMirror(st)
 
 	if mirror != nil {
@@ -247,7 +265,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 	engine := benchEngine(bench)
 
 	benchmarkURL, pattern := mirrors.GetPredefinedConfiguration(reg, mode)
-	rewriter := &URLRewriter{pattern: pattern}
+	rewriter := &URLRewriter{pattern: pattern, hostPattern: hostPatternForMode(reg, mode)}
 	mirror := d.getMirror(st)
 
 	if mirror != nil {
@@ -304,11 +322,12 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		// concurrent RefreshRewriters cannot accidentally lose its newer
 		// pattern when this stale callback fires.
 		oldPattern := (*p).pattern
+		oldHostPattern := (*p).hostPattern
 		securityMirror := (*p).securityMirror
 		if mode == distro.TypeDebian && st.GetDebianSecurityMirror() == nil {
 			securityMirror = debianSecurityMirror(parsedMirror, nil, false)
 		}
-		*p = &URLRewriter{mirror: parsedMirror, securityMirror: securityMirror, pattern: oldPattern}
+		*p = &URLRewriter{mirror: parsedMirror, securityMirror: securityMirror, pattern: oldPattern, hostPattern: oldHostPattern}
 		rewriters.Mu.Unlock()
 
 		log.Info().Str("distro", name).Str("mirror", result.FastestMirror).Msg("async benchmark completed, mirror updated")
@@ -401,11 +420,24 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	// it used to append the query to Path and then serialize RawQuery again.
 	escapedPath := r.URL.EscapedPath()
 	matches := rewriter.pattern.FindStringSubmatch(escapedPath)
-	if len(matches) == 0 {
+
+	// matchedPath is the full distribution path selected by the rewrite
+	// pattern; hostMatched records that we fell back to Host matching.
+	var suffixRaw, matchedPath string
+	var hostMatched bool
+	switch {
+	case len(matches) > 0:
+		suffixRaw = matches[len(matches)-1]
+		matchedPath = matches[0]
+	case rewriter.hostPattern != nil && rewriter.hostPattern.MatchString(requestHost(r)):
+		// Archive served from the host root: the entire path is the
+		// mirror-relative suffix.
+		suffixRaw = strings.TrimPrefix(escapedPath, "/")
+		hostMatched = true
+	default:
 		return
 	}
 
-	suffixRaw := matches[len(matches)-1]
 	suffixPath, err := url.PathUnescape(suffixRaw)
 	if err != nil {
 		logger.Default().Debug().Err(err).Str("path", suffixRaw).Msg("path unescape failed, using raw value")
@@ -413,11 +445,13 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	}
 
 	target := rewriter.mirror
-	// matches[0] is the full distribution path selected by the rewrite pattern.
-	// Check it instead of the complete request path so apt-cacher-ng-style host
-	// prefixes (for example /security.debian.org/debian-security/...) still use
-	// the dedicated Debian Security mirror.
-	if mode == distro.TypeDebian && strings.HasPrefix(matches[0], "/debian-security/") && rewriter.securityMirror != nil {
+	// Check matchedPath instead of the complete request path so
+	// apt-cacher-ng-style host prefixes (for example
+	// /security.debian.org/debian-security/...) still use the dedicated Debian
+	// Security mirror. A Host match on Debian can only come from
+	// DebianSecurityHostPattern, so it means the security archive too.
+	if mode == distro.TypeDebian && rewriter.securityMirror != nil &&
+		(hostMatched || strings.HasPrefix(matchedPath, "/debian-security/")) {
 		target = rewriter.securityMirror
 	}
 

@@ -30,6 +30,7 @@ type DistributionConfig struct {
 	Name         string            `yaml:"name"`
 	Type         int               `yaml:"type"`
 	URLPattern   string            `yaml:"url_pattern"`
+	HostPattern  string            `yaml:"host_pattern,omitempty"`
 	BenchmarkURL string            `yaml:"benchmark_url"`
 	GeoMirrorAPI string            `yaml:"geo_mirror_api,omitempty"`
 	CacheRules   []CacheRuleConfig `yaml:"cache_rules"`
@@ -133,6 +134,13 @@ func (l *Loader) validateDistribution(dist *DistributionConfig) error {
 	// Validate URL pattern is a valid regex
 	if _, err := regexp.Compile(dist.URLPattern); err != nil {
 		return fmt.Errorf("invalid URL pattern regex: %w", err)
+	}
+
+	// host_pattern is optional; validate it when present.
+	if dist.HostPattern != "" {
+		if _, err := regexp.Compile(dist.HostPattern); err != nil {
+			return fmt.Errorf("invalid host pattern regex: %w", err)
+		}
 	}
 
 	// Validate cache rule patterns

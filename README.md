@@ -217,13 +217,14 @@ After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to
 - `name` — human-readable display name.
 - `type` — integer distro type: `1` Ubuntu, `2` UbuntuPorts, `3` Debian, `4` CentOS, `5` Alpine. `0` is reserved for "all".
 - `url_pattern` — regex matched against the request path; the captured group is appended to the upstream mirror.
+- `host_pattern` — optional regex matched against the request's `Host` header. Use it for archives served from the host root, where no path prefix exists for `url_pattern` to match (for example `deb http://security.debian.org <suite>-security main`, or `apt.armbian.com`). It is tried only after `url_pattern` fails, and when it matches the whole request path is appended to the upstream mirror. Anchor it (`^...$`) so a lookalike host cannot claim your distribution.
 - `benchmark_url` — relative path probed during mirror benchmarking.
 - `geo_mirror_api` — optional URL returning a list of geo-located mirrors (Ubuntu-style `mirrors.txt`).
 - `cache_rules[]` — per-pattern cache directives. `cache_control` overrides response `Cache-Control` for matched paths (only applied to `200`/`404` responses); `rewrite: true` enables URL rewriting for that pattern.
 - `mirrors.official` / `mirrors.custom` — mirror host lists. Aliases of the form `cn:<name>` are auto-generated from each mirror's host (e.g. `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`).
 - `aliases` — explicit name-to-mirror mapping that overrides/augments the auto-generated aliases.
 
-**Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases`. The repo includes an example at `config/distributions.yaml` that you can extend.
+**Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases` (plus `host_pattern` if the archive lives at a host root). The repo includes an example at `config/distributions.yaml` that you can extend.
 
 ### Custom Mirror Selection
 
