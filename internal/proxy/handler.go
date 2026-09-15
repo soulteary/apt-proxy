@@ -101,7 +101,10 @@ func detachHeader(header http.Header) http.Header {
 // deterministic across builds (Go map iteration is intentionally randomised).
 type hostPatternEntry struct {
 	pattern *regexp.Regexp
-	rules   []distro.Rule
+	// hostPattern, when set, matches the request's Host header for archives
+	// served from the host root. It is tried only after pattern fails.
+	hostPattern *regexp.Regexp
+	rules       []distro.Rule
 }
 
 // defaultHostPatterns is the compile-time fallback used when the
@@ -110,7 +113,7 @@ type hostPatternEntry struct {
 var defaultHostPatterns = []hostPatternEntry{
 	{pattern: distro.UbuntuHostPattern, rules: distro.UbuntuDefaultCacheRules},
 	{pattern: distro.UbuntuPortsHostPattern, rules: distro.UbuntuPortsDefaultCacheRules},
-	{pattern: distro.DebianHostPattern, rules: distro.DebianDefaultCacheRules},
+	{pattern: distro.DebianHostPattern, hostPattern: distro.DebianSecurityHostPattern, rules: distro.DebianDefaultCacheRules},
 	{pattern: distro.CentosHostPattern, rules: distro.CentosDefaultCacheRules},
 	{pattern: distro.AlpineHostPattern, rules: distro.AlpineDefaultCacheRules},
 }
@@ -130,7 +133,7 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 			if d.Type != mode || d.URLPattern == nil || len(d.CacheRules) == 0 {
 				continue
 			}
-			out = append(out, hostPatternEntry{pattern: d.URLPattern, rules: d.CacheRules})
+			out = append(out, hostPatternEntry{pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
 			seen[id] = struct{}{}
 		}
 	}
@@ -141,7 +144,7 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 		if d.URLPattern == nil || len(d.CacheRules) == 0 {
 			continue
 		}
-		out = append(out, hostPatternEntry{pattern: d.URLPattern, rules: d.CacheRules})
+		out = append(out, hostPatternEntry{pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
 	}
 	return out
 }
@@ -440,12 +443,44 @@ func (ap *PackageStruct) invalidateHostPatterns() {
 // the appropriate caching rule if a match is found.
 func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	path := r.URL.Path
-	for _, entry := range ap.hostPatterns() {
+	entries := ap.hostPatterns()
+
+	// Path match first: it is the common case and the more specific signal,
+	// so an archive reachable by path keeps its existing routing even when
+	// some other distro claims the same host.
+	for _, entry := range entries {
 		if entry.pattern.MatchString(path) {
 			return ap.processMatchingRule(r, entry.rules)
 		}
 	}
+
+	// Fall back to the Host header for archives served from the host root,
+	// where no path prefix exists for the URL pattern to match.
+	host := requestHost(r)
+	if host == "" {
+		return nil
+	}
+	for _, entry := range entries {
+		if entry.hostPattern != nil && entry.hostPattern.MatchString(host) {
+			return ap.processMatchingRule(r, entry.rules)
+		}
+	}
 	return nil
+}
+
+// requestHost returns the host the client addressed, lower-cased. net/http
+// moves the Host header into r.Host and leaves r.URL.Host empty for server
+// requests, but a proxied absolute-form request populates r.URL.Host, so
+// prefer that. DNS names are case-insensitive, so the result is normalised and
+// host patterns are written in lower case.
+func requestHost(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if r.URL != nil && r.URL.Host != "" {
+		return strings.ToLower(r.URL.Host)
+	}
+	return strings.ToLower(r.Host)
 }
 
 // processMatchingRule processes a request that matches a distribution pattern.

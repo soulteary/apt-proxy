@@ -22,6 +22,32 @@ const (
 
 var DebianHostPattern = regexp.MustCompile(`/debian(-security)?/(.+)$`)
 
+// DebianSecurityHostPattern matches requests addressed to the Debian security
+// archive host. The classic sources.list form
+//
+//	deb http://security.debian.org <suite>-security main
+//
+// requests paths like /dists/trixie-security/InRelease, with no
+// /debian-security/ prefix for DebianHostPattern to latch onto, so these
+// requests are recognised by Host instead. An optional :port is tolerated
+// because Host carries whatever the client dialled.
+//
+// Host patterns are matched against a lower-cased host (DNS names are
+// case-insensitive, so Security.Debian.Org is the same archive), hence the
+// lower-case literal here.
+var DebianSecurityHostPattern = regexp.MustCompile(`^security\.debian\.org(:\d+)?$`)
+
+// BuiltinHostPattern returns the compile-time Host matcher for a distro type,
+// or nil when it has none. LoadFromConfig falls back to it so a
+// distributions.yaml entry that omits host_pattern keeps the built-in
+// behaviour, the same way omitting mirrors keeps the built-in mirror list.
+func BuiltinHostPattern(distType int) *regexp.Regexp {
+	if distType == TypeDebian {
+		return DebianSecurityHostPattern
+	}
+	return nil
+}
+
 // https://www.debian.org/mirror/list 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol
 var DebianOfficialMirrors = []string{
