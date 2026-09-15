@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -321,8 +322,20 @@ func hasTLSRewriteMarker(r *http.Request) bool {
 	if r == nil || r.URL == nil {
 		return false
 	}
-	if strings.EqualFold(r.URL.Host, "HTTPS") {
-		return true
+	// The authority lands in URL.Host for an absolute-form request, but Fiber's
+	// adaptor converts to a server request where it lives in Host and URL.Host
+	// is empty. Production traffic takes the latter path, so check both.
+	for _, authority := range [2]string{r.URL.Host, r.Host} {
+		if authority == "" {
+			continue
+		}
+		host := authority
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if strings.EqualFold(host, "HTTPS") {
+			return true
+		}
 	}
 	path := strings.ToUpper(r.URL.EscapedPath())
 	return strings.HasPrefix(path, "/"+tlsRewriteMarker) ||
