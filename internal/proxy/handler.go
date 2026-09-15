@@ -302,6 +302,33 @@ func (ap *PackageStruct) Registry() *distro.Registry {
 	return ap.registry
 }
 
+// tlsRewriteMarker is apt-cacher-ng's "tell-me-what-you-need" marker. A client
+// writes the upstream as http://HTTPS///<host>/... and the proxy is expected to
+// fetch https://<host>/... on its behalf.
+const tlsRewriteMarker = "HTTPS//"
+
+// hasTLSRewriteMarker reports whether r carries that marker, in either spelling
+// apt-cacher-ng documents:
+//
+//	deb http://HTTPS///get.docker.com/ubuntu ...          -> Host "HTTPS", path "///get.docker.com/..."
+//	deb http://proxy:3142/HTTPS///get.docker.com/ubuntu ...-> path "/HTTPS///get.docker.com/..."
+//
+// apt-proxy does not implement the marker. Detecting it matters anyway: such a
+// path usually still contains a distribution segment (".../ubuntu/dists/...")
+// and would otherwise match that distribution's pattern, quietly rewriting a
+// request meant for some third-party host onto a Ubuntu/Debian mirror.
+func hasTLSRewriteMarker(r *http.Request) bool {
+	if r == nil || r.URL == nil {
+		return false
+	}
+	if strings.EqualFold(r.URL.Host, "HTTPS") {
+		return true
+	}
+	path := strings.ToUpper(r.URL.EscapedPath())
+	return strings.HasPrefix(path, "/"+tlsRewriteMarker) ||
+		strings.Contains(path, "/"+tlsRewriteMarker+"/")
+}
+
 // ServeHTTP implements http.Handler interface. It processes incoming requests,
 // matches them against caching rules, and routes them to the appropriate handler.
 // If a matching rule is found, the request is processed with cache control headers.
@@ -326,6 +353,24 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	// part of its key. Clone here so background cache work never references
 	// memory that the adapter can reuse for the next request.
 	r = detachRequest(spanCtx, r)
+
+	// Reject apt-cacher-ng's HTTPS/// marker explicitly. It is unsupported,
+	// and letting it fall through to pattern matching would silently proxy the
+	// request to the wrong upstream (see hasTLSRewriteMarker).
+	if hasTLSRewriteMarker(r) {
+		ap.log.Warn().
+			Str("path", r.URL.Path).
+			Str("host", r.Host).
+			Msg("rejecting unsupported apt-cacher-ng HTTPS/// rewrite marker")
+		tracing.SetSpanAttributes(span, map[string]string{
+			"http.status_code": "501",
+		})
+		http.Error(rw,
+			"apt-proxy does not support the apt-cacher-ng HTTPS/// rewrite marker; "+
+				"point the sources.list entry at the https:// URL directly",
+			http.StatusNotImplemented)
+		return
+	}
 
 	rule := ap.handleExternalURLs(r)
 	if rule != nil {
