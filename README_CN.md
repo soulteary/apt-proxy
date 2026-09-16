@@ -29,6 +29,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **多发行版支持**：支持 APT（Ubuntu/Debian）、YUM（CentOS）和 APK（Alpine Linux）
 - **轻量级**：二进制文件不到 10MB，资源占用极低
 - **智能镜像选择**：自动测试并选择最快的镜像源
+- **前置代理**：主机无法直连镜像站时，可经由已有的 `HTTP_PROXY` / `HTTPS_PROXY` 前置代理访问（支持 SOCKS5）；镜像测速走同一条链路，因此选出来的镜像一定是真正连得上的
 - **Docker 友好**：无缝集成 Docker 容器和构建流程
 - **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
 - **域名根仓库**：仓库直接放在域名根目录、路径里没有前缀可匹配时（`security.debian.org`、`apt.armbian.com`），按请求 `Host` 路由，可通过 `host_pattern` 按发行版配置
@@ -1090,6 +1091,21 @@ go tool cover -html=coverage.out
 ### `HTTPS///` 形式的 URL 返回 `501`
 
 apt-proxy 不支持 apt-cacher-ng 的 `HTTPS///` 重写标记（`deb http://HTTPS///example.com/repo ...`）。这类请求会被明确拒绝并返回 `501 Not Implemented`，而不是被路由到其他地方。请直接在 `sources.list` 中写 `https://` 地址；注意 apt-proxy 无法缓存未经其代理的 TLS 上游。
+
+### PPA 或厂商软件源返回 `404`
+
+apt-proxy 只代理已配置的发行版。路径里**碰巧含有**发行版路径段，并不代表它是该发行版的镜像 —— 那是另一个仓库，会返回 `404`：
+
+```text
+/ppa.launchpad.net/deadsnakes/ppa/ubuntu/dists/jammy/InRelease   404
+/download.docker.com/linux/ubuntu/dists/jammy/InRelease          404
+```
+
+更早的版本会匹配这类路径，并用该发行版自己的镜像来应答，于是一个 PPA 请求拿回来的是 **Ubuntu 主仓**同名套件的索引 —— `200`、看起来完全正常、内容却来自另一个仓库。现在的 `404` 取代了这种静默替换。
+
+请把这类 `sources.list` 条目直接指向它的源站；若希望 apt-proxy 缓存它，就把它注册成一个独立的发行版 —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。
+
+apt-cacher-ng 风格的主机名前缀不受影响：发行版路径段前只有单独一段主机名时（`/ftp.uni-kl.de/debian/...`）依然正常路由。
 
 ### 调试模式
 

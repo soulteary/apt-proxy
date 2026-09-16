@@ -29,6 +29,7 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 - **Multi-Distribution Support**: Works with APT (Ubuntu/Debian), YUM (CentOS), and APK (Alpine Linux)
 - **Lightweight**: Binary size is just less 10MB - minimal resource footprint
 - **Smart Mirror Selection**: Automatically benchmarks and selects the fastest mirror
+- **Upstream Proxy**: Reaches mirror sites through an existing `HTTP_PROXY` / `HTTPS_PROXY` forward proxy (SOCKS5 included) when the host has no direct route out; mirror benchmarking takes the same path, so the elected mirror is one that is actually reachable
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
 - **apt-cacher-ng Friendly**: Compatible with most [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) usage patterns (note: advanced features such as the Import/Maint web UI, full `acng.conf` syntax, and cross-distro deb deduplication are not implemented)
 - **Host-Root Archives**: Routes by the request `Host` when an archive lives at a domain root with no path prefix to match (`security.debian.org`, `apt.armbian.com`), configurable per distribution with `host_pattern`
@@ -1130,6 +1131,29 @@ apt-proxy does not implement apt-cacher-ng's `HTTPS///` rewrite marker
 `501 Not Implemented` rather than being routed somewhere else. Point the
 `sources.list` entry at the `https://` URL directly; note that apt-proxy
 cannot cache a TLS-terminated upstream it does not proxy.
+
+### `404` on a PPA or vendor repository
+
+apt-proxy only proxies the distributions it is configured for. A path that
+merely *contains* a distribution segment is a different repository, not a mirror
+of that distribution, and returns `404`:
+
+```text
+/ppa.launchpad.net/deadsnakes/ppa/ubuntu/dists/jammy/InRelease   404
+/download.docker.com/linux/ubuntu/dists/jammy/InRelease          404
+```
+
+Earlier versions matched those paths and answered them from the distribution's
+own mirror, so a PPA request came back as the **main Ubuntu archive's** index
+for that suite — `200`, valid-looking, and the wrong repository's content. The
+`404` replaces that silent substitution.
+
+Point such a `sources.list` entry at its origin directly, or, to have apt-proxy
+cache it, register it as its own distribution — see
+[Adding a distribution apt-proxy does not ship](#adding-a-distribution-apt-proxy-does-not-ship).
+
+The apt-cacher-ng host-prefixed form is unaffected: a single host segment in
+front of the distribution segment (`/ftp.uni-kl.de/debian/...`) still routes.
 
 ### Debug Mode
 
