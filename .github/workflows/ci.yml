@@ -71,6 +71,12 @@ jobs:
           go test -race -short -count=1 -coverprofile=coverage.out -covermode=atomic ./...
           go tool cover -func=coverage.out | tail -n 1
 
+      # Gate here rather than only at release time: a coverage regression that
+      # is first reported on a tag push has already been merged.
+      - name: Check coverage threshold
+        if: matrix.os == 'ubuntu-latest'
+        run: scripts/check-coverage.sh coverage.out
+
       # Rerun the cross-Server isolation cases with -count=3 to catch
       # flakes that the single-pass unit run might miss. Kept on the
       # default (untagged) test build so it stays cheap; the matching

@@ -54,19 +54,7 @@ jobs:
           go tool cover -func=coverage.out | tail -n 1
 
       - name: Check coverage threshold
-        run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Total coverage: ${COVERAGE}%"
-          if [ -z "$COVERAGE" ]; then
-            echo "Failed to extract coverage percentage"
-            exit 1
-          fi
-          THRESHOLD=80
-          if awk -v c="$COVERAGE" -v t="$THRESHOLD" 'BEGIN { exit !(c < t) }'; then
-            echo "::warning::Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
-          else
-            echo "Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"
-          fi
+        run: scripts/check-coverage.sh coverage.out
 
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/')
