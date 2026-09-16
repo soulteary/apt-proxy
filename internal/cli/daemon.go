@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -192,18 +193,26 @@ func (s *Server) initialize() error {
 	// Initialize health check aggregator
 	s.initHealthChecks()
 
-	// Build the per-Server distribution registry. RegisterBuiltins seeds
-	// the compile-time defaults; Reload overlays user-supplied YAML when
-	// DistributionsConfigPath is set.
+	// Build the per-Server distribution registry. RegisterBuiltins seeds the
+	// compile-time defaults; Reload overlays user-supplied YAML.
+	//
+	// The path is passed through even when empty: that is how Loader.Load is
+	// told to walk its search list (./config/distributions.yaml, ./distributions
+	// .yaml, /etc/apt-proxy, ~/.config/apt-proxy), which is the behaviour the
+	// README documents. Guarding this call on a non-empty path made that search
+	// unreachable from the server, so a distributions.yaml sitting at one of
+	// those paths was silently ignored unless the operator also named it.
+	//
+	// Reload parses before it mutates, so a missing file is a no-op and an
+	// unparseable one leaves these built-ins in place.
 	s.registry = distro.NewBuiltinRegistry()
-	if s.config.DistributionsConfigPath != "" {
-		if err := s.registry.Reload(s.config.DistributionsConfigPath); err != nil {
-			s.log.Warn().
-				Err(err).
-				Str("path", s.config.DistributionsConfigPath).
-				Msg("failed to load distributions config; using built-in defaults")
-		}
+	if err := s.registry.Reload(s.config.DistributionsConfigPath); err != nil {
+		s.log.Warn().
+			Err(err).
+			Str("path", s.config.DistributionsConfigPath).
+			Msg("failed to load distributions config; using built-in defaults")
 	}
+	s.logRegisteredDistributions()
 
 	// Build the per-Server AppState and apply config (proxy mode, mirrors).
 	s.state = state.NewAppState()
@@ -588,11 +597,38 @@ func (s *Server) Start() error {
 	}
 }
 
+// logRegisteredDistributions reports the distributions in effect and the file
+// they came from. Without it there is no way to tell a distributions.yaml that
+// registered from one that was never found -- both just serve, and the custom
+// distribution 404s with nothing said about why.
+func (s *Server) logRegisteredDistributions() {
+	if s.registry == nil {
+		return
+	}
+
+	all := s.registry.GetAll()
+	ids := make([]string, 0, len(all))
+	for id := range all {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	path := s.registry.ConfigPath()
+	if path == "" {
+		path = "(built-in defaults)"
+	}
+	s.log.Info().
+		Str("config", path).
+		Strs("distributions", ids).
+		Msg("distributions registered")
+}
+
 // refreshMirrors reloads distributions config (when configured) and
 // refreshes mirror selection on this Server's proxy. Used as the reload
 // closure for the mirrors API handler and for SIGHUP-triggered reloads.
 func (s *Server) refreshMirrors() {
-	if s.registry != nil && s.config.DistributionsConfigPath != "" {
+	// Empty path is meaningful here too -- see the note in initialize.
+	if s.registry != nil {
 		if err := s.registry.Reload(s.config.DistributionsConfigPath); err != nil {
 			s.log.Warn().
 				Err(err).
