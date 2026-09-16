@@ -213,7 +213,7 @@ distributions:
 
 - `id` — 唯一标识符，用作 URL 前缀（`/<id>/...`）。
 - `name` — 显示名。
-- `type` — 整数类型：`1` Ubuntu、`2` UbuntuPorts、`3` Debian、`4` CentOS、`5` Alpine（`0` 保留给 "all"）。
+- `type` — 整数类型。`1` Ubuntu、`2` UbuntuPorts、`3` Debian、`4` CentOS、`5` Alpine 用于覆盖内置发行版的配置，`0` 保留给 "all"。**填写其它正整数即可注册一个 apt-proxy 未内置的发行版** —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。已被占用的类型在加载时会直接报错，所以请挑一个未使用的数字（`6`、`7`……）并保持稳定：镜像选择与 rewriter 状态都以它为键跨重载保存。
 - `url_pattern` — 用于匹配请求路径的正则；捕获的部分会拼到上游镜像后。
 - `host_pattern` — 可选，用于匹配请求 `Host` 头的正则。适用于仓库直接放在域名根目录、路径里没有前缀可供 `url_pattern` 匹配的情况（例如 `deb http://security.debian.org <suite>-security main`，或 `apt.armbian.com`）。仅在 `url_pattern` 未命中时才会尝试；命中后会把整个请求路径拼到上游镜像后。请使用 `^...$` 锚定，避免相似域名冒充你的发行版。匹配前会把 host 转为小写，因此模式请写成小写。省略该字段时会继承该发行版类型的内置匹配器（Debian 保留 `security.debian.org`），与省略 `mirrors` 时沿用内置镜像列表的行为一致；显式设置则覆盖内置值。只有内置的 Debian security 域名会路由到专用的 Debian Security 镜像 —— 你为 type `3` 自行配置的 `host_pattern` 会解析到该条目自己的镜像。
 - `benchmark_url` — 镜像测速用的相对路径。
@@ -223,6 +223,72 @@ distributions:
 - `aliases` — 显式别名映射，可覆盖/补充自动生成的别名。
 
 **添加或修改发行版：** 在 `distributions` 下增加或编辑一项，填写 `id`、`name`、`type`、`url_pattern`、`benchmark_url`、`cache_rules`、`mirrors`、`aliases` 即可（若仓库位于域名根目录，还需 `host_pattern`）。本仓库自带示例 `config/distributions.yaml`，可直接在此基础上增删改。
+
+### 添加 apt-proxy 未内置的发行版
+
+内置的五个发行版并不是上限。只要把某一项的 `type` 填成 `1`–`5` 之外的数字，它就
+会被注册成一个新的发行版：拥有独立的镜像列表、独立的测速与独立的 rewriter，和内置
+发行版完全一样。全程不需要改代码或重新编译。
+
+以 Deepin 为例，缓存在 `/deepin/...` 下：
+
+```yaml
+distributions:
+  - id: deepin
+    name: Deepin
+    type: 6
+    url_pattern: "/deepin/(.+)$"
+    benchmark_url: "dists/apricot/main/binary-amd64/Release"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "InRelease$"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "community-packages.deepin.com/deepin/"
+```
+
+```text
+deb http://apt-proxy.example:3142/deepin apricot main contrib non-free
+```
+
+如果仓库直接位于域名根目录，路径里没有前缀供 `url_pattern` 匹配，就改用
+`host_pattern` 来识别。以 Armbian 为例，它的 `sources.list` 写法是
+`deb http://apt.armbian.com <suite> main`：
+
+```yaml
+distributions:
+  - id: armbian
+    name: Armbian
+    type: 7
+    url_pattern: "/armbian/(.+)$"
+    host_pattern: "^apt\\.armbian\\.com(:\\d+)?$"
+    benchmark_url: "dists/bookworm/main/binary-arm64/Release"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "InRelease$"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/armbian/"
+```
+
+只要客户端带着 `Host: apt.armbian.com` 访问 apt-proxy（设置 `http_proxy` 即可
+自动做到），`/dists/<suite>/...` 这类请求就会落到配置好的镜像上。
+
+几条能省掉一轮排查的提示：
+
+- `type` 请跨重载保持稳定 —— 镜像选择与 rewriter 状态都以它为键。
+- `benchmark_url` 必须是镜像列表里每个站点都存在的小文件，测速时会实际请求它。
+- `cache_rules` 按顺序匹配，命中第一条即停；需要兜底就把 `".*"` 放在最后。
+- 以 `--mode=all`（默认值）运行。`--mode` 只接受内置发行版的名字，自定义发行版在 `all` 模式下才会启用。
+- 只有匹配 `url_pattern`（或 `host_pattern`）的请求才会被代理，其余仍然返回 `404`。
 
 ### 自定义镜像选择
 

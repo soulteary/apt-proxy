@@ -216,7 +216,7 @@ After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to
 
 - `id` — unique identifier used in URL paths (`/<id>/...`).
 - `name` — human-readable display name.
-- `type` — integer distro type: `1` Ubuntu, `2` UbuntuPorts, `3` Debian, `4` CentOS, `5` Alpine. `0` is reserved for "all".
+- `type` — integer distro type. `1` Ubuntu, `2` UbuntuPorts, `3` Debian, `4` CentOS and `5` Alpine reconfigure the built-in distributions; `0` is reserved for "all". **Any other positive integer registers a distribution apt-proxy does not ship** — see [Adding a distribution apt-proxy does not ship](#adding-a-distribution-apt-proxy-does-not-ship). A type already in use is rejected at load time, so pick a free number (`6`, `7`, …) and keep it stable: it is the key the mirror and rewriter state is held under across reloads.
 - `url_pattern` — regex matched against the request path; the captured group is appended to the upstream mirror.
 - `host_pattern` — optional regex matched against the request's `Host` header. Use it for archives served from the host root, where no path prefix exists for `url_pattern` to match (for example `deb http://security.debian.org <suite>-security main`, or `apt.armbian.com`). It is tried only after `url_pattern` fails, and when it matches the whole request path is appended to the upstream mirror. Anchor it (`^...$`) so a lookalike host cannot claim your distribution. The host is lower-cased before matching, so write the pattern in lower case. Omitting the field inherits the built-in matcher for that distro type (Debian keeps `security.debian.org`), the same way omitting `mirrors` keeps the built-in mirror list; setting it replaces the built-in. Only the built-in Debian security host routes to the dedicated Debian Security mirror — a `host_pattern` you configure for type `3` resolves to that entry's own mirror.
 - `benchmark_url` — relative path probed during mirror benchmarking.
@@ -226,6 +226,74 @@ After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to
 - `aliases` — explicit name-to-mirror mapping that overrides/augments the auto-generated aliases.
 
 **Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases` (plus `host_pattern` if the archive lives at a host root). The repo includes an example at `config/distributions.yaml` that you can extend.
+
+### Adding a distribution apt-proxy does not ship
+
+The five built-in distributions are not the limit. Give an entry a `type` outside
+`1`–`5` and it is registered as a new distribution: it gets its own mirror list,
+its own benchmark and its own rewriter, exactly like a built-in one. No code
+change or rebuild is involved.
+
+Deepin, cached under `/deepin/...`:
+
+```yaml
+distributions:
+  - id: deepin
+    name: Deepin
+    type: 6
+    url_pattern: "/deepin/(.+)$"
+    benchmark_url: "dists/apricot/main/binary-amd64/Release"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "InRelease$"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "community-packages.deepin.com/deepin/"
+```
+
+```text
+deb http://apt-proxy.example:3142/deepin apricot main contrib non-free
+```
+
+An archive served from a domain root has no path prefix for `url_pattern` to
+match, so name it with `host_pattern` instead. Armbian, whose `sources.list`
+entry is `deb http://apt.armbian.com <suite> main`:
+
+```yaml
+distributions:
+  - id: armbian
+    name: Armbian
+    type: 7
+    url_pattern: "/armbian/(.+)$"
+    host_pattern: "^apt\\.armbian\\.com(:\\d+)?$"
+    benchmark_url: "dists/bookworm/main/binary-arm64/Release"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "InRelease$"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/armbian/"
+```
+
+Point the client at apt-proxy with `Host: apt.armbian.com` (an `http_proxy`
+setting does this for you) and requests for `/dists/<suite>/...` resolve against
+the configured mirror.
+
+Notes that save a round of debugging:
+
+- Keep `type` stable across reloads — mirror election and rewriter state are keyed by it.
+- `benchmark_url` must be a small file that exists on every mirror in the list; it is fetched to rank them.
+- `cache_rules` are tried in order and the first match wins, so put a catch-all `".*"` last if you want one.
+- Run with `--mode=all` (the default). `--mode` only names the built-in distributions; a custom one is served whenever the mode is `all`.
+- Only requests matching `url_pattern` (or `host_pattern`) are proxied; everything else still returns `404`.
 
 ### Custom Mirror Selection
 
