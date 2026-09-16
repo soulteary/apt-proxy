@@ -518,7 +518,7 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	// Match only the escaped path. URL.String also contains RawQuery; matching
 	// it used to append the query to Path and then serialize RawQuery again.
 	escapedPath := r.URL.EscapedPath()
-	matches := rewriter.pattern.FindStringSubmatch(escapedPath)
+	matches := matchDistroPath(rewriter.pattern, escapedPath)
 
 	// matchedPath is the full distribution path selected by the rewrite
 	// pattern; hostMatched records that we fell back to Host matching.
