@@ -15,9 +15,15 @@
 package proxy
 
 import (
+	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strconv"
+
+	tracing "github.com/soulteary/tracing-kit"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 )
@@ -86,6 +92,77 @@ func (ap *PackageStruct) matchPassthrough(r *http.Request) *distro.Rule {
 		Str("scheme", scheme).
 		Str("path", r.URL.Path).
 		Msg("passing request through to allowlisted origin")
+
+	return passthroughRule
+}
+
+// acceptTLSRewriteMarker decides what to do with a request carrying the
+// apt-cacher-ng HTTPS/// marker, and points it at the origin when allowed.
+//
+// The marker is exactly a request to fetch an arbitrary origin over TLS, so it
+// is gated by the same allowlist as ordinary passthrough. Returning a rule
+// means the caller should serve the request; a nil return means the refusal
+// has already been written.
+func (ap *PackageStruct) acceptTLSRewriteMarker(
+	rw http.ResponseWriter, r *http.Request, origin, upstreamPath string, span trace.Span,
+) *distro.Rule {
+	refuse := func(status int, msg string) *distro.Rule {
+		ap.log.Warn().
+			Str("origin", origin).
+			Str("path", r.URL.Path).
+			Int("status", status).
+			Msg("refusing HTTPS/// rewrite marker")
+		tracing.SetSpanAttributes(span, map[string]string{
+			"http.status_code": strconv.Itoa(status),
+		})
+		http.Error(rw, msg, status)
+		return nil
+	}
+
+	if origin == "" {
+		return refuse(http.StatusBadRequest,
+			"malformed apt-cacher-ng HTTPS/// marker: no origin named after the marker")
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return refuse(http.StatusMethodNotAllowed,
+			"apt-proxy only forwards GET and HEAD to third-party origins")
+	}
+
+	rule, allowed := ap.passthrough.Match(origin)
+	if !allowed {
+		// Naming the origin and the setting turns a dead end into an
+		// actionable message: the operator adds one entry and retries.
+		return refuse(http.StatusForbidden, fmt.Sprintf(
+			"%s is not in apt-proxy's passthrough allowlist; "+
+				"add it (--passthrough=%s) to let apt-proxy fetch and cache it",
+			origin, origin))
+	}
+	_ = rule // the marker itself already says https
+
+	host := origin
+	if h, port, err := net.SplitHostPort(origin); err == nil && (port == "80" || port == "443") {
+		host = h
+	}
+
+	// The marker's whole point is that the upstream is TLS.
+	r.URL.Scheme = "https"
+	r.URL.Host = host
+	r.Host = host
+	if decoded, err := url.PathUnescape(upstreamPath); err == nil {
+		r.URL.Path = decoded
+	} else {
+		r.URL.Path = upstreamPath
+	}
+	if r.URL.Path != upstreamPath {
+		r.URL.RawPath = upstreamPath
+	} else {
+		r.URL.RawPath = ""
+	}
+
+	ap.log.Debug().
+		Str("origin", host).
+		Str("path", r.URL.Path).
+		Msg("resolving apt-cacher-ng HTTPS/// marker to its origin")
 
 	return passthroughRule
 }

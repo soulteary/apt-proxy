@@ -426,6 +426,16 @@ http_proxy=http://apt-proxy.example:3142 apt-get update
 启动日志会打印生效的白名单（`passthrough enabled for third-party origins`），
 空列表或写错的条目因此是可见的，不会静默。
 
+**apt-cacher-ng 的 `HTTPS///` 标记**是访问白名单源站的另一种方式，适合本来就按这种
+写法配置的客户端：
+
+```text
+deb http://HTTPS///get.docker.com/linux/ubuntu jammy stable
+```
+
+两种写法都支持，源站同样走这份白名单，且上游请求一律走 TLS。参见
+[`HTTPS///` 形式的 URL 返回 `403`](#https-形式的-url-返回-403)。
+
 ### 通过前置代理访问镜像站
 
 apt-proxy 的出站连接遵循标准的代理环境变量。若机器无法直连镜像站，可以让它
@@ -1149,9 +1159,23 @@ go tool cover -html=coverage.out
 
 ## 故障排除
 
-### `HTTPS///` 形式的 URL 返回 `501`
+### `HTTPS///` 形式的 URL 返回 `403`
 
-apt-proxy 不支持 apt-cacher-ng 的 `HTTPS///` 重写标记（`deb http://HTTPS///example.com/repo ...`）。这类请求会被明确拒绝并返回 `501 Not Implemented`，而不是被路由到其他地方。请直接在 `sources.list` 中写 `https://` 地址；注意 apt-proxy 无法缓存未经其代理的 TLS 上游。
+apt-proxy 支持 apt-cacher-ng 的 `HTTPS///` 重写标记（`deb http://HTTPS///example.com/repo ...`）：它会抓取 `https://example.com/repo` 并缓存。前提是该源站已在[直通白名单](#缓存第三方软件源passthrough)中 —— 返回 `403` 正是表示还没加：
+
+```bash
+./apt-proxy --passthrough=get.docker.com
+```
+
+拒绝信息里会带上源站名和对应的配置项，照着加一条即可。标记 URL 的其它状态码：
+
+| 状态码 | 含义 |
+|--------|------|
+| `403` | 源站不在白名单中 |
+| `400` | 标记后面没有写源站（`.../HTTPS///` 后面是空的） |
+| `405` | 不是 `GET` 或 `HEAD` |
+
+apt-cacher-ng 文档里的两种写法都支持 —— `Host: HTTPS` 加路径里的源站，以及把标记嵌在指向 apt-proxy 自身地址的路径里 —— 且大小写不敏感。
 
 ### PPA 或厂商软件源返回 `404`
 
