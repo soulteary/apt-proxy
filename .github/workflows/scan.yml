@@ -49,7 +49,7 @@ jobs:
 
       - name: Security Scan
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
           gosec -fmt sarif -out results.sarif ./...
 
       - name: Temp sarif workaround

@@ -27,7 +27,7 @@ func FindConfigFile() string {
 	// Check environment variable first
 	if envPath := os.Getenv(EnvConfigFile); envPath != "" {
 		cleaned := filepath.Clean(envPath)
-		if _, err := os.Stat(cleaned); err == nil { // #nosec G304 -- operator-controlled config path
+		if _, err := os.Stat(cleaned); err == nil { // #nosec G304,G703 -- operator-controlled config path
 			return cleaned
 		}
 	}
@@ -49,7 +49,7 @@ func FindConfigFile() string {
 
 	for _, path := range searchPaths {
 		cleaned := filepath.Clean(path)
-		if _, err := os.Stat(cleaned); err == nil { // #nosec G304 -- well-known config search paths
+		if _, err := os.Stat(cleaned); err == nil { // #nosec G304,G703 -- well-known config search paths
 			return cleaned
 		}
 	}
