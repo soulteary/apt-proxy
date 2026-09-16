@@ -409,6 +409,26 @@ The `sources.list` entry stays pointed at the origin. The URL-prefix form
 (`deb http://apt-proxy.example:3142/<host>/...`) addresses apt-proxy itself, so
 no origin is named and nothing passes through.
 
+**The entry has to be `http://`, even for an archive that is HTTPS-only:**
+
+```text
+deb http://download.docker.com/linux/ubuntu jammy stable
+```
+
+```yaml
+passthrough:
+  - https://download.docker.com   # apt-proxy makes the upstream hop TLS
+```
+
+An `https://` entry in `sources.list` makes apt send `CONNECT host:443` to its
+proxy and tunnel through it. A tunnel is encrypted end to end, so apt-proxy
+could forward the bytes but never read or cache them — which is the entire
+point of running it. apt-proxy therefore does not answer `CONNECT`; write the
+source as `http://` and let the `https://` allowlist entry (or [the `HTTPS///`
+marker](#403-on-https-urls)) carry the TLS upstream. The client-to-apt-proxy
+hop is plain HTTP on your own network, and apt verifies the repository's
+signatures regardless of transport.
+
 **Entry forms:**
 
 | Entry | Effect |

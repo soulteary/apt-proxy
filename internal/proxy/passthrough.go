@@ -71,10 +71,15 @@ func (ap *PackageStruct) matchPassthrough(r *http.Request) *distro.Rule {
 	scheme, host := "http", authority
 	if rule.ForceHTTPS {
 		scheme = "https"
-		// A default port carried over from an http:// request line would
-		// dial the wrong service once the scheme is upgraded.
-		if h, p, err := net.SplitHostPort(authority); err == nil && (p == "80" || p == "443") {
-			host = h
+		// A *default* port carried over from the http request line would dial
+		// the wrong service once the scheme is upgraded, so drop it. Only when
+		// the entry did not pin one: an entry written https://host:80 means a
+		// TLS service deliberately listening there, and discarding that port
+		// would send the request to 443 and never reach it.
+		if rule.Port == "" {
+			if h, p, err := net.SplitHostPort(authority); err == nil && (p == "80" || p == "443") {
+				host = h
+			}
 		}
 	}
 	r.URL.Scheme = scheme
