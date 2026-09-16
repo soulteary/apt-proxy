@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 
 	tracing "github.com/soulteary/tracing-kit"
 	"go.opentelemetry.io/otel/trace"
@@ -41,6 +42,25 @@ var passthroughRule = &distro.Rule{
 	Pattern:      passthroughPattern,
 	CacheControl: "",
 	Rewrite:      false,
+}
+
+// stripDefaultPort drops a :80 or :443 that came along with the request and
+// carries no meaning once the scheme is decided, and leaves anything else
+// alone.
+//
+// It re-brackets an IPv6 literal on the way out. SplitHostPort returns the
+// address unbracketed, and url.URL.Host without brackets reads the tail of the
+// address as a port -- "[2001:db8::1]:443" would become "2001:db8::1", which
+// serialises to https://2001:db8::1/... and dials port 1.
+func stripDefaultPort(authority string) string {
+	host, port, err := net.SplitHostPort(authority)
+	if err != nil || (port != "80" && port != "443") {
+		return authority
+	}
+	if strings.Contains(host, ":") {
+		return "[" + host + "]"
+	}
+	return host
 }
 
 // matchPassthrough reports whether r addresses an allowlisted third-party
@@ -83,9 +103,7 @@ func (ap *PackageStruct) matchPassthrough(r *http.Request) *distro.Rule {
 		// TLS service deliberately listening there, and discarding that port
 		// would send the request to 443 and never reach it.
 		if rule.Port == "" {
-			if h, p, err := net.SplitHostPort(authority); err == nil && (p == "80" || p == "443") {
-				host = h
-			}
+			host = stripDefaultPort(authority)
 		}
 	}
 	r.URL.Scheme = scheme

@@ -308,3 +308,54 @@ func TestPassthroughStillDropsInheritedDefaultPort(t *testing.T) {
 		}
 	}
 }
+
+// An IPv6 origin must stay bracketed in the upstream URL. SplitHostPort hands
+// back a bare address, and url.URL.Host without brackets reads the tail of it
+// as a port: "[2001:db8::1]:443" became "2001:db8::1", serialising to
+// https://2001:db8::1/... and dialling port 1.
+func TestPassthroughKeepsIPv6Bracketed(t *testing.T) {
+	ps, _ := passthroughProxy(t, "https://[2001:db8::1]")
+
+	for _, authority := range []string{"[2001:db8::1]", "[2001:db8::1]:443", "[2001:db8::1]:80"} {
+		r := proxyModeRequest(http.MethodGet, authority, "/repo/InRelease")
+		if rule := ps.handleExternalURLs(r); rule == nil {
+			t.Fatalf("%s: IPv6 entry did not match", authority)
+		}
+		if r.URL.Host != "[2001:db8::1]" {
+			t.Errorf("%s: URL.Host = %q, want the address bracketed", authority, r.URL.Host)
+		}
+		if got, want := r.URL.String(), "https://[2001:db8::1]/repo/InRelease"; got != want {
+			t.Errorf("%s: URL = %q, want %q", authority, got, want)
+		}
+	}
+}
+
+// A non-default port on an IPv6 origin is left alone, brackets and all.
+func TestPassthroughKeepsIPv6WithPinnedPort(t *testing.T) {
+	ps, _ := passthroughProxy(t, "https://[2001:db8::1]:8443")
+
+	r := proxyModeRequest(http.MethodGet, "[2001:db8::1]:8443", "/repo/InRelease")
+	if rule := ps.handleExternalURLs(r); rule == nil {
+		t.Fatal("pinned-port IPv6 entry did not match")
+	}
+	if got, want := r.URL.String(), "https://[2001:db8::1]:8443/repo/InRelease"; got != want {
+		t.Errorf("URL = %q, want %q", got, want)
+	}
+}
+
+func TestStripDefaultPort(t *testing.T) {
+	for _, tt := range []struct{ in, want string }{
+		{"example.test", "example.test"},
+		{"example.test:80", "example.test"},
+		{"example.test:443", "example.test"},
+		{"example.test:8080", "example.test:8080"},
+		{"[2001:db8::1]", "[2001:db8::1]"},
+		{"[2001:db8::1]:80", "[2001:db8::1]"},
+		{"[2001:db8::1]:443", "[2001:db8::1]"},
+		{"[2001:db8::1]:8443", "[2001:db8::1]:8443"},
+	} {
+		if got := stripDefaultPort(tt.in); got != tt.want {
+			t.Errorf("stripDefaultPort(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

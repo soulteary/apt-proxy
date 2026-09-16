@@ -416,3 +416,26 @@ func TestTLSRewriteMarkerKeepsAnExplicitlyPinnedPort(t *testing.T) {
 		t.Errorf("upstream scheme = %q, want https", seen.scheme)
 	}
 }
+
+// An IPv6 origin named by the marker must stay bracketed, for the same reason
+// it must on the ordinary passthrough path.
+func TestTLSRewriteMarkerKeepsIPv6Bracketed(t *testing.T) {
+	ps, seen := passthroughProxy(t, "[2001:db8::1]")
+
+	for _, origin := range []string{"[2001:db8::1]", "[2001:db8::1]:443"} {
+		*seen = recordedRequest{}
+
+		req := httptest.NewRequest(http.MethodGet,
+			"http://HTTPS///"+origin+"/repo/dists/x/InRelease", nil)
+		req.Host = "HTTPS"
+		rec := httptest.NewRecorder()
+		ps.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, want 200", origin, rec.Code)
+		}
+		if seen.host != "[2001:db8::1]" {
+			t.Errorf("%s: upstream host = %q, want the address bracketed", origin, seen.host)
+		}
+	}
+}
