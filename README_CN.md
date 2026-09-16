@@ -169,6 +169,20 @@ apt-proxy 中配置的 Debian 镜像；它不会授权访问 `ftp.uni-kl.de`，�
 变成不受限制的来源代理。带主机名前缀的
 `/security.debian.org/debian-security/...` 路径会使用单独配置的 Debian
 Security 镜像。查询参数会被保留，无法匹配已配置发行版的路径返回 `404`。
+
+前缀必须是单个主机名：要么没有前缀（`/debian/dists/...`），要么在发行版路径段
+前恰好只有一段形如主机名的内容（`/ftp.uni-kl.de/debian/dists/...`，可带
+`:端口`，也可以是 IP 字面量或 `localhost`）。层级更深的路径一律返回 `404`，
+因为那是第三方软件源，而不是该发行版的镜像：
+
+```text
+/ppa.launchpad.net/deadsnakes/ppa/ubuntu/dists/jammy/InRelease   404
+/download.docker.com/linux/ubuntu/dists/jammy/InRelease          404
+```
+
+这类软件源并不是它所嵌套的发行版的副本，若用该发行版的镜像来应答，客户端拿到的
+就是另一个仓库的内容。apt-proxy 没有 PPA 或厂商源的镜像，请在 `sources.list`
+中直接指向它们的源站。
 ### 发行版与镜像配置文件（distributions.yaml）
 
 通过外部 YAML 文件可维护发行版和镜像列表，无需改代码或重新编译。

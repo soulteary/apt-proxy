@@ -447,9 +447,12 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 
 	// Path match first: it is the common case and the more specific signal,
 	// so an archive reachable by path keeps its existing routing even when
-	// some other distro claims the same host.
+	// some other distro claims the same host. matchesDistroPath additionally
+	// rejects a match hiding behind a path prefix that is not a mirror host,
+	// which is what keeps a third-party archive (a PPA, a vendor repo) from
+	// being answered out of the distribution's own mirror -- see hostprefix.go.
 	for _, entry := range entries {
-		if entry.pattern.MatchString(path) {
+		if matchesDistroPath(entry.pattern, path) {
 			return ap.processMatchingRule(r, entry.rules)
 		}
 	}

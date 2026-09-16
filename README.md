@@ -172,6 +172,22 @@ the service into an unrestricted origin proxy. Host-prefixed
 `/security.debian.org/debian-security/...` paths use the configured dedicated
 Debian Security mirror. Query parameters are preserved, and paths that do not
 match a configured distribution return `404`.
+
+The prefix has to be a single host: either nothing at all (`/debian/dists/...`)
+or exactly one host-shaped segment in front of the distribution segment
+(`/ftp.uni-kl.de/debian/dists/...`, optionally with a `:port`, an IP literal, or
+`localhost`). Anything deeper returns `404`, because it is a third-party archive
+rather than a mirror of the distribution:
+
+```text
+/ppa.launchpad.net/deadsnakes/ppa/ubuntu/dists/jammy/InRelease   404
+/download.docker.com/linux/ubuntu/dists/jammy/InRelease          404
+```
+
+Such an archive is **not** a copy of the distribution it is nested under, so
+answering it from the distribution's mirror would hand the client a different
+repository's content. apt-proxy has no mirror for a PPA or a vendor repository;
+point those `sources.list` entries at their origin directly.
 ### Distributions and Mirrors Config (distributions.yaml)
 
 You can maintain distributions and mirror lists via an external YAML file without changing code or recompiling.
