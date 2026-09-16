@@ -116,6 +116,11 @@ func newBenchmarkClient() *http.Client {
 	return &http.Client{
 		Timeout: BenchmarkMaxTimeout,
 		Transport: &http.Transport{
+			// Mirror election has to reach the outside world the same way
+			// the proxy itself does. Without this, a deployment that only
+			// reaches mirrors through a forward proxy benchmarks every
+			// candidate to a timeout and elects a mirror it cannot use.
+			Proxy:               http.ProxyFromEnvironment,
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,

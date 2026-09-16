@@ -284,6 +284,34 @@ distributions:
 2024/01/15 10:55:26 INF server started successfully
 ```
 
+### 通过前置代理访问镜像站
+
+apt-proxy 的出站连接遵循标准的代理环境变量。若机器无法直连镜像站，可以让它
+通过已有的前置代理访问：
+
+```bash
+HTTP_PROXY=http://proxy.internal:3128 \
+HTTPS_PROXY=http://proxy.internal:3128 \
+NO_PROXY=10.0.0.0/8,.internal \
+  ./apt-proxy
+```
+
+| 变量名 | 作用 |
+|--------|------|
+| `HTTP_PROXY` / `http_proxy` | 访问上游的 `http://` 请求所用的代理 |
+| `HTTPS_PROXY` / `https_proxy` | 访问上游的 `https://` 请求所用的代理 |
+| `NO_PROXY` / `no_proxy` | 逗号分隔的主机名、域名后缀（`.example.com`）和 CIDR，命中则不走代理 |
+
+SOCKS5 前置代理同样可用，直接写成代理 URL 即可：
+
+```bash
+HTTPS_PROXY=socks5h://127.0.0.1:1080 ./apt-proxy
+```
+
+这些变量对软件包下载和镜像测速选优都生效，因此选出来的镜像与实际下载走的是同一
+条链路。它们只影响 apt-proxy 自身到镜像站的连接；客户端仍然直连 apt-proxy，所以
+不要把 apt-proxy 自己的地址写进 `HTTP_PROXY`。在 Docker 中用 `-e` 传入即可。
+
 ## Docker 集成
 
 ### 在 Docker 中运行 APT Proxy
@@ -429,6 +457,14 @@ http_proxy=http://host.docker.internal:3142 \
 | `APT_PROXY_S3_USE_PATH_STYLE` | `-s3-use-path-style` | path-style 寻址（MinIO/Ceph 必须） |
 | `APT_PROXY_S3_INLINE_MAX_MB` | `-s3-inline-max-mb` | 内存缓冲阈值（MiB） |
 | `APT_PROXY_S3_TEMP_DIR` | `-s3-temp-dir` | 大对象临时目录 |
+
+**上游网络**（标准变量，无对应 CLI 参数）
+
+| 变量名 | 说明 |
+|--------|------|
+| `HTTP_PROXY` / `http_proxy` | 访问镜像站的 `http://` 请求所用的前置代理 |
+| `HTTPS_PROXY` / `https_proxy` | 访问镜像站的 `https://` 请求所用的前置代理（支持 `socks5h://`） |
+| `NO_PROXY` / `no_proxy` | 不走前置代理的主机名、域名后缀与 CIDR |
 
 **TLS**
 
