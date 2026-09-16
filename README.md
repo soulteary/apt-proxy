@@ -273,6 +273,37 @@ Example output:
 2024/01/15 10:55:26 INF server started successfully
 ```
 
+### Reaching Mirrors Through an Upstream Proxy
+
+apt-proxy's outbound connections honour the standard proxy environment
+variables, so a host that cannot reach mirror sites directly can route them
+through an existing forward proxy:
+
+```bash
+HTTP_PROXY=http://proxy.internal:3128 \
+HTTPS_PROXY=http://proxy.internal:3128 \
+NO_PROXY=10.0.0.0/8,.internal \
+  ./apt-proxy
+```
+
+| Variable | Effect |
+|----------|--------|
+| `HTTP_PROXY` / `http_proxy` | Proxy for `http://` upstream requests |
+| `HTTPS_PROXY` / `https_proxy` | Proxy for `https://` upstream requests |
+| `NO_PROXY` / `no_proxy` | Comma-separated hosts, domain suffixes (`.example.com`) and CIDRs that bypass the proxy |
+
+A SOCKS5 forward proxy works too — write it as the proxy URL:
+
+```bash
+HTTPS_PROXY=socks5h://127.0.0.1:1080 ./apt-proxy
+```
+
+These variables cover both package fetches and the benchmark that elects the
+fastest mirror, so mirror selection reflects the path the downloads will
+actually take. They apply only to apt-proxy's own connections to mirror sites;
+clients still reach apt-proxy directly, so do not put apt-proxy's own address in
+`HTTP_PROXY`. In Docker, pass them with `-e`.
+
 ## Docker Integration
 
 ### Running APT Proxy in Docker
@@ -417,6 +448,14 @@ Every CLI flag has an equivalent environment variable. Plus a few extras for log
 | `APT_PROXY_ENABLE_API_AUTH` | `-enable-api-auth` | Explicit toggle for API auth middleware |
 | `APT_PROXY_API_RATE_LIMIT_PER_MINUTE` | `-api-rate-limit` | API requests per IP per minute (`0` disables) |
 | `APT_PROXY_TRUSTED_PROXIES` | `-trusted-proxies` | Comma-separated trusted proxy CIDRs |
+
+**Upstream Network** (standard variables, no equivalent flag)
+
+| Variable | Description |
+|----------|-------------|
+| `HTTP_PROXY` / `http_proxy` | Forward proxy for `http://` requests to mirrors |
+| `HTTPS_PROXY` / `https_proxy` | Forward proxy for `https://` requests to mirrors (`socks5h://` accepted) |
+| `NO_PROXY` / `no_proxy` | Hosts, domain suffixes and CIDRs that bypass the forward proxy |
 
 **Storage Backend**
 
