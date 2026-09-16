@@ -31,6 +31,7 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 - **Smart Mirror Selection**: Automatically benchmarks and selects the fastest mirror
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
 - **apt-cacher-ng Friendly**: Compatible with most [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) usage patterns (note: advanced features such as the Import/Maint web UI, full `acng.conf` syntax, and cross-distro deb deduplication are not implemented)
+- **Host-Root Archives**: Routes by the request `Host` when an archive lives at a domain root with no path prefix to match (`security.debian.org`, `apt.armbian.com`), configurable per distribution with `host_pattern`
 - **Zero Configuration**: Works out of the box with sensible defaults
 - **Observability**: Built-in health checks, Prometheus metrics, structured logging, and optional OpenTelemetry tracing
 - **Cache Management**: REST API for cache statistics, purging, and cleanup, with API-key authentication and per-IP rate limiting
@@ -534,6 +535,33 @@ The cache supports a size limit configured via `max_size_gb` (YAML), `--cache-ma
 - Set to `0` to disable the size limit; no size-based eviction is performed.
 
 After a process restart, the LRU order is approximated using file modification time until new accesses update it.
+
+### Cache Directory Layout
+
+The disk backend keeps four things under the cache directory. They appear on the
+first store, not at startup:
+
+```
+body/v1/<hashed-key>      response bodies
+header/v1/<hashed-key>    status line, headers, and the store timestamp
+staging/v1/               entries being written; empty when idle
+stale-markers.json        invalidation state
+```
+
+An entry is a body and a header together, and the two are published as one step:
+bytes are written under `staging/v1` and renamed into place, so re-storing a file
+that is already cached never exposes a truncated or empty entry to a concurrent
+reader. Nothing under `staging/v1` is a cache entry — **exclude it when you size
+the cache directory, back it up, or rsync it.** Files a killed process left there
+are swept on the next start.
+
+Only `body/v1` and `header/v1` count toward `max_size_gb`; that is the same total
+the LRU eviction above compares against the limit. Measured on a single
+1000-byte entry: body 1000 + header 103 = 1103 bytes accounted, with the 95-byte
+`stale-markers.json` excluded.
+
+The S3 backend has no `staging/` prefix. Object writes go straight to the final
+key, because staging needs a rename and the VFS interface has none.
 
 ### S3 Storage Backend
 
