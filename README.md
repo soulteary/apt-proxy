@@ -176,14 +176,20 @@ match a configured distribution return `404`.
 
 You can maintain distributions and mirror lists via an external YAML file without changing code or recompiling.
 
-**Config file search order (when not specified):**
+**Pointing apt-proxy at the file:** set `--distributions-config` (or
+`APT_PROXY_DISTRIBUTIONS_CONFIG`) to its path. Treat the flag as required —
+the server loads the file only when that path is set and does not probe for
+one, so a `./config/distributions.yaml` sitting next to the binary is ignored
+if you do not name it:
 
-1. `./config/distributions.yaml`
-2. `./distributions.yaml`
-3. `/etc/apt-proxy/distributions.yaml`
-4. `~/.config/apt-proxy/distributions.yaml`
+```bash
+./apt-proxy --distributions-config=./config/distributions.yaml
+```
 
-You can also set the path explicitly via `--distributions-config` or `APT_PROXY_DISTRIBUTIONS_CONFIG`.
+The loader itself carries a search list — `./config/distributions.yaml`,
+`./distributions.yaml`, `/etc/apt-proxy/distributions.yaml`,
+`~/.config/apt-proxy/distributions.yaml` — but it only applies to callers that
+hand it an empty path, which the server does not do.
 
 **Example `config/distributions.yaml`:**
 
@@ -247,7 +253,12 @@ distributions:
       - pattern: "deb$"
         cache_control: "max-age=100000"
         rewrite: true
-      - pattern: "InRelease$"
+      - pattern: "(InRelease|Release(\\.gpg)?)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Catch-all last: apt also fetches package indexes
+      # (Packages.xz, by-hash/...), and an unmatched path is a 404.
+      - pattern: ".*"
         cache_control: "max-age=3600"
         rewrite: true
     mirrors:
@@ -275,7 +286,12 @@ distributions:
       - pattern: "deb$"
         cache_control: "max-age=100000"
         rewrite: true
-      - pattern: "InRelease$"
+      - pattern: "(InRelease|Release(\\.gpg)?)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Catch-all last: apt also fetches package indexes
+      # (Packages.xz, by-hash/...), and an unmatched path is a 404.
+      - pattern: ".*"
         cache_control: "max-age=3600"
         rewrite: true
     mirrors:
@@ -291,9 +307,10 @@ Notes that save a round of debugging:
 
 - Keep `type` stable across reloads — mirror election and rewriter state are keyed by it.
 - `benchmark_url` must be a small file that exists on every mirror in the list; it is fetched to rank them.
-- `cache_rules` are tried in order and the first match wins, so put a catch-all `".*"` last if you want one.
+- `cache_rules` are tried in order, first match wins, and **a path matching no rule is a `404`** — not a pass-through. `apt update` fetches package indexes (`Packages.xz`, `by-hash/...`) as well as `InRelease`, so end with a catch-all `".*"` unless you are deliberately serving only certain file types.
 - Run with `--mode=all` (the default). `--mode` only names the built-in distributions; a custom one is served whenever the mode is `all`.
 - Only requests matching `url_pattern` (or `host_pattern`) are proxied; everything else still returns `404`.
+- Name the file with `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG`. Without it the server never loads a `distributions.yaml` at all, and the entry silently does nothing.
 
 ### Custom Mirror Selection
 

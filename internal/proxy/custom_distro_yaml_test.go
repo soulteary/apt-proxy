@@ -94,7 +94,10 @@ distributions:
       - pattern: "deb$"
         cache_control: "max-age=100000"
         rewrite: true
-      - pattern: "InRelease$"
+      - pattern: "(InRelease|Release(\\.gpg)?)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: ".*"
         cache_control: "max-age=3600"
         rewrite: true
     mirrors:
@@ -115,14 +118,29 @@ distributions:
 		t.Errorf("type 6 registered as %q, want %q", d.ID, "deepin")
 	}
 
-	rec := serveThrough(t, reg, httptest.NewRequest(http.MethodGet,
-		"http://apt-proxy.example/deepin/dists/apricot/InRelease", nil))
+	// Every request shape apt issues for a working repository, not just
+	// InRelease: a recipe whose cache_rules stop at InRelease serves the
+	// signature and then 404s the package indexes, and `apt update` fails
+	// with the archive looking half-available.
+	for _, want := range []string{
+		"/deepin/dists/apricot/InRelease",
+		"/deepin/dists/apricot/Release",
+		"/deepin/dists/apricot/Release.gpg",
+		"/deepin/dists/apricot/main/binary-amd64/Packages.xz",
+		"/deepin/dists/apricot/main/binary-amd64/Packages.gz",
+		"/deepin/dists/apricot/main/by-hash/SHA256/deadbeef",
+		"/deepin/pool/main/h/hello/hello_2.10_amd64.deb",
+	} {
+		rec := serveThrough(t, reg, httptest.NewRequest(http.MethodGet,
+			"http://apt-proxy.example"+want, nil))
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (the request never reached the configured mirror)", rec.Code)
-	}
-	if want := "/deepin/dists/apricot/InRelease"; *gotPath != want {
-		t.Errorf("upstream saw %q, want %q", *gotPath, want)
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s: status = %d, want 200 (never reached the configured mirror)", want, rec.Code)
+			continue
+		}
+		if *gotPath != want {
+			t.Errorf("GET %s: upstream saw %q", want, *gotPath)
+		}
 	}
 }
 
@@ -147,7 +165,10 @@ distributions:
       - pattern: "deb$"
         cache_control: "max-age=100000"
         rewrite: true
-      - pattern: "InRelease$"
+      - pattern: "(InRelease|Release(\\.gpg)?)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: ".*"
         cache_control: "max-age=3600"
         rewrite: true
     mirrors:

@@ -173,14 +173,19 @@ Security 镜像。查询参数会被保留，无法匹配已配置发行版的�
 
 通过外部 YAML 文件可维护发行版和镜像列表，无需改代码或重新编译。
 
-**配置文件路径（未指定时按以下顺序查找）：**
+**让 apt-proxy 读到这个文件：** 用 `--distributions-config`（或环境变量
+`APT_PROXY_DISTRIBUTIONS_CONFIG`）指定路径，并请把它当作必填项 —— 只有设置了该
+路径服务端才会加载配置文件，它不会主动探测；因此即使二进制旁边就放着
+`./config/distributions.yaml`，不显式指定也不会生效：
 
-1. `./config/distributions.yaml`
-2. `./distributions.yaml`
-3. `/etc/apt-proxy/distributions.yaml`
-4. `~/.config/apt-proxy/distributions.yaml`
+```bash
+./apt-proxy --distributions-config=./config/distributions.yaml
+```
 
-也可通过 `--distributions-config` 或环境变量 `APT_PROXY_DISTRIBUTIONS_CONFIG` 显式指定路径。
+加载器内部确实带有一份查找列表（`./config/distributions.yaml`、
+`./distributions.yaml`、`/etc/apt-proxy/distributions.yaml`、
+`~/.config/apt-proxy/distributions.yaml`），但它只对传入空路径的调用方生效，
+而服务端并不会这样调用。
 
 **示例 `config/distributions.yaml`：**
 
@@ -243,7 +248,12 @@ distributions:
       - pattern: "deb$"
         cache_control: "max-age=100000"
         rewrite: true
-      - pattern: "InRelease$"
+      - pattern: "(InRelease|Release(\\.gpg)?)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      # 兜底规则必须放最后：apt 还会拉取软件包索引
+      # （Packages.xz、by-hash/... 等），未命中任何规则的路径会返回 404。
+      - pattern: ".*"
         cache_control: "max-age=3600"
         rewrite: true
     mirrors:
@@ -271,7 +281,12 @@ distributions:
       - pattern: "deb$"
         cache_control: "max-age=100000"
         rewrite: true
-      - pattern: "InRelease$"
+      - pattern: "(InRelease|Release(\\.gpg)?)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      # 兜底规则必须放最后：apt 还会拉取软件包索引
+      # （Packages.xz、by-hash/... 等），未命中任何规则的路径会返回 404。
+      - pattern: ".*"
         cache_control: "max-age=3600"
         rewrite: true
     mirrors:
@@ -286,9 +301,10 @@ distributions:
 
 - `type` 请跨重载保持稳定 —— 镜像选择与 rewriter 状态都以它为键。
 - `benchmark_url` 必须是镜像列表里每个站点都存在的小文件，测速时会实际请求它。
-- `cache_rules` 按顺序匹配，命中第一条即停；需要兜底就把 `".*"` 放在最后。
+- `cache_rules` 按顺序匹配，命中第一条即停，而且**未命中任何规则的路径会直接返回 `404`**，不会透传。`apt update` 除了 `InRelease` 还会拉取软件包索引（`Packages.xz`、`by-hash/...`），所以除非你刻意只想代理特定类型的文件，否则请以兜底规则 `".*"` 结尾。
 - 以 `--mode=all`（默认值）运行。`--mode` 只接受内置发行版的名字，自定义发行版在 `all` 模式下才会启用。
 - 只有匹配 `url_pattern`（或 `host_pattern`）的请求才会被代理，其余仍然返回 `404`。
+- 记得用 `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG` 指定文件路径。不指定的话服务端根本不会加载 `distributions.yaml`，这条配置会静默失效。
 
 ### 自定义镜像选择
 
