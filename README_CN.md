@@ -399,6 +399,24 @@ http_proxy=http://apt-proxy.example:3142 apt-get update
 （`deb http://apt-proxy.example:3142/<host>/...`）寻址的是 apt-proxy 自己，没有
 点名任何源站，因此不会触发直通。
 
+**即使软件源本身只提供 HTTPS，条目也必须写成 `http://`：**
+
+```text
+deb http://download.docker.com/linux/ubuntu jammy stable
+```
+
+```yaml
+passthrough:
+  - https://download.docker.com   # 由 apt-proxy 负责把上游那一跳升级为 TLS
+```
+
+如果 `sources.list` 里写 `https://`，apt 会向代理发 `CONNECT host:443` 建立隧道。
+隧道是端到端加密的，apt-proxy 只能转发字节，既读不到也缓存不了 —— 而缓存正是它存在
+的全部意义。因此 apt-proxy 不响应 `CONNECT`：请把源写成 `http://`，让白名单里的
+`https://` 条目（或 [`HTTPS///` 标记](#https-形式的-url-返回-403)）来承担 TLS 上游。
+客户端到 apt-proxy 这一跳是你自己网络内的明文 HTTP，而 apt 无论走什么传输都会校验
+软件源签名。
+
 **条目写法：**
 
 | 写法 | 含义 |

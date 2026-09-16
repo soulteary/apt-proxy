@@ -275,3 +275,36 @@ func TestPassthroughIgnoresURLPrefixForm(t *testing.T) {
 		t.Error("a path-embedded origin must not activate passthrough")
 	}
 }
+
+// An entry that pins a port means a service deliberately listening there.
+// Dropping it as if it were a default inherited from the request line would
+// send the request to 443 and never reach that service.
+func TestPassthroughKeepsAnExplicitlyPinnedTLSPort(t *testing.T) {
+	ps, _ := passthroughProxy(t, "https://archive.example.test:80")
+
+	r := proxyModeRequest(http.MethodGet, "archive.example.test:80", "/repo/InRelease")
+	if rule := ps.handleExternalURLs(r); rule == nil {
+		t.Fatal("pinned-port entry did not match")
+	}
+	if r.URL.Scheme != "https" {
+		t.Errorf("scheme = %q, want https", r.URL.Scheme)
+	}
+	if r.URL.Host != "archive.example.test:80" {
+		t.Errorf("host = %q, want the pinned port kept", r.URL.Host)
+	}
+}
+
+// The default-port drop still applies when the entry pinned nothing.
+func TestPassthroughStillDropsInheritedDefaultPort(t *testing.T) {
+	ps, _ := passthroughProxy(t, "https://secure.example.test")
+
+	for _, authority := range []string{"secure.example.test:80", "secure.example.test:443"} {
+		r := proxyModeRequest(http.MethodGet, authority, "/repo/InRelease")
+		if rule := ps.handleExternalURLs(r); rule == nil {
+			t.Fatalf("%s: entry did not match", authority)
+		}
+		if r.URL.Host != "secure.example.test" {
+			t.Errorf("%s: host = %q, want the inherited default port dropped", authority, r.URL.Host)
+		}
+	}
+}
