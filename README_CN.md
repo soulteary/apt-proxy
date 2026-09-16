@@ -31,6 +31,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **智能镜像选择**：自动测试并选择最快的镜像源
 - **Docker 友好**：无缝集成 Docker 容器和构建流程
 - **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
+- **域名根仓库**：仓库直接放在域名根目录、路径里没有前缀可匹配时（`security.debian.org`、`apt.armbian.com`），按请求 `Host` 路由，可通过 `host_pattern` 按发行版配置
 - **零配置**：开箱即用，默认配置即可满足大多数场景
 - **可观测性**：内置健康检查、Prometheus 指标、结构化日志，并可选启用 OpenTelemetry 链路追踪
 - **缓存管理**：REST API 支持缓存统计、清理与维护，附带 API Key 鉴权与按 IP 限流
@@ -531,6 +532,23 @@ distributions_config: ./config/distributions.yaml
 - 设置为 `0` 表示不限制容量，不进行按容量淘汰。
 
 进程重启后，在尚未有新访问之前，LRU 顺序按文件修改时间近似。
+
+### 缓存目录结构
+
+磁盘后端在缓存目录下放四样东西。它们在第一次写入时出现，不是启动时就创建：
+
+```
+body/v1/<hashed-key>      响应体
+header/v1/<hashed-key>    状态行、header，以及写入时间戳
+staging/v1/               正在写入的条目，空闲时为空
+stale-markers.json        失效状态
+```
+
+一个条目由 body 和 header 共同构成，两者作为一步发布：字节先写进 `staging/v1`，再 rename 到位，因此重复写入一个已缓存的文件，不会让并发的读者看到截断或空的条目。`staging/v1` 下的东西都不是缓存条目 —— **做容量统计、备份或 rsync 时请排除它。** 进程被杀留下的残留文件会在下次启动时清掉。
+
+只有 `body/v1` 和 `header/v1` 计入 `max_size_gb`，这也正是上面 LRU 淘汰拿去和上限比较的那个总量。实测单个 1000 字节条目：body 1000 + header 103 = 1103 字节计入，95 字节的 `stale-markers.json` 不计入。
+
+S3 后端没有 `staging/` 前缀，对象写入直接落到最终 key —— 暂存依赖 rename，而 VFS 接口里没有。
 
 ### S3 存储后端
 
