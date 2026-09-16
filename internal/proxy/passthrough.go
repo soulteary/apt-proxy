@@ -165,9 +165,7 @@ func (ap *PackageStruct) acceptTLSRewriteMarker(
 	// matchPassthrough.
 	host := origin
 	if rule.Port == "" {
-		if h, port, err := net.SplitHostPort(origin); err == nil && (port == "80" || port == "443") {
-			host = h
-		}
+		host = stripDefaultPort(origin)
 	}
 
 	// The marker's whole point is that the upstream is TLS.
