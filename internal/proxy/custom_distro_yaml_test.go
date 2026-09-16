@@ -218,3 +218,59 @@ distributions:
 		t.Error("reusing built-in type 3 must be an error, got nil")
 	}
 }
+
+// A client using apt-proxy as APT's proxy (http_proxy=...) sends absolute-form
+// requests, so a third-party origin arrives named only by Host with its own
+// path layout. Troubleshooting ("404 on a PPA or vendor repository") points
+// such a user at registering the origin as its own distribution with a
+// host_pattern; this is that recipe, proving it resolves in proxy mode where
+// editing the sources.list entry does not.
+func TestRegisteredOriginServesProxyModeRequest(t *testing.T) {
+	upstream, gotPath := echoUpstream(t)
+
+	path := writeDistributionsYAML(t, fmt.Sprintf(`
+distributions:
+  - id: deadsnakes
+    name: Deadsnakes PPA
+    type: 8
+    url_pattern: "/deadsnakes-ppa/(.+)$"
+    host_pattern: "^ppa\\.launchpad\\.net(:\\d+)?$"
+    benchmark_url: "deadsnakes/ppa/ubuntu/dists/jammy/Release"
+    cache_rules:
+      - pattern: ".*"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "%s/"
+`, upstream))
+
+	reg := distro.NewBuiltinRegistry()
+	if err := reg.Reload(path); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+
+	// Absolute-form request, as apt writes it when apt-proxy is its proxy.
+	const want = "/deadsnakes/ppa/ubuntu/dists/jammy/InRelease"
+	rec := serveThrough(t, reg, httptest.NewRequest(http.MethodGet,
+		"http://ppa.launchpad.net"+want, nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (registering the origin must make it reachable)", rec.Code)
+	}
+	if *gotPath != want {
+		t.Errorf("upstream saw %q, want %q", *gotPath, want)
+	}
+}
+
+// The same request without that registration is the 404 the troubleshooting
+// entry is about: apt-proxy mirrors Ubuntu, not every archive whose path
+// happens to contain /ubuntu/.
+func TestUnregisteredOriginIs404InProxyMode(t *testing.T) {
+	rec := serveThrough(t, newTestRegistry(), httptest.NewRequest(http.MethodGet,
+		"http://ppa.launchpad.net/deadsnakes/ppa/ubuntu/dists/jammy/InRelease", nil))
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}

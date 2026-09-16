@@ -1103,7 +1103,19 @@ apt-proxy 只代理已配置的发行版。路径里**碰巧含有**发行版路
 
 更早的版本会匹配这类路径，并用该发行版自己的镜像来应答，于是一个 PPA 请求拿回来的是 **Ubuntu 主仓**同名套件的索引 —— `200`、看起来完全正常、内容却来自另一个仓库。现在的 `404` 取代了这种静默替换。
 
-请把这类 `sources.list` 条目直接指向它的源站；若希望 apt-proxy 缓存它，就把它注册成一个独立的发行版 —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。
+具体怎么处理，取决于客户端是以哪种方式接入 apt-proxy 的。
+
+**把 apt-proxy 当作 APT 的代理**（`http_proxy=...` 或 `Acquire::http::Proxy`，也就是快速开始里的用法）：这时**所有**请求都会经过 apt-proxy，改 `sources.list` 条目没有任何作用 —— 请求照样会到达这里（只靠 `Host` 标识），照样返回 `404`。正确做法是让该主机绕过 apt-proxy：
+
+```text
+# /etc/apt/apt.conf.d/99-apt-proxy-bypass
+Acquire::http::Proxy::ppa.launchpad.net "DIRECT";
+Acquire::https::Proxy::ppa.launchpad.net "DIRECT";
+```
+
+**使用 URL 前缀形式**（`deb http://apt-proxy.example:3142/<host>/...`）：把该条目直接指向它的源站即可。
+
+**两种方式都适用**：如果你希望 apt-proxy 缓存这个仓库而不是跳过它，就把它注册成一个独立的发行版 —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。客户端处于代理模式时，请给该条目配上匹配源站域名的 `host_pattern` —— `host_pattern: "^ppa\\.launchpad\\.net$"` —— 因为这类请求路径里没有前缀可匹配，只能靠 `Host` 识别。
 
 apt-cacher-ng 风格的主机名前缀不受影响：发行版路径段前只有单独一段主机名时（`/ftp.uni-kl.de/debian/...`）依然正常路由。
 

@@ -1148,9 +1148,28 @@ own mirror, so a PPA request came back as the **main Ubuntu archive's** index
 for that suite — `200`, valid-looking, and the wrong repository's content. The
 `404` replaces that silent substitution.
 
-Point such a `sources.list` entry at its origin directly, or, to have apt-proxy
-cache it, register it as its own distribution — see
-[Adding a distribution apt-proxy does not ship](#adding-a-distribution-apt-proxy-does-not-ship).
+What to do depends on how the client reaches apt-proxy.
+
+**Using apt-proxy as APT's proxy** — `http_proxy=...`, or `Acquire::http::Proxy`,
+which is the Quick Start setup: *every* request goes through apt-proxy, so
+editing the `sources.list` entry changes nothing. The request still arrives here,
+named by `Host`, and still `404`s. Bypass apt-proxy for that host instead:
+
+```text
+# /etc/apt/apt.conf.d/99-apt-proxy-bypass
+Acquire::http::Proxy::ppa.launchpad.net "DIRECT";
+Acquire::https::Proxy::ppa.launchpad.net "DIRECT";
+```
+
+**Using the URL-prefix form** — `deb http://apt-proxy.example:3142/<host>/...`:
+point that entry at its origin instead.
+
+**Either way**, if you would rather apt-proxy cached the repository than skipped
+it, register it as its own distribution — see [Adding a distribution apt-proxy
+does not ship](#adding-a-distribution-apt-proxy-does-not-ship). For a client in
+proxy mode give that entry a `host_pattern` matching the origin —
+`host_pattern: "^ppa\\.launchpad\\.net$"` — because the request arrives with no
+path prefix to match, only the `Host`.
 
 The apt-cacher-ng host-prefixed form is unaffected: a single host segment in
 front of the distribution segment (`/ftp.uni-kl.de/debian/...`) still routes.
