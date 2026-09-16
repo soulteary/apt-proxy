@@ -33,6 +33,7 @@ import (
 
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
@@ -179,6 +180,10 @@ type PackageStruct struct {
 	registry *distro.Registry
 	mode     int
 
+	// passthrough is the allowlist of third-party origins served unrewritten.
+	// Empty by default: apt-proxy is not an open forward proxy.
+	passthrough *passthrough.List
+
 	// rewriters holds the URL rewriters used by ServeHTTP. Writers swap
 	// the pointer under refreshMu; the URLRewriters struct itself has
 	// finer-grained locking for the per-mirror pointer swap.
@@ -216,6 +221,7 @@ type Options struct {
 	EnableKeepAlive   bool
 	Async             bool              // when true, use async (non-blocking) benchmarks during construction
 	TransportOverride http.RoundTripper // optional: caller-supplied transport (mainly for tests)
+	Passthrough       *passthrough.List // optional: allowlisted third-party origins
 }
 
 // NewPackageStruct constructs a fully wired PackageStruct using the
@@ -244,15 +250,16 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async, bench)
 
 	ps := &PackageStruct{
-		Rules:     GetRewriteRulesByMode(opts.Registry, mode),
-		CacheDir:  opts.CacheDir,
-		log:       log,
-		state:     opts.State,
-		registry:  opts.Registry,
-		mode:      mode,
-		rewriters: rewriters,
-		bench:     bench,
-		transport: transport,
+		Rules:       GetRewriteRulesByMode(opts.Registry, mode),
+		CacheDir:    opts.CacheDir,
+		log:         log,
+		state:       opts.State,
+		registry:    opts.Registry,
+		mode:        mode,
+		passthrough: opts.Passthrough,
+		rewriters:   rewriters,
+		bench:       bench,
+		transport:   transport,
 		Handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
 			Transport: transport,
@@ -468,7 +475,11 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 			return ap.processMatchingRule(r, entry.rules)
 		}
 	}
-	return nil
+
+	// Last: a third-party origin the operator allowlisted. Deliberately after
+	// both distribution checks, so an archive apt-proxy mirrors keeps its own
+	// routing and cache rules.
+	return ap.matchPassthrough(r)
 }
 
 // requestHost returns the host the client addressed, lower-cased. net/http

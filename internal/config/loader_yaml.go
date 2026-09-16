@@ -83,8 +83,9 @@ type YAMLConfig struct {
 		} `yaml:"s3"`
 	} `yaml:"storage"`
 
-	Mode                string `yaml:"mode"`
-	DistributionsConfig string `yaml:"distributions_config"`
+	Mode                string   `yaml:"mode"`
+	DistributionsConfig string   `yaml:"distributions_config"`
+	Passthrough         []string `yaml:"passthrough"`
 
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors.
 	// Pointer to distinguish "user did not set" (nil → leave to defaults
@@ -205,6 +206,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			},
 		},
 		DistributionsConfigPath: yamlCfg.DistributionsConfig,
+		Passthrough:             append([]string(nil), yamlCfg.Passthrough...),
 	}
 
 	// Apply UpstreamKeepAlive: default to true (matches CLI default) so the

@@ -99,6 +99,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	if ex.UpstreamKeepAlive {
 		result.UpstreamKeepAlive = override.UpstreamKeepAlive
 	}
+	if ex.Passthrough {
+		result.Passthrough = append([]string(nil), override.Passthrough...)
+	}
 	if ex.DistributionsConfig && override.DistributionsConfigPath != "" {
 		result.DistributionsConfigPath = override.DistributionsConfigPath
 	}
@@ -228,6 +231,9 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 	if len(override.Security.TrustedProxies) > 0 {
 		result.Security.TrustedProxies = append([]string(nil), override.Security.TrustedProxies...)
+	}
+	if len(override.Passthrough) > 0 {
+		result.Passthrough = append([]string(nil), override.Passthrough...)
 	}
 	if override.DistributionsConfigPath != "" {
 		result.DistributionsConfigPath = override.DistributionsConfigPath

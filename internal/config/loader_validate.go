@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
@@ -69,6 +70,13 @@ func ValidateConfig(config *Config) error {
 	}
 	if config.Security.EnableAPIAuth && strings.TrimSpace(config.Security.APIKey) == "" {
 		return fmt.Errorf("API authentication is enabled but api_key is empty")
+	}
+
+	// The passthrough allowlist widens what apt-proxy will fetch, so a typo in
+	// it must not be tolerated: refuse to start rather than silently allow
+	// less (or more) than the operator wrote.
+	if _, err := passthrough.Parse(config.Passthrough); err != nil {
+		return fmt.Errorf("invalid passthrough configuration: %w", err)
 	}
 
 	// Validate storage backend selection and corresponding fields. The
