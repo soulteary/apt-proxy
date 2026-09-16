@@ -15,7 +15,7 @@ require (
 	github.com/soulteary/middleware-kit/v2 v2.2.0
 	github.com/soulteary/tracing-kit v1.5.0
 	github.com/soulteary/version-kit/v2 v2.2.0
-	github.com/soulteary/vfs-kit v1.4.1
+	github.com/soulteary/vfs-kit v1.4.2
 	go.opentelemetry.io/otel v1.46.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
