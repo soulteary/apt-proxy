@@ -122,8 +122,9 @@ func TestCacheKeyFollowsTheElectedMirror(t *testing.T) {
 		t.Fatalf("mirror 1 was contacted %d times for two identical requests, want 1 (the second must be a cache hit)", n)
 	}
 
-	// Operator switches the elected mirror: SIGHUP, /api/mirrors/refresh, a
-	// restart, or a benchmark timeout.
+	// Operator switches the elected mirror: a restart, SIGHUP, or
+	// /api/mirrors/refresh. (A benchmark timeout is not one of these -- it
+	// drops a candidate from the run, it does not start one.)
 	st.SetMirror(distro.TypeUbuntu, second+"/ubuntu/")
 	ps.RefreshMirrors()
 

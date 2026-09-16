@@ -721,9 +721,11 @@ same mirror, second request   -> upstream contacted once   (cache hit)
 after switching the mirror    -> refetched from the new mirror
 ```
 
-Mirror election changes more often than you might expect: benchmark results are
-not persisted, so a restart re-elects, as does `SIGHUP`, `POST
-/api/mirrors/refresh`, and a mirror that times out during benchmarking.
+Mirror election runs at startup and on an explicit refresh. Benchmark results
+are not persisted, so **a restart re-elects**, and so do `SIGHUP` and `POST
+/api/mirrors/refresh`. (A mirror timing out *during* benchmarking is not one of
+these: it is simply dropped from that run's candidates, and if every candidate
+fails the current mirror is left in place.)
 
 This is the conservative behaviour — two mirrors are not guaranteed to serve
 byte-identical content, so entries are not shared between them. If you want a
