@@ -29,6 +29,53 @@
 #       tencent: "mirrors.cloud.tencent.com/ubuntu/"
 #       163: "mirrors.163.com/ubuntu/"
 #       huaweicloud: "mirrors.huaweicloud.com/repository/ubuntu/"
+#
+# A type outside 1..5 registers a distribution apt-proxy does not ship. It gets
+# its own mirror list, benchmark and rewriter, same as a built-in one:
+#
+#   - id: deepin
+#     name: Deepin
+#     type: 6
+#     url_pattern: "/deepin/(.+)$"
+#     benchmark_url: "dists/apricot/main/binary-amd64/Release"
+#     cache_rules:
+#       - pattern: "deb$"
+#         cache_control: "max-age=100000"
+#         rewrite: true
+#       - pattern: "(InRelease|Release(\\.gpg)?)$"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#       # Catch-all last: apt also fetches package indexes
+#       # (Packages.xz, by-hash/...), and an unmatched path is a 404.
+#       - pattern: ".*"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#     mirrors:
+#       official:
+#         - "community-packages.deepin.com/deepin/"
+#
+# When the archive sits at a domain root there is no path prefix to match, so
+# name it by Host instead (apt writes `deb http://apt.armbian.com <suite> main`):
+#
+#   - id: armbian
+#     name: Armbian
+#     type: 7
+#     url_pattern: "/armbian/(.+)$"
+#     host_pattern: "^apt\\.armbian\\.com(:\\d+)?$"
+#     benchmark_url: "dists/bookworm/main/binary-arm64/Release"
+#     cache_rules:
+#       - pattern: "deb$"
+#         cache_control: "max-age=100000"
+#         rewrite: true
+#       - pattern: "(InRelease|Release(\\.gpg)?)$"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#       - pattern: ".*"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#     mirrors:
+#       official:
+#         - "mirrors.tuna.tsinghua.edu.cn/armbian/"
 
 distributions:
   - id: ubuntu
