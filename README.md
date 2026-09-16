@@ -320,6 +320,10 @@ Point the client at apt-proxy with `Host: apt.armbian.com` (an `http_proxy`
 setting does this for you) and requests for `/dists/<suite>/...` resolve against
 the configured mirror.
 
+A runnable version of all three shapes — Deepin, Armbian and Arch Linux in one
+file, with client setup for each — is in
+[`examples/custom-distros/`](examples/custom-distros/).
+
 Notes that save a round of debugging:
 
 - Keep `type` stable across reloads — mirror election and rewriter state are keyed by it.

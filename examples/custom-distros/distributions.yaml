@@ -1,0 +1,99 @@
+# Distributions apt-proxy does not ship, added without touching the code.
+#
+# A `type` outside the built-in range (1 Ubuntu, 2 UbuntuPorts, 3 Debian,
+# 4 CentOS, 5 Alpine; 0 is reserved) registers a new distribution. It gets its
+# own mirror list, its own benchmark and its own rewriter, exactly like a
+# built-in one. Pick a free number and keep it stable -- mirror election and
+# rewriter state are keyed by it.
+#
+# Two shapes appear below:
+#
+#   * a path prefix (Deepin, Arch) -- the archive lives under a path, so
+#     `url_pattern` matches and the client uses /<id>/... through apt-proxy;
+#   * a domain root (Armbian) -- the archive is at the root of its host with no
+#     path prefix to match, so `host_pattern` recognises it by `Host` instead.
+#
+# Every entry ends with a catch-all cache rule. A path matching no rule is a
+# 404, not a pass-through, and apt fetches package indexes (Packages.xz,
+# by-hash/...) as well as InRelease -- without it `apt update` fails right
+# after the signature.
+
+distributions:
+  # ---------------------------------------------------------------- Deepin --
+  # deb http://<apt-proxy>:3142/deepin apricot main contrib non-free
+  #
+  # Adjust the suite in benchmark_url to the release you actually run.
+  - id: deepin
+    name: Deepin
+    type: 6
+    url_pattern: "/deepin/(.+)$"
+    benchmark_url: "dists/apricot/main/binary-amd64/Release"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "(InRelease|Release(\\.gpg)?)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: ".*"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "community-packages.deepin.com/deepin/"
+        - "mirrors.tuna.tsinghua.edu.cn/deepin/"
+    aliases:
+      tsinghua: "mirrors.tuna.tsinghua.edu.cn/deepin/"
+
+  # --------------------------------------------------------------- Armbian --
+  # Armbian's sources.list is `deb http://apt.armbian.com <suite> main`, so
+  # requests arrive as /dists/<suite>/... with the archive named only by Host.
+  # Point the client at apt-proxy with http_proxy= and leave sources.list alone,
+  # or rewrite it to http://<apt-proxy>:3142/armbian <suite> main.
+  - id: armbian
+    name: Armbian
+    type: 7
+    url_pattern: "/armbian/(.+)$"
+    host_pattern: "^apt\\.armbian\\.com(:\\d+)?$"
+    benchmark_url: "dists/bookworm/main/binary-arm64/Release"
+    cache_rules:
+      - pattern: "deb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "(InRelease|Release(\\.gpg)?)$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: ".*"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/armbian/"
+        - "mirrors.ustc.edu.cn/armbian/"
+
+  # ------------------------------------------------------------ Arch Linux --
+  # /etc/pacman.d/mirrorlist:
+  #   Server = http://<apt-proxy>:3142/archlinux/$repo/os/$arch
+  #
+  # Package files are immutable and cached long; the repository databases move
+  # and are cached briefly. This is generic HTTP caching -- there is no
+  # pacman-aware db invalidation or prefetch here.
+  - id: archlinux
+    name: Arch Linux
+    type: 10
+    url_pattern: "/archlinux/(.+)$"
+    benchmark_url: "lastupdate"
+    cache_rules:
+      - pattern: "\\.pkg\\.tar\\.(zst|xz)(\\.sig)?$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: "\\.(db|files)(\\.sig|\\.tar\\.gz)?$"
+        cache_control: "max-age=300"
+        rewrite: true
+      - pattern: ".*"
+        cache_control: "max-age=300"
+        rewrite: true
+    mirrors:
+      official:
+        - "mirrors.tuna.tsinghua.edu.cn/archlinux/"
+        - "mirrors.ustc.edu.cn/archlinux/"

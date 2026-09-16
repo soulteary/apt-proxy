@@ -1,0 +1,16 @@
+name: apt-cache-custom-distros
+
+services:
+  apt-proxy:
+    image: soulteary/apt-proxy
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - "3142:3142"
+    volumes:
+      # /etc/apt-proxy/distributions.yaml is one of the paths apt-proxy
+      # searches, so no flag is needed. An absolute path is used rather than
+      # ./config/ because the image's WORKDIR is the cache directory, and a
+      # read-only config file has no business living inside that volume.
+      - ./distributions.yaml:/etc/apt-proxy/distributions.yaml:ro

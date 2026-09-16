@@ -8,6 +8,7 @@ target deployment and read its `README.md`.
 | [`basic/`](basic/)                     | `docker compose up -d` | Smallest possible deployment; defaults only, in-container cache.            |
 | [`specify-mirrors/`](specify-mirrors/) | `docker compose up -d` | Same as `basic/` but pins upstream Ubuntu/Debian mirrors via CLI flags.     |
 | [`s3-otterio/`](s3-otterio/)           | `docker compose up -d` | Production-shaped: cache offloaded to an S3-compatible bucket (OtterIO here). |
+| [`custom-distros/`](custom-distros/)   | `docker compose up -d` | Caches Deepin, Armbian and Arch Linux via `distributions.yaml` — no code change. |
 | [`config-template/`](config-template/) | not directly runnable  | Fully-commented `apt-proxy.yaml` reference. Copy & trim to your needs.      |
 
 ## Picking an example
@@ -16,6 +17,8 @@ target deployment and read its `README.md`.
 - Want to pin a fast mirror (e.g. Tsinghua/USTC)? See [`specify-mirrors/`](specify-mirrors/).
 - Multi-host / shared cache / object storage? See [`s3-otterio/`](s3-otterio/) — it
   works against AWS S3, R2, B2, OSS, COS, Ceph RGW (and MinIO) too; only env vars change.
+- Need a distribution apt-proxy does not ship (Deepin, Armbian, Arch, an
+  internal archive)? See [`custom-distros/`](custom-distros/).
 - Need to know what every config knob does? Read
   [`config-template/apt-proxy.yaml`](config-template/apt-proxy.yaml).
 

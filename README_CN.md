@@ -312,6 +312,9 @@ distributions:
 只要客户端带着 `Host: apt.armbian.com` 访问 apt-proxy（设置 `http_proxy` 即可
 自动做到），`/dists/<suite>/...` 这类请求就会落到配置好的镜像上。
 
+上面三种形态（Deepin、Armbian、Arch Linux）合在一个文件里的可运行版本，连同各自的
+客户端配置，见 [`examples/custom-distros/`](examples/custom-distros/)。
+
 几条能省掉一轮排查的提示：
 
 - `type` 请跨重载保持稳定 —— 镜像选择与 rewriter 状态都以它为键。
