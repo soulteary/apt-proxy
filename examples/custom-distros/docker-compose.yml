@@ -6,11 +6,15 @@ services:
     restart: always
     environment:
       - TZ=Asia/Shanghai
+      # Name the file explicitly. /etc/apt-proxy/distributions.yaml is one of
+      # the paths apt-proxy searches, but the search only runs on releases that
+      # carry it, and naming the path works on every release. It also keeps
+      # `docker compose config` honest about where the file comes from.
+      - APT_PROXY_DISTRIBUTIONS_CONFIG=/etc/apt-proxy/distributions.yaml
     ports:
       - "3142:3142"
     volumes:
-      # /etc/apt-proxy/distributions.yaml is one of the paths apt-proxy
-      # searches, so no flag is needed. An absolute path is used rather than
-      # ./config/ because the image's WORKDIR is the cache directory, and a
-      # read-only config file has no business living inside that volume.
+      # An absolute path rather than ./config/: the image's WORKDIR is the
+      # cache directory, so the relative search path would put a read-only
+      # config file inside that volume.
       - ./distributions.yaml:/etc/apt-proxy/distributions.yaml:ro

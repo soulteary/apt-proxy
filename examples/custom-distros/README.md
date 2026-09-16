@@ -26,9 +26,12 @@ cd examples/custom-distros
 docker compose up -d
 ```
 
-The file is mounted at `/etc/apt-proxy/distributions.yaml`, one of the paths
-apt-proxy searches, so no flag is needed. Running the binary directly, either
-drop it at a search path or name it:
+The file is mounted at `/etc/apt-proxy/distributions.yaml` and named with
+`APT_PROXY_DISTRIBUTIONS_CONFIG`. Naming it is what makes this work on every
+release: that path is also one of apt-proxy's search locations, but the search
+itself only runs on releases that carry it, so the example does not rely on it.
+
+Running the binary directly:
 
 ```bash
 ./apt-proxy --distributions-config=./distributions.yaml
