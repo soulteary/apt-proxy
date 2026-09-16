@@ -394,3 +394,25 @@ func TestParseTLSRewriteMarkerOriginAndPath(t *testing.T) {
 		})
 	}
 }
+
+// Same rule as ordinary passthrough: a port the entry pinned is a service
+// deliberately listening there, not a default inherited from the request.
+func TestTLSRewriteMarkerKeepsAnExplicitlyPinnedPort(t *testing.T) {
+	ps, seen := passthroughProxy(t, "archive.example.test:80")
+
+	req := httptest.NewRequest(http.MethodGet,
+		"http://HTTPS///archive.example.test:80/repo/dists/x/InRelease", nil)
+	req.Host = "HTTPS"
+	rec := httptest.NewRecorder()
+	ps.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if seen.host != "archive.example.test:80" {
+		t.Errorf("upstream host = %q, want the pinned port kept", seen.host)
+	}
+	if seen.scheme != "https" {
+		t.Errorf("upstream scheme = %q, want https", seen.scheme)
+	}
+}

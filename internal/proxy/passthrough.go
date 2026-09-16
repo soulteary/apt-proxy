@@ -142,11 +142,14 @@ func (ap *PackageStruct) acceptTLSRewriteMarker(
 				"add it (--passthrough=%s) to let apt-proxy fetch and cache it",
 			origin, origin))
 	}
-	_ = rule // the marker itself already says https
-
+	// The marker itself already says https, so rule.ForceHTTPS adds nothing
+	// here; rule.Port still matters, for the same reason it does in
+	// matchPassthrough.
 	host := origin
-	if h, port, err := net.SplitHostPort(origin); err == nil && (port == "80" || port == "443") {
-		host = h
+	if rule.Port == "" {
+		if h, port, err := net.SplitHostPort(origin); err == nil && (port == "80" || port == "443") {
+			host = h
+		}
 	}
 
 	// The marker's whole point is that the upstream is TLS.
