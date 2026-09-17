@@ -32,6 +32,7 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 - **Upstream Proxy**: Reaches mirror sites through an existing `HTTP_PROXY` / `HTTPS_PROXY` forward proxy (SOCKS5 included) when the host has no direct route out; mirror benchmarking takes the same path, so the elected mirror is one that is actually reachable
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
 - **apt-cacher-ng Friendly**: Compatible with most [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) usage patterns (note: advanced features such as the Import/Maint web UI, full `acng.conf` syntax, and cross-distro deb deduplication are not implemented)
+- **Third-Party Archives**: Fetches and caches origins you name in a `passthrough` allowlist (a PPA, a vendor repo, an internal archive) — off by default, because apt-proxy is not an open forward proxy
 - **Host-Root Archives**: Routes by the request `Host` when an archive lives at a domain root with no path prefix to match (`security.debian.org`, `apt.armbian.com`), configurable per distribution with `host_pattern`
 - **Zero Configuration**: Works out of the box with sensible defaults
 - **Observability**: Built-in health checks, Prometheus metrics, structured logging, and optional OpenTelemetry tracing
@@ -375,6 +376,88 @@ Example output:
 2024/01/15 10:55:26 INF server started successfully
 ```
 
+### Caching Third-Party Archives (`passthrough`)
+
+apt-proxy mirrors the distributions it is configured for; anything else is a
+`404`, deliberately — it is not an open forward proxy. The archives people
+install from are not only distributions, though: a Launchpad PPA, a vendor
+repository, an internal archive. Name those origins in an allowlist and
+apt-proxy fetches and caches them as they are, without rewriting:
+
+```bash
+./apt-proxy --passthrough=ppa.launchpad.net,https://download.docker.com
+```
+
+```yaml
+# apt-proxy.yaml
+passthrough:
+  - ppa.launchpad.net
+  - https://download.docker.com
+  - archive.internal.example:8080
+```
+
+`APT_PROXY_PASSTHROUGH` takes the same comma-separated form.
+
+**Client setup.** Passthrough applies to clients that use apt-proxy as their
+HTTP proxy, because that is what names the origin in the request:
+
+```bash
+http_proxy=http://apt-proxy.example:3142 apt-get update
+```
+
+The `sources.list` entry stays pointed at the origin. The URL-prefix form
+(`deb http://apt-proxy.example:3142/<host>/...`) addresses apt-proxy itself, so
+no origin is named and nothing passes through.
+
+**The entry has to be `http://`, even for an archive that is HTTPS-only:**
+
+```text
+deb http://download.docker.com/linux/ubuntu jammy stable
+```
+
+```yaml
+passthrough:
+  - https://download.docker.com   # apt-proxy makes the upstream hop TLS
+```
+
+An `https://` entry in `sources.list` makes apt send `CONNECT host:443` to its
+proxy and tunnel through it. A tunnel is encrypted end to end, so apt-proxy
+could forward the bytes but never read or cache them — which is the entire
+point of running it. apt-proxy therefore does not answer `CONNECT`; write the
+source as `http://` and let the `https://` allowlist entry (or [the `HTTPS///`
+marker](#403-on-https-urls)) carry the TLS upstream. The client-to-apt-proxy
+hop is plain HTTP on your own network, and apt verifies the repository's
+signatures regardless of transport.
+
+**Entry forms:**
+
+| Entry | Effect |
+|-------|--------|
+| `ppa.launchpad.net` | Proxied on the client's scheme, default ports only |
+| `https://download.docker.com` | Upstream request upgraded to TLS |
+| `archive.example:8080` | Only that port matches |
+
+An entry without a port matches ports 80 and 443 only — an allowlisted archive
+host should not also expose whatever else listens on that machine.
+
+**What it does not do:**
+
+- Wildcards are not supported. Name each origin; a typo is rejected at startup
+  rather than silently allowing less (or more) than you wrote.
+- Loopback, private, link-local addresses and `localhost` are refused as
+  entries. A *hostname* that resolves into your network is still accepted — the
+  allowlist is the security boundary, not a network-level control. Only put
+  origins there that you are willing to let any client of this proxy reach.
+- `GET` and `HEAD` only. apt fetches; it does not write.
+- Cache lifetime is the origin's: apt-proxy knows a distribution's index and
+  package TTLs, but nothing about a third-party archive, so its
+  `Cache-Control` is respected as-is.
+- Distribution routing wins. If an allowlisted host is also served by a
+  configured distribution, that distribution's mirror and cache rules apply.
+
+Startup logs the allowlist (`passthrough enabled for third-party origins`), so
+an empty or mistyped list is visible rather than silent.
+
 ### Reaching Mirrors Through an Upstream Proxy
 
 apt-proxy's outbound connections honour the standard proxy environment
@@ -467,6 +550,7 @@ View all available options:
 | `-centos` | CentOS mirror URL or shortcut | (auto-select) |
 | `-alpine` | Alpine mirror URL or shortcut | (auto-select) |
 | `-distributions-config` | Path to distributions/mirrors YAML (distributions.yaml) | (optional) |
+| `-passthrough` | Comma-separated third-party origins to fetch and cache unrewritten | (empty) |
 | `-cache-max-size` | Maximum cache size in GB (0 to disable) | `10` |
 | `-cache-ttl` | Cache TTL in hours (0 to disable) | `168` (7 days) |
 | `-cache-cleanup-interval` | Cache cleanup interval in minutes | `60` |
@@ -582,6 +666,7 @@ Every CLI flag has an equivalent environment variable. Plus a few extras for log
 |----------|-----------------|-------------|
 | `APT_PROXY_CONFIG_FILE` | `-config` | Path to `apt-proxy.yaml` |
 | `APT_PROXY_DISTRIBUTIONS_CONFIG` | `-distributions-config` | Path to `distributions.yaml` |
+| `APT_PROXY_PASSTHROUGH` | `-passthrough` | Allowlisted third-party origins |
 
 **Logging & Tracing** (no CLI equivalent)
 
@@ -1165,11 +1250,20 @@ Acquire::https::Proxy::ppa.launchpad.net "DIRECT";
 point that entry at its origin instead.
 
 **Either way**, if you would rather apt-proxy cached the repository than skipped
-it, register it as its own distribution — see [Adding a distribution apt-proxy
-does not ship](#adding-a-distribution-apt-proxy-does-not-ship). For a client in
-proxy mode give that entry a `host_pattern` matching the origin —
-`host_pattern: "^ppa\\.launchpad\\.net$"` — because the request arrives with no
-path prefix to match, only the `Host`.
+it, add the origin to the `passthrough` allowlist — see [Caching Third-Party
+Archives](#caching-third-party-archives-passthrough):
+
+```bash
+./apt-proxy --passthrough=ppa.launchpad.net
+```
+
+That is the short path for an archive you only want cached as-is. Model it as a
+distribution instead — see [Adding a distribution apt-proxy does not
+ship](#adding-a-distribution-apt-proxy-does-not-ship) — when you want apt-proxy's
+own cache rules, mirror list and benchmarking applied to it; in proxy mode that
+entry needs a `host_pattern` matching the origin
+(`host_pattern: "^ppa\\.launchpad\\.net$"`), since the request arrives with no
+path prefix to match.
 
 The apt-cacher-ng host-prefixed form is unaffected: a single host segment in
 front of the distribution segment (`/ftp.uni-kl.de/debian/...`) still routes.

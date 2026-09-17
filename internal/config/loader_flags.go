@@ -80,6 +80,8 @@ func defineFlags(flags *flag.FlagSet) {
 	flags.String("centos", "", "the centos mirror for fetching packages")
 	flags.String("alpine", "", "the alpine mirror for fetching packages")
 	flags.String("distributions-config", "", "path to distributions YAML (distributions.yaml)")
+	flags.String("passthrough", "",
+		"comma-separated third-party origins to fetch and cache unrewritten (e.g. ppa.launchpad.net,https://download.docker.com)")
 
 	// Cache configuration flags
 	flags.Int64("cache-max-size", DefaultCacheMaxSizeGB,
@@ -144,7 +146,7 @@ var flagGroups = []struct {
 	},
 	{
 		title: "Mirrors",
-		flags: []string{"ubuntu", "ubuntu-ports", "debian", "debian-security", "centos", "alpine"},
+		flags: []string{"ubuntu", "ubuntu-ports", "debian", "debian-security", "centos", "alpine", "passthrough"},
 	},
 	{
 		title: "TLS",
@@ -243,6 +245,21 @@ func printFlag(out io.Writer, f *flag.Flag) {
 // cliExplicit tracks which fields were explicitly set on the CLI / via ENV.
 // This lets MergeConfigsWithExplicit distinguish "user wrote false/0" from
 // "field defaulted to false/0", which the legacy MergeConfigs cannot.
+// splitCommaList turns a comma-separated flag/env value into a trimmed slice,
+// dropping empties. Shared by every list-shaped option so they behave alike.
+func splitCommaList(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if v := strings.TrimSpace(part); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 type cliExplicit struct {
 	Debug                 bool
 	CacheDir              bool
@@ -264,6 +281,7 @@ type cliExplicit struct {
 	EnableAPIAuth         bool
 	APIRateLimitPerMinute bool
 	TrustedProxies        bool
+	Passthrough           bool
 	UpstreamKeepAlive     bool
 	DistributionsConfig   bool
 
@@ -330,6 +348,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 		EnableAPIAuth:         flagOrEnvSet(flags, "enable-api-auth", EnvEnableAPIAuth),
 		APIRateLimitPerMinute: flagOrEnvSet(flags, "api-rate-limit", EnvAPIRateLimitPerMinute),
 		TrustedProxies:        flagOrEnvSet(flags, "trusted-proxies", EnvTrustedProxies),
+		Passthrough:           flagOrEnvSet(flags, "passthrough", EnvPassthrough),
 		UpstreamKeepAlive:     flagOrEnvSet(flags, "upstream-keep-alive", EnvUpstreamKeepAlive),
 		DistributionsConfig:   flagOrEnvSet(flags, "distributions-config", EnvDistributionsConfig),
 
@@ -394,14 +413,9 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	apiRateLimitPerMinute := configutil.ResolveInt(flags, "api-rate-limit", EnvAPIRateLimitPerMinute, DefaultAPIRateLimitPerMinute, true)
 	upstreamKeepAlive := configutil.ResolveBool(flags, "upstream-keep-alive", EnvUpstreamKeepAlive, true)
 	trustedProxiesRaw := configutil.ResolveString(flags, "trusted-proxies", EnvTrustedProxies, "", true)
-	var trustedProxies []string
-	if trustedProxiesRaw != "" {
-		for _, p := range strings.Split(trustedProxiesRaw, ",") {
-			if v := strings.TrimSpace(p); v != "" {
-				trustedProxies = append(trustedProxies, v)
-			}
-		}
-	}
+	trustedProxies := splitCommaList(trustedProxiesRaw)
+	passthrough := splitCommaList(
+		configutil.ResolveString(flags, "passthrough", EnvPassthrough, "", true))
 
 	// Resolve storage backend configuration
 	storageBackend := configutil.ResolveString(flags, "storage-backend", EnvStorageBackend, DefaultStorageBackend, true)
@@ -462,6 +476,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 			},
 		},
 		DistributionsConfigPath: distributionsConfig,
+		Passthrough:             passthrough,
 	}
 
 	// Set mode if specified

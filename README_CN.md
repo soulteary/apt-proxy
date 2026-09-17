@@ -32,6 +32,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **前置代理**：主机无法直连镜像站时，可经由已有的 `HTTP_PROXY` / `HTTPS_PROXY` 前置代理访问（支持 SOCKS5）；镜像测速走同一条链路，因此选出来的镜像一定是真正连得上的
 - **Docker 友好**：无缝集成 Docker 容器和构建流程
 - **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
+- **第三方软件源**：可通过 `passthrough` 白名单指定要缓存的源站（PPA、厂商源、内部源），默认关闭 —— apt-proxy 不是开放转发代理
 - **域名根仓库**：仓库直接放在域名根目录、路径里没有前缀可匹配时（`security.debian.org`、`apt.armbian.com`），按请求 `Host` 路由，可通过 `host_pattern` 按发行版配置
 - **零配置**：开箱即用，默认配置即可满足大多数场景
 - **可观测性**：内置健康检查、Prometheus 指标、结构化日志，并可选启用 OpenTelemetry 链路追踪
@@ -367,6 +368,82 @@ distributions:
 2024/01/15 10:55:26 INF server started successfully
 ```
 
+### 缓存第三方软件源（`passthrough`）
+
+apt-proxy 只代理它配置过的发行版，其余一律 `404` —— 这是刻意的，它不是开放转发
+代理。但人们实际安装软件的来源不止发行版：Launchpad PPA、厂商源、内部源。把这些
+源站写进白名单，apt-proxy 就会原样抓取并缓存，不做任何改写：
+
+```bash
+./apt-proxy --passthrough=ppa.launchpad.net,https://download.docker.com
+```
+
+```yaml
+# apt-proxy.yaml
+passthrough:
+  - ppa.launchpad.net
+  - https://download.docker.com
+  - archive.internal.example:8080
+```
+
+环境变量 `APT_PROXY_PASSTHROUGH` 使用同样的逗号分隔格式。
+
+**客户端配置。** 直通只对「把 apt-proxy 当作 HTTP 代理」的客户端生效，因为只有这种
+方式才会在请求里点名源站：
+
+```bash
+http_proxy=http://apt-proxy.example:3142 apt-get update
+```
+
+`sources.list` 条目保持指向源站即可。URL 前缀形式
+（`deb http://apt-proxy.example:3142/<host>/...`）寻址的是 apt-proxy 自己，没有
+点名任何源站，因此不会触发直通。
+
+**即使软件源本身只提供 HTTPS，条目也必须写成 `http://`：**
+
+```text
+deb http://download.docker.com/linux/ubuntu jammy stable
+```
+
+```yaml
+passthrough:
+  - https://download.docker.com   # 由 apt-proxy 负责把上游那一跳升级为 TLS
+```
+
+如果 `sources.list` 里写 `https://`，apt 会向代理发 `CONNECT host:443` 建立隧道。
+隧道是端到端加密的，apt-proxy 只能转发字节，既读不到也缓存不了 —— 而缓存正是它存在
+的全部意义。因此 apt-proxy 不响应 `CONNECT`：请把源写成 `http://`，让白名单里的
+`https://` 条目（或 [`HTTPS///` 标记](#https-形式的-url-返回-403)）来承担 TLS 上游。
+客户端到 apt-proxy 这一跳是你自己网络内的明文 HTTP，而 apt 无论走什么传输都会校验
+软件源签名。
+
+**条目写法：**
+
+| 写法 | 含义 |
+|------|------|
+| `ppa.launchpad.net` | 沿用客户端的协议，仅匹配默认端口 |
+| `https://download.docker.com` | 上游请求强制升级为 TLS |
+| `archive.example:8080` | 只匹配该端口 |
+
+不带端口的条目只匹配 80 和 443 —— 被放行的软件源主机，不应该顺带把那台机器上其它
+监听的服务也暴露出去。
+
+**它不做的事：**
+
+- 不支持通配符。请逐个写明源站；写错的条目会在启动时直接报错，而不是悄悄放行多于
+  或少于你所写的范围。
+- 环回地址、私有地址、链路本地地址和 `localhost` 不允许作为条目。但**域名**即使
+  解析到内网也会被接受 —— 白名单是安全边界，不是网络层管控。只把你愿意让这个代理
+  的任意客户端访问的源站写进去。
+- 只放行 `GET` 和 `HEAD`。apt 只读取，不写入。
+- 缓存时长由源站决定：apt-proxy 清楚发行版的索引和软件包该缓存多久，但对第三方源
+  一无所知，因此原样沿用它的 `Cache-Control`。
+- 发行版路由优先。若白名单里的主机同时也被某个已配置的发行版覆盖，则按该发行版的
+  镜像和缓存规则处理。
+
+启动日志会打印生效的白名单（`passthrough enabled for third-party origins`），
+空列表或写错的条目因此是可见的，不会静默。
+
 ### 通过前置代理访问镜像站
 
 apt-proxy 的出站连接遵循标准的代理环境变量。若机器无法直连镜像站，可以让它
@@ -456,6 +533,7 @@ http_proxy=http://host.docker.internal:3142 \
 | `-centos` | CentOS 镜像 URL 或快捷方式 | （自动选择） |
 | `-alpine` | Alpine 镜像 URL 或快捷方式 | （自动选择） |
 | `-distributions-config` | 发行版/镜像配置文件路径（distributions.yaml） | （可选） |
+| `-passthrough` | 逗号分隔的第三方源站白名单，原样抓取并缓存 | （空） |
 | `-cache-max-size` | 最大缓存大小（GB，0 表示禁用） | `10` |
 | `-cache-ttl` | 缓存 TTL（小时，0 表示禁用） | `168`（7 天） |
 | `-cache-cleanup-interval` | 缓存清理间隔（分钟） | `60` |
@@ -572,6 +650,7 @@ http_proxy=http://host.docker.internal:3142 \
 |--------|--------------|------|
 | `APT_PROXY_CONFIG_FILE` | `-config` | `apt-proxy.yaml` 路径 |
 | `APT_PROXY_DISTRIBUTIONS_CONFIG` | `-distributions-config` | `distributions.yaml` 路径 |
+| `APT_PROXY_PASSTHROUGH` | `-passthrough` | 第三方源站白名单 |
 
 **日志与链路追踪**（无对应 CLI 参数）
 
@@ -1115,7 +1194,13 @@ Acquire::https::Proxy::ppa.launchpad.net "DIRECT";
 
 **使用 URL 前缀形式**（`deb http://apt-proxy.example:3142/<host>/...`）：把该条目直接指向它的源站即可。
 
-**两种方式都适用**：如果你希望 apt-proxy 缓存这个仓库而不是跳过它，就把它注册成一个独立的发行版 —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。客户端处于代理模式时，请给该条目配上匹配源站域名的 `host_pattern` —— `host_pattern: "^ppa\\.launchpad\\.net$"` —— 因为这类请求路径里没有前缀可匹配，只能靠 `Host` 识别。
+**两种方式都适用**：如果你希望 apt-proxy 缓存这个仓库而不是跳过它，把源站加进 `passthrough` 白名单即可 —— 参见[缓存第三方软件源](#缓存第三方软件源passthrough)：
+
+```bash
+./apt-proxy --passthrough=ppa.launchpad.net
+```
+
+只想原样缓存的话，这是最短路径。如果你还想让 apt-proxy 用自己的缓存规则、镜像列表和测速来管理它，则应建模成一个发行版 —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)；客户端处于代理模式时，该条目需要配上匹配源站域名的 `host_pattern`（`host_pattern: "^ppa\\.launchpad\\.net$"`），因为这类请求路径里没有前缀可匹配。
 
 apt-cacher-ng 风格的主机名前缀不受影响：发行版路径段前只有单独一段主机名时（`/ftp.uni-kl.de/debian/...`）依然正常路由。
 

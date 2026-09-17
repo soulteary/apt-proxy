@@ -35,6 +35,11 @@ type Config struct {
 	TLS                     TLSConfig      `yaml:"tls"`
 	Security                SecurityConfig `yaml:"security"`
 	DistributionsConfigPath string         `yaml:"distributions_config"`
+	// Passthrough lists third-party origins apt-proxy may fetch and cache
+	// unrewritten, e.g. "ppa.launchpad.net" or "https://download.docker.com".
+	// Empty (the default) means apt-proxy serves only the distributions it is
+	// configured for; it is never an open forward proxy.
+	Passthrough []string `yaml:"passthrough"`
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors (default true).
 	UpstreamKeepAlive bool `yaml:"upstream_keep_alive"`
 }
