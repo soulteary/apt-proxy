@@ -439,3 +439,44 @@ func TestTLSRewriteMarkerKeepsIPv6Bracketed(t *testing.T) {
 		}
 	}
 }
+
+// A port the marker names is a destination, not a default to normalise away.
+//
+// The origin in a marker is a literal the client typed inside the path, not an
+// authority carried over from the request line, so there is no "default port
+// the scheme implies" to discard. The marker always resolves to https, which
+// makes 443 the one port that is genuinely redundant; 80 names a TLS service
+// deliberately listening there, and dropping it sends the request to 443
+// instead -- a different service, silently.
+func TestTLSRewriteMarkerKeepsAPortTheMarkerNames(t *testing.T) {
+	// A bare allowlist entry pins no port, so it accepts the default ports and
+	// leaves the decision to the marker.
+	ps, seen := passthroughProxy(t, "archive.example.test")
+
+	for _, tc := range []struct {
+		origin string
+		want   string
+	}{
+		{"archive.example.test:80", "archive.example.test:80"},
+		{"archive.example.test:443", "archive.example.test"},
+		{"archive.example.test", "archive.example.test"},
+	} {
+		*seen = recordedRequest{}
+
+		req := httptest.NewRequest(http.MethodGet,
+			"http://HTTPS///"+tc.origin+"/repo/dists/x/InRelease", nil)
+		req.Host = "HTTPS"
+		rec := httptest.NewRecorder()
+		ps.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, want 200", tc.origin, rec.Code)
+		}
+		if seen.host != tc.want {
+			t.Errorf("%s: upstream host = %q, want %q", tc.origin, seen.host, tc.want)
+		}
+		if seen.scheme != "https" {
+			t.Errorf("%s: upstream scheme = %q, want https", tc.origin, seen.scheme)
+		}
+	}
+}

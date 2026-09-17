@@ -52,6 +52,26 @@ var passthroughRule = &distro.Rule{
 // address unbracketed, and url.URL.Host without brackets reads the tail of the
 // address as a port -- "[2001:db8::1]:443" would become "2001:db8::1", which
 // serialises to https://2001:db8::1/... and dials port 1.
+// stripRedundantTLSPort drops an explicit :443 from an origin a marker named.
+// The marker always resolves to https, so :443 is that scheme's own default and
+// carries no information; every other port -- 80 included -- names a TLS
+// service deliberately listening there, and discarding it would send the
+// request to 443 instead, silently reaching a different service.
+//
+// Deliberately narrower than stripDefaultPort, which serves the ordinary
+// passthrough path: there the authority comes from the request line, where a
+// :80 really is an http default that must go once the scheme is upgraded.
+func stripRedundantTLSPort(authority string) string {
+	host, port, err := net.SplitHostPort(authority)
+	if err != nil || port != "443" {
+		return authority
+	}
+	if strings.Contains(host, ":") {
+		return "[" + host + "]"
+	}
+	return host
+}
+
 func stripDefaultPort(authority string) string {
 	host, port, err := net.SplitHostPort(authority)
 	if err != nil || (port != "80" && port != "443") {
@@ -151,7 +171,7 @@ func (ap *PackageStruct) acceptTLSRewriteMarker(
 			"apt-proxy only forwards GET and HEAD to third-party origins")
 	}
 
-	rule, allowed := ap.passthrough.Match(origin)
+	_, allowed := ap.passthrough.Match(origin)
 	if !allowed {
 		// Naming the origin and the setting turns a dead end into an
 		// actionable message: the operator adds one entry and retries.
@@ -161,12 +181,11 @@ func (ap *PackageStruct) acceptTLSRewriteMarker(
 			origin, origin))
 	}
 	// The marker itself already says https, so rule.ForceHTTPS adds nothing
-	// here; rule.Port still matters, for the same reason it does in
-	// matchPassthrough.
-	host := origin
-	if rule.Port == "" {
-		host = stripDefaultPort(origin)
-	}
+	// here -- and neither does rule.Port. The origin is a literal the client
+	// typed inside the path, not an authority carried over from the request
+	// line, so whatever port it names *is* the destination, whether or not the
+	// allowlist entry happens to pin the same one.
+	host := stripRedundantTLSPort(origin)
 
 	// The marker's whole point is that the upstream is TLS.
 	r.URL.Scheme = "https"
