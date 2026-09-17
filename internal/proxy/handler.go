@@ -338,20 +338,27 @@ func (ap *PackageStruct) Registry() *distro.Registry {
 // fetch https://<host>/... on its behalf.
 const tlsRewriteMarker = "HTTPS//"
 
-// hasTLSRewriteMarker reports whether r carries that marker, in either spelling
-// apt-cacher-ng documents:
+// parseTLSRewriteMarker pulls the origin and upstream path out of a marker URL,
+// in either spelling apt-cacher-ng documents:
 //
-//	deb http://HTTPS///get.docker.com/ubuntu ...          -> Host "HTTPS", path "///get.docker.com/..."
-//	deb http://proxy:3142/HTTPS///get.docker.com/ubuntu ...-> path "/HTTPS///get.docker.com/..."
+//	deb http://HTTPS///get.docker.com/ubuntu ...           -> Host "HTTPS", path "///get.docker.com/..."
+//	deb http://proxy:3142/HTTPS///get.docker.com/ubuntu ... -> path "/HTTPS///get.docker.com/..."
 //
-// apt-proxy does not implement the marker. Detecting it matters anyway: such a
-// path usually still contains a distribution segment (".../ubuntu/dists/...")
-// and would otherwise match that distribution's pattern, quietly rewriting a
-// request meant for some third-party host onto a Ubuntu/Debian mirror.
-func hasTLSRewriteMarker(r *http.Request) bool {
+// Recognising it is not optional even when it will be refused: such a path
+// still contains a distribution segment (".../ubuntu/dists/..."), so letting it
+// reach pattern matching would rewrite a request meant for a third-party host
+// onto a Ubuntu/Debian mirror.
+//
+// found reports that the request carries a marker at all, which is what
+// separates "not a marker request" from "a marker request we could not parse".
+func parseTLSRewriteMarker(r *http.Request) (origin, upstreamPath string, found bool) {
 	if r == nil || r.URL == nil {
-		return false
+		return "", "", false
 	}
+
+	escaped := r.URL.EscapedPath()
+	var rest string
+
 	// The authority lands in URL.Host for an absolute-form request, but Fiber's
 	// adaptor converts to a server request where it lives in Host and URL.Host
 	// is empty. Production traffic takes the latter path, so check both.
@@ -364,12 +371,38 @@ func hasTLSRewriteMarker(r *http.Request) bool {
 			host = h
 		}
 		if strings.EqualFold(host, "HTTPS") {
-			return true
+			rest = escaped
+			found = true
+			break
 		}
 	}
-	path := strings.ToUpper(r.URL.EscapedPath())
-	return strings.HasPrefix(path, "/"+tlsRewriteMarker) ||
-		strings.Contains(path, "/"+tlsRewriteMarker+"/")
+
+	if !found {
+		upper := strings.ToUpper(escaped)
+		marker := "/" + tlsRewriteMarker
+		if idx := strings.Index(upper, marker); idx >= 0 {
+			rest = escaped[idx+len(marker):]
+			found = true
+		}
+	}
+	if !found {
+		return "", "", false
+	}
+
+	// Whatever spelling got us here, the origin is the first path segment left.
+	rest = strings.TrimLeft(rest, "/")
+	if rest == "" {
+		return "", "", true
+	}
+	origin = rest
+	upstreamPath = "/"
+	if cut := strings.IndexByte(rest, '/'); cut >= 0 {
+		origin, upstreamPath = rest[:cut], rest[cut:]
+	}
+	if unescaped, err := url.PathUnescape(origin); err == nil {
+		origin = unescaped
+	}
+	return origin, upstreamPath, true
 }
 
 // ServeHTTP implements http.Handler interface. It processes incoming requests,
@@ -397,21 +430,20 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	// memory that the adapter can reuse for the next request.
 	r = detachRequest(spanCtx, r)
 
-	// Reject apt-cacher-ng's HTTPS/// marker explicitly. It is unsupported,
-	// and letting it fall through to pattern matching would silently proxy the
-	// request to the wrong upstream (see hasTLSRewriteMarker).
-	if hasTLSRewriteMarker(r) {
-		ap.log.Warn().
-			Str("path", r.URL.Path).
-			Str("host", r.Host).
-			Msg("rejecting unsupported apt-cacher-ng HTTPS/// rewrite marker")
-		tracing.SetSpanAttributes(span, map[string]string{
-			"http.status_code": "501",
-		})
-		http.Error(rw,
-			"apt-proxy does not support the apt-cacher-ng HTTPS/// rewrite marker; "+
-				"point the sources.list entry at the https:// URL directly",
-			http.StatusNotImplemented)
+	// apt-cacher-ng's HTTPS/// marker names a third-party origin inside the
+	// path. Handle it here rather than letting it reach pattern matching,
+	// which would rewrite it onto a distribution mirror.
+	if origin, upstreamPath, found := parseTLSRewriteMarker(r); found {
+		rule := ap.acceptTLSRewriteMarker(rw, r, origin, upstreamPath, span)
+		if rule == nil {
+			return // the refusal has been written
+		}
+		if ap.Handler == nil {
+			tracing.RecordError(span, http.ErrAbortHandler)
+			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
+			return
+		}
+		ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
 		return
 	}
 

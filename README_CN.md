@@ -31,7 +31,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **智能镜像选择**：自动测试并选择最快的镜像源
 - **前置代理**：主机无法直连镜像站时，可经由已有的 `HTTP_PROXY` / `HTTPS_PROXY` 前置代理访问（支持 SOCKS5）；镜像测速走同一条链路，因此选出来的镜像一定是真正连得上的
 - **Docker 友好**：无缝集成 Docker 容器和构建流程
-- **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
+- **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景，包括用于 TLS 上游的 `HTTPS///` 重写标记 —— 现有的 `sources.list` 条目无需改写即可迁移（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
 - **第三方软件源**：可通过 `passthrough` 白名单指定要缓存的源站（PPA、厂商源、内部源），默认关闭 —— apt-proxy 不是开放转发代理
 - **域名根仓库**：仓库直接放在域名根目录、路径里没有前缀可匹配时（`security.debian.org`、`apt.armbian.com`），按请求 `Host` 路由，可通过 `host_pattern` 按发行版配置
 - **零配置**：开箱即用，默认配置即可满足大多数场景
@@ -451,6 +451,16 @@ passthrough:
 
 启动日志会打印生效的白名单（`passthrough enabled for third-party origins`），
 空列表或写错的条目因此是可见的，不会静默。
+
+**apt-cacher-ng 的 `HTTPS///` 标记**是访问白名单源站的另一种方式，适合本来就按这种
+写法配置的客户端：
+
+```text
+deb http://HTTPS///get.docker.com/linux/ubuntu jammy stable
+```
+
+两种写法都支持，源站同样走这份白名单，且上游请求一律走 TLS。参见
+[`HTTPS///` 形式的 URL 返回 `403`](#https-形式的-url-返回-403)。
 
 ### 通过前置代理访问镜像站
 
@@ -1204,9 +1214,23 @@ go tool cover -html=coverage.out
 
 ## 故障排除
 
-### `HTTPS///` 形式的 URL 返回 `501`
+### `HTTPS///` 形式的 URL 返回 `403`
 
-apt-proxy 不支持 apt-cacher-ng 的 `HTTPS///` 重写标记（`deb http://HTTPS///example.com/repo ...`）。这类请求会被明确拒绝并返回 `501 Not Implemented`，而不是被路由到其他地方。请直接在 `sources.list` 中写 `https://` 地址；注意 apt-proxy 无法缓存未经其代理的 TLS 上游。
+apt-proxy 支持 apt-cacher-ng 的 `HTTPS///` 重写标记（`deb http://HTTPS///example.com/repo ...`）：它会抓取 `https://example.com/repo` 并缓存。前提是该源站已在[直通白名单](#缓存第三方软件源passthrough)中 —— 返回 `403` 正是表示还没加：
+
+```bash
+./apt-proxy --passthrough=get.docker.com
+```
+
+拒绝信息里会带上源站名和对应的配置项，照着加一条即可。标记 URL 的其它状态码：
+
+| 状态码 | 含义 |
+|--------|------|
+| `403` | 源站不在白名单中 |
+| `400` | 标记后面没有写源站（`.../HTTPS///` 后面是空的） |
+| `405` | 不是 `GET` 或 `HEAD` |
+
+apt-cacher-ng 文档里的两种写法都支持 —— `Host: HTTPS` 加路径里的源站，以及把标记嵌在指向 apt-proxy 自身地址的路径里 —— 且大小写不敏感。
 
 ### PPA 或厂商软件源返回 `404`
 
