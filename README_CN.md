@@ -1229,8 +1229,21 @@ v0.17.0 之前，`distributions.yaml` **只有**在通过 `--distributions-confi
 config="config/distributions.yaml" distributions=["alpine","centos","debian","deepin","ubuntu","ubuntu-ports"]
 ```
 
-`config="(built-in defaults)"` 表示没有找到任何文件。如果这里出现了你没有预期
-的文件，把它移走或删除，或者显式指定你真正想用的那一个。
+`config="(built-in defaults)"` 表示没有任何外部配置生效 —— 这**不等于**没有
+找到文件。文件存在但读取、解析或校验失败时会被整体拒绝，启动同样回退到内置
+配置并打印这一行。区分两者要看紧挨着它上面的那条警告：
+
+```text
+failed to load distributions config; using built-in defaults  error="invalid distribution config for x: ..."
+```
+
+这条警告**只有**在「找到了文件但被拒绝」时才会出现，所以它在不在就是答案：
+没有警告说明确实没找到文件；有警告说明你的文件就在那里但有问题，`error`
+字段会说明原因。（当文件来自搜索路径而非显式指定时，这条警告不会写出文件名
+—— 请按上面的顺序检查那四个路径。）
+
+如果 `config=` 里出现了你没有预期的文件，把它移走或删除，或者显式指定你真正
+想用的那一个。
 
 ### PPA 或厂商软件源返回 `404`
 

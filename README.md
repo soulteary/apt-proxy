@@ -1285,9 +1285,24 @@ The startup log names the file in effect and everything that registered:
 config="config/distributions.yaml" distributions=["alpine","centos","debian","deepin","ubuntu","ubuntu-ports"]
 ```
 
-`config="(built-in defaults)"` means no file was found. If a file you did not
-expect is named there, move or delete it, or name the one you do want
-explicitly.
+`config="(built-in defaults)"` means no external configuration is in effect —
+which is **not** the same as no file being found. A file that exists but cannot
+be read, parsed or validated is rejected as a whole, and startup falls back to
+the built-ins and logs that same value. The warning just above it is what tells
+the two apart:
+
+```text
+failed to load distributions config; using built-in defaults  error="invalid distribution config for x: ..."
+```
+
+That warning appears *only* when a file was found and rejected, so its presence
+is the answer: no warning means nothing was found; a warning means your file is
+there and broken, and its `error` field says why. (It does not name the file
+when the file came from the search path rather than being named explicitly —
+check the four paths above in order.)
+
+If a file you did not expect is named in `config=`, move or delete it, or name
+the one you do want explicitly.
 
 ### `404` on a PPA or vendor repository
 
