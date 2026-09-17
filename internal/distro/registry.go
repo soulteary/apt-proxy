@@ -32,6 +32,7 @@ type Registry struct {
 	mu            sync.RWMutex
 	distributions map[string]*RegisteredDistribution
 	types         map[int]string // type -> id mapping
+	configPath    string         // distributions.yaml in effect, "" for built-ins only
 }
 
 // RegisteredDistribution represents a registered distribution with its configuration.
@@ -100,6 +101,14 @@ func (r *Registry) Register(dist *RegisteredDistribution) error {
 	}
 
 	return nil
+}
+
+// ConfigPath returns the distributions.yaml the registry last loaded, or ""
+// when it is running on the built-in defaults alone.
+func (r *Registry) ConfigPath() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.configPath
 }
 
 // GetByID returns a distribution by its ID.
@@ -185,6 +194,7 @@ func (r *Registry) Clear() {
 
 	r.distributions = make(map[string]*RegisteredDistribution)
 	r.types = make(map[int]string)
+	r.configPath = ""
 }
 
 // RegisterBuiltins seeds reg with the compile-time built-in distributions.
@@ -351,6 +361,14 @@ func (r *Registry) Reload(configPath string) error {
 
 	r.Clear()
 	RegisterBuiltins(r)
+
+	// Record the file that was actually used. An empty path means Load
+	// walked its search list, so only it knows what it settled on, and
+	// "which file is in effect?" is the first thing an operator asks when a
+	// distribution does not show up.
+	r.mu.Lock()
+	r.configPath = loader.configPath
+	r.mu.Unlock()
 
 	if cfg == nil {
 		return nil

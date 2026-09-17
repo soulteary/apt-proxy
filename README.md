@@ -194,20 +194,25 @@ point those `sources.list` entries at their origin directly.
 
 You can maintain distributions and mirror lists via an external YAML file without changing code or recompiling.
 
-**Pointing apt-proxy at the file:** set `--distributions-config` (or
-`APT_PROXY_DISTRIBUTIONS_CONFIG`) to its path. Treat the flag as required —
-the server loads the file only when that path is set and does not probe for
-one, so a `./config/distributions.yaml` sitting next to the binary is ignored
-if you do not name it:
+**Pointing apt-proxy at the file:** drop it at one of the search paths, or name
+it explicitly. When no path is given, the first of these that exists wins:
+
+1. `./config/distributions.yaml`
+2. `./distributions.yaml`
+3. `/etc/apt-proxy/distributions.yaml`
+4. `~/.config/apt-proxy/distributions.yaml`
 
 ```bash
-./apt-proxy --distributions-config=./config/distributions.yaml
+# found on the search path
+./apt-proxy
+
+# or named explicitly, from anywhere
+./apt-proxy --distributions-config=/srv/apt-proxy/distributions.yaml
 ```
 
-The loader itself carries a search list — `./config/distributions.yaml`,
-`./distributions.yaml`, `/etc/apt-proxy/distributions.yaml`,
-`~/.config/apt-proxy/distributions.yaml` — but it only applies to callers that
-hand it an empty path, which the server does not do.
+`APT_PROXY_DISTRIBUTIONS_CONFIG` sets the same path as the flag. If nothing is
+found the built-in distributions are used, and a file that fails to parse leaves
+the built-ins in place with a warning rather than taking the server down.
 
 **Example `config/distributions.yaml`:**
 
@@ -332,7 +337,7 @@ Notes that save a round of debugging:
 - `cache_rules` are tried in order, first match wins, and **a path matching no rule is a `404`** — not a pass-through. `apt update` fetches package indexes (`Packages.xz`, `by-hash/...`) as well as `InRelease`, so end with a catch-all `".*"` unless you are deliberately serving only certain file types.
 - Run with `--mode=all` (the default). `--mode` only names the built-in distributions; a custom one is served whenever the mode is `all`.
 - Only requests matching `url_pattern` (or `host_pattern`) are proxied; everything else still returns `404`.
-- Name the file with `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG`. Without it the server never loads a `distributions.yaml` at all, and the entry silently does nothing.
+- The file has to be somewhere apt-proxy looks: one of the search paths above, or named with `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG`. A file the server never loads is an entry that silently does nothing. The startup log names the file in effect and every distribution that registered (`distributions registered config=... distributions=[...]`), which is the quickest way to confirm yours did.
 
 ### Custom Mirror Selection
 

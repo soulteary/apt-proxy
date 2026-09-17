@@ -189,19 +189,24 @@ Security 镜像。查询参数会被保留，无法匹配已配置发行版的�
 
 通过外部 YAML 文件可维护发行版和镜像列表，无需改代码或重新编译。
 
-**让 apt-proxy 读到这个文件：** 用 `--distributions-config`（或环境变量
-`APT_PROXY_DISTRIBUTIONS_CONFIG`）指定路径，并请把它当作必填项 —— 只有设置了该
-路径服务端才会加载配置文件，它不会主动探测；因此即使二进制旁边就放着
-`./config/distributions.yaml`，不显式指定也不会生效：
+**让 apt-proxy 读到这个文件：** 把它放在查找路径之一，或显式指定路径。未指定路径
+时，按以下顺序取第一个存在的文件：
+
+1. `./config/distributions.yaml`
+2. `./distributions.yaml`
+3. `/etc/apt-proxy/distributions.yaml`
+4. `~/.config/apt-proxy/distributions.yaml`
 
 ```bash
-./apt-proxy --distributions-config=./config/distributions.yaml
+# 放在查找路径上，自动发现
+./apt-proxy
+
+# 或显式指定，位置不受限制
+./apt-proxy --distributions-config=/srv/apt-proxy/distributions.yaml
 ```
 
-加载器内部确实带有一份查找列表（`./config/distributions.yaml`、
-`./distributions.yaml`、`/etc/apt-proxy/distributions.yaml`、
-`~/.config/apt-proxy/distributions.yaml`），但它只对传入空路径的调用方生效，
-而服务端并不会这样调用。
+环境变量 `APT_PROXY_DISTRIBUTIONS_CONFIG` 与该 flag 等价。都找不到时使用内置发行版；
+文件解析失败时会保留内置发行版并打一条 warning，不会导致服务启动失败。
 
 **示例 `config/distributions.yaml`：**
 
@@ -323,7 +328,7 @@ distributions:
 - `cache_rules` 按顺序匹配，命中第一条即停，而且**未命中任何规则的路径会直接返回 `404`**，不会透传。`apt update` 除了 `InRelease` 还会拉取软件包索引（`Packages.xz`、`by-hash/...`），所以除非你刻意只想代理特定类型的文件，否则请以兜底规则 `".*"` 结尾。
 - 以 `--mode=all`（默认值）运行。`--mode` 只接受内置发行版的名字，自定义发行版在 `all` 模式下才会启用。
 - 只有匹配 `url_pattern`（或 `host_pattern`）的请求才会被代理，其余仍然返回 `404`。
-- 记得用 `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG` 指定文件路径。不指定的话服务端根本不会加载 `distributions.yaml`，这条配置会静默失效。
+- 文件必须放在 apt-proxy 会去找的位置：上面列出的查找路径之一，或用 `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG` 指定。服务端根本没加载的文件，等于这条配置静默失效。启动日志会打印实际生效的文件和所有已注册的发行版（`distributions registered config=... distributions=[...]`），是确认配置是否生效最快的方式。
 
 ### 自定义镜像选择
 
