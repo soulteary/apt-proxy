@@ -1054,6 +1054,8 @@ curl -X POST http://localhost:3142/api/mirrors/refresh
 
 两种方式效果等价：都会重载 `distributions.yaml` 并重新选择镜像。SIGHUP 信号会被防抖（约 500ms 内的连续信号合并）并排队（重载进行中最多再调度一次），可以放心从脚本批量发送。
 
+重载不会中断服务。镜像重新选举受网络影响、耗时可能较长，在整个窗口期内请求仍由重载前的配置响应；新的发行版及其镜像会在选举完成后**一并**生效，而不是分两步。在此之前，本次重载新增的发行版只是暂不可路由，而不会匹配到一条镜像尚未就绪的规则。
+
 ## 可观测性
 
 ### 指标
@@ -1207,6 +1209,28 @@ go tool cover -html=coverage.out
 ### `HTTPS///` 形式的 URL 返回 `501`
 
 apt-proxy 不支持 apt-cacher-ng 的 `HTTPS///` 重写标记（`deb http://HTTPS///example.com/repo ...`）。这类请求会被明确拒绝并返回 `501 Not Implemented`，而不是被路由到其他地方。请直接在 `sources.list` 中写 `https://` 地址；注意 apt-proxy 无法缓存未经其代理的 TLS 上游。
+
+### 升级到 v0.17.0 后路由发生变化
+
+v0.17.0 之前，`distributions.yaml` **只有**在通过 `--distributions-config` /
+`APT_PROXY_DISTRIBUTIONS_CONFIG` 显式指定路径时才会被读取。放在搜索路径上的文件
+会被静默忽略，这类部署发送 SIGHUP 也不会重载任何东西。现在两者的行为与本文档
+的描述一致 —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。
+
+这是一个修复，但升级时可见。放在 `./config/`、`./`、`/etc/apt-proxy/` 或
+`~/.config/apt-proxy/` 的 `distributions.yaml` —— 可能是一次实验、从本仓库复制
+的模板、或旧部署遗留的文件 —— 会在第一次以 v0.17.0 启动时生效，而你的命令行
+没有任何改动。其中 `type` 为 `1`–`5` 的条目会**重新配置对应的内置发行版**，
+镜像和 `url_pattern` 都可能随之改变。
+
+启动日志会写明实际生效的文件以及注册了哪些发行版：
+
+```text
+config="config/distributions.yaml" distributions=["alpine","centos","debian","deepin","ubuntu","ubuntu-ports"]
+```
+
+`config="(built-in defaults)"` 表示没有找到任何文件。如果这里出现了你没有预期
+的文件，把它移走或删除，或者显式指定你真正想用的那一个。
 
 ### PPA 或厂商软件源返回 `404`
 
