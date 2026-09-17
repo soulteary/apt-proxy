@@ -789,6 +789,42 @@ the LRU eviction above compares against the limit. Measured on a single
 The S3 backend has no `staging/` prefix. Object writes go straight to the final
 key, because staging needs a rename and the VFS interface has none.
 
+### Cache Keys and Mirror Selection
+
+A cache entry is keyed by the **rewritten** upstream URL, not by what the client
+asked for. Rewriting happens before the cache layer, so a request for
+`/ubuntu/dists/noble/InRelease` is stored under the elected mirror's URL —
+`http://mirrors.example.com/ubuntu/dists/noble/InRelease`.
+
+The practical consequence: **changing the elected mirror starts a fresh cache.**
+The same client request is then a different key, so it is refetched, and the
+entries under the old mirror stay on disk until TTL or LRU eviction removes
+them. Measured on a single object:
+
+```
+same mirror, second request   -> upstream contacted once   (cache hit)
+after switching the mirror    -> refetched from the new mirror
+```
+
+Mirror election runs at startup and on an explicit refresh. Benchmark results
+are not persisted, so **a restart re-elects**, and so do `SIGHUP` and `POST
+/api/mirrors/refresh`. (A mirror timing out *during* benchmarking is not one of
+these: it is simply dropped from that run's candidates, and if every candidate
+fails the current mirror is left in place.)
+
+This is the conservative behaviour — two mirrors are not guaranteed to serve
+byte-identical content, so entries are not shared between them. If you want a
+cache that stays warm across restarts, **pin the mirror** instead of letting it
+be elected:
+
+```bash
+./apt-proxy --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ \
+            --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
+```
+
+A pinned mirror is used as-is with no benchmarking, so the keys are stable for
+the life of the deployment.
+
 ### S3 Storage Backend
 
 Instead of writing the cache to a local directory, `apt-proxy` can keep every cached
@@ -1300,6 +1336,11 @@ http_proxy=http://192.168.33.1:3142 \
 
 **Issue**: Slow first-time downloads
 **Solution**: This is expected - the first download populates the cache. Subsequent downloads will be faster.
+
+**Issue**: Cache appears empty after a restart, and everything downloads again
+**Solution**: Cache entries are keyed by the elected mirror's URL, and mirror
+election re-runs on restart. Pin the mirror (`--ubuntu=…`, `--debian=…`) to keep
+the keys stable. See *Cache Keys and Mirror Selection*.
 
 **Issue**: Cache directory growing too large
 **Solution**: Configure cache limits with `--cache-max-size` or use the cleanup API endpoint.
