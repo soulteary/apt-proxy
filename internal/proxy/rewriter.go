@@ -581,6 +581,34 @@ func MatchingRule(path string, rules []distro.Rule) (*distro.Rule, bool) {
 	return nil, false
 }
 
+// buildRewriters re-elects mirrors and returns a NEW rewriter set instead of
+// mutating one in place, which is what lets PackageStruct.RefreshMirrors hold
+// the finished set in hand and publish it together with the matching host
+// patterns. RefreshRewritersWithEngine keeps the in-place behaviour for
+// callers that own a set directly.
+//
+// A construction-time async benchmark that is still pending keeps writing into
+// the set it captured, so its late result lands on a snapshot no longer
+// serving traffic and is dropped. That is the right precedence: this
+// synchronous election is both newer and complete.
+func buildRewriters(mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriters {
+	log := logger.Default()
+	log.Info().Msg("refreshing mirror configurations...")
+
+	engine := benchEngine(bench)
+	engine.ClearCache()
+
+	rewriters := &URLRewriters{}
+	for _, m := range modesToInit(mode, reg) {
+		if rw := createRewriter(m, st, reg, engine); rw != nil {
+			rewriters.set(m, rw)
+		}
+	}
+
+	log.Info().Msg("mirror configurations refreshed successfully")
+	return rewriters
+}
+
 // RefreshRewriters refreshes the rewriters with updated mirror configurations.
 // This function is safe to call concurrently and will update the mirrors
 // based on the supplied AppState/Registry. It clears the process-wide

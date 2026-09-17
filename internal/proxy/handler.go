@@ -167,6 +167,26 @@ func NewUpstreamTransport(enableKeepAlive bool) *http.Transport {
 }
 
 // PackageStruct is the main HTTP handler that routes requests to appropriate
+// routing is the pair of registry-derived structures a request depends on:
+// the host patterns it matches against, and the rewriters that turn a match
+// into an upstream URL. They are published together because publishing them
+// separately opens a window that 502s.
+//
+// The old code invalidated the host-pattern cache first and then rebuilt the
+// rewriters synchronously, benchmarking mirrors as it went. For the length of
+// that rebuild -- network-bound, so not short -- a request matched the *new*
+// rules while RewriteRequestByMode still held the *old* rewriter set. A newly
+// added distribution had no rewriter at all, and one whose url_pattern had
+// changed matched on the new pattern but rewrote with the old one. Either way
+// the URL stayed relative and the reverse proxy answered 502.
+//
+// Reversing the order only mirrors the window. The fix is to build both sides
+// before either goes live, which is what RefreshMirrors now does.
+type routing struct {
+	patterns  []hostPatternEntry
+	rewriters *URLRewriters
+}
+
 // distribution-specific handlers and applies caching rules. It owns all of
 // the per-Server state previously held in package-level globals: the
 // AppState, distro Registry, URL rewriters, and the host-pattern cache.
@@ -184,10 +204,13 @@ type PackageStruct struct {
 	// Empty by default: apt-proxy is not an open forward proxy.
 	passthrough *passthrough.List
 
-	// rewriters holds the URL rewriters used by ServeHTTP. Writers swap
-	// the pointer under refreshMu; the URLRewriters struct itself has
-	// finer-grained locking for the per-mirror pointer swap.
-	rewriters *URLRewriters
+	// routing holds the derived pair ServeHTTP reads: the host patterns a
+	// request matches on, and the rewriters it is handed once matched. They
+	// live behind one pointer because they must agree -- see the routing
+	// type. Writers build a replacement and Store it under refreshMu;
+	// readers Load once per request. The URLRewriters struct keeps its own
+	// finer-grained lock for the async per-mirror pointer swap.
+	routing atomic.Pointer[routing]
 
 	// bench is this PackageStruct's private benchmark engine. Each Server
 	// owns one so RefreshMirrors on Server A no longer flushes Server B's
@@ -198,12 +221,6 @@ type PackageStruct struct {
 	// transport is the upstream HTTP transport (with retry+tracing wrapping)
 	// used by the underlying ReverseProxy.
 	transport http.RoundTripper
-
-	// hostPatternCache caches the snapshot of registry-derived host
-	// patterns so we don't allocate/copy on every request. RefreshMirrors
-	// clears this pointer; readers fall back to defaultHostPatterns when
-	// the registry returns an empty result.
-	hostPatternCache atomic.Pointer[[]hostPatternEntry]
 
 	// refreshMu serializes RefreshMirrors so two concurrent reload paths
 	// (SIGHUP debounced reload + /api/mirrors/refresh) don't race when
@@ -257,7 +274,6 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		registry:    opts.Registry,
 		mode:        mode,
 		passthrough: opts.Passthrough,
-		rewriters:   rewriters,
 		bench:       bench,
 		transport:   transport,
 		Handler: &httputil.ReverseProxy{
@@ -265,6 +281,10 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 			Transport: transport,
 		},
 	}
+	ps.routing.Store(&routing{
+		patterns:  hostPatternsFromRegistry(opts.Registry),
+		rewriters: rewriters,
+	})
 	return ps, nil
 }
 
@@ -424,25 +444,33 @@ type responseWriter struct {
 	rule *distro.Rule // The matched caching rule for this request
 }
 
-// hostPatterns returns this PackageStruct's cached pattern→rules entries,
-// populating the cache on first access. The fallback (defaultHostPatterns)
-// is used only if the registry has nothing to offer.
-func (ap *PackageStruct) hostPatterns() []hostPatternEntry {
-	if cur := ap.hostPatternCache.Load(); cur != nil && len(*cur) > 0 {
-		return *cur
+// currentRouting returns the snapshot a single request should serve from.
+// Callers Load once and thread the result through matching and rewriting, so
+// a refresh landing mid-request cannot hand them a pattern from one snapshot
+// and a rewriter from the next.
+//
+// The registry can still be empty here -- a PackageStruct built before its
+// registry was populated -- so an empty snapshot re-derives the patterns and
+// republishes them against the same rewriters. CompareAndSwap makes that
+// retry lose to a concurrent RefreshMirrors rather than overwrite it.
+func (ap *PackageStruct) currentRouting() *routing {
+	cur := ap.routing.Load()
+	if cur == nil {
+		return &routing{patterns: defaultHostPatterns}
 	}
+	if len(cur.patterns) > 0 {
+		return cur
+	}
+
 	entries := hostPatternsFromRegistry(ap.registry)
 	if len(entries) == 0 {
-		return defaultHostPatterns
+		return &routing{patterns: defaultHostPatterns, rewriters: cur.rewriters}
 	}
-	ap.hostPatternCache.Store(&entries)
-	return entries
-}
-
-// invalidateHostPatterns forces the next request to rebuild the cache
-// from the registry. Called from RefreshMirrors / SIGHUP reload.
-func (ap *PackageStruct) invalidateHostPatterns() {
-	ap.hostPatternCache.Store(nil)
+	next := &routing{patterns: entries, rewriters: cur.rewriters}
+	if ap.routing.CompareAndSwap(cur, next) {
+		return next
+	}
+	return ap.routing.Load()
 }
 
 // handleExternalURLs processes requests for external package repositories.
@@ -450,7 +478,12 @@ func (ap *PackageStruct) invalidateHostPatterns() {
 // the appropriate caching rule if a match is found.
 func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	path := r.URL.Path
-	entries := ap.hostPatterns()
+
+	// One Load for the whole request. Matching on this snapshot's patterns
+	// and rewriting with its rewriters is what keeps the two consistent
+	// while a refresh publishes a replacement underneath us.
+	rt := ap.currentRouting()
+	entries := rt.patterns
 
 	// Path match first: it is the common case and the more specific signal,
 	// so an archive reachable by path keeps its existing routing even when
@@ -460,7 +493,7 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	// being answered out of the distribution's own mirror -- see hostprefix.go.
 	for _, entry := range entries {
 		if matchesDistroPath(entry.pattern, path) {
-			return ap.processMatchingRule(r, entry.rules)
+			return ap.processMatchingRule(r, rt, entry.rules)
 		}
 	}
 
@@ -472,7 +505,7 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	}
 	for _, entry := range entries {
 		if entry.hostPattern != nil && entry.hostPattern.MatchString(host) {
-			return ap.processMatchingRule(r, entry.rules)
+			return ap.processMatchingRule(r, rt, entry.rules)
 		}
 	}
 
@@ -500,7 +533,7 @@ func requestHost(r *http.Request) string {
 // processMatchingRule processes a request that matches a distribution pattern.
 // It finds the specific caching rule, removes client cache control headers,
 // and rewrites the URL if necessary.
-func (ap *PackageStruct) processMatchingRule(r *http.Request, rules []distro.Rule) *distro.Rule {
+func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, rules []distro.Rule) *distro.Rule {
 	rule, match := MatchingRule(r.URL.Path, rules)
 	if !match {
 		return nil
@@ -508,7 +541,7 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rules []distro.Rul
 
 	r.Header.Del("Cache-Control")
 	if rule.Rewrite {
-		ap.rewriteRequest(r, rule)
+		ap.rewriteRequest(r, rt, rule)
 	}
 	return rule
 }
@@ -516,13 +549,13 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rules []distro.Rul
 // rewriteRequest rewrites the request URL to point to the configured mirror
 // for the distribution. This enables transparent proxying to different mirrors
 // while maintaining the original request path structure.
-func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *distro.Rule) {
+func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *distro.Rule) {
 	if r.URL == nil {
 		ap.log.Error().Msg("request URL is nil, cannot rewrite")
 		return
 	}
 	before := r.URL.String()
-	RewriteRequestByMode(r, ap.rewriters, rule.OS)
+	RewriteRequestByMode(r, rt.rewriters, rule.OS)
 
 	if r.URL != nil {
 		r.Host = r.URL.Host
@@ -546,13 +579,21 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rule *distro.Rule) {
 // package-level singleton; that coupling was removed in favour of the
 // per-Server engine field above.)
 func (ap *PackageStruct) RefreshMirrors() {
-	if ap == nil || ap.rewriters == nil {
+	if ap == nil {
 		return
 	}
 	ap.refreshMu.Lock()
 	defer ap.refreshMu.Unlock()
-	ap.invalidateHostPatterns()
-	RefreshRewritersWithEngine(ap.rewriters, ap.mode, ap.state, ap.registry, ap.bench)
+
+	// Build both halves against the reloaded registry before either is
+	// visible. buildRewriters is the slow part -- it re-elects mirrors --
+	// and for its whole duration requests keep serving the previous
+	// snapshot, matching and rewriting consistently with each other.
+	next := &routing{
+		patterns:  hostPatternsFromRegistry(ap.registry),
+		rewriters: buildRewriters(ap.mode, ap.state, ap.registry, ap.bench),
+	}
+	ap.routing.Store(next)
 }
 
 // BenchmarkEngine exposes this PackageStruct's private benchmark engine.
