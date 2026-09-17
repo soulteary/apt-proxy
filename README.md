@@ -31,7 +31,7 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 - **Smart Mirror Selection**: Automatically benchmarks and selects the fastest mirror
 - **Upstream Proxy**: Reaches mirror sites through an existing `HTTP_PROXY` / `HTTPS_PROXY` forward proxy (SOCKS5 included) when the host has no direct route out; mirror benchmarking takes the same path, so the elected mirror is one that is actually reachable
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
-- **apt-cacher-ng Friendly**: Compatible with most [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) usage patterns (note: advanced features such as the Import/Maint web UI, full `acng.conf` syntax, and cross-distro deb deduplication are not implemented)
+- **apt-cacher-ng Friendly**: Compatible with most [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) usage patterns, including the `HTTPS///` rewrite marker for TLS upstreams — so existing `sources.list` entries migrate unchanged (note: advanced features such as the Import/Maint web UI, full `acng.conf` syntax, and cross-distro deb deduplication are not implemented)
 - **Third-Party Archives**: Fetches and caches origins you name in a `passthrough` allowlist (a PPA, a vendor repo, an internal archive) — off by default, because apt-proxy is not an open forward proxy
 - **Host-Root Archives**: Routes by the request `Host` when an archive lives at a domain root with no path prefix to match (`security.debian.org`, `apt.armbian.com`), configurable per distribution with `host_pattern`
 - **Zero Configuration**: Works out of the box with sensible defaults

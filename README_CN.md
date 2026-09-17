@@ -31,7 +31,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **智能镜像选择**：自动测试并选择最快的镜像源
 - **前置代理**：主机无法直连镜像站时，可经由已有的 `HTTP_PROXY` / `HTTPS_PROXY` 前置代理访问（支持 SOCKS5）；镜像测速走同一条链路，因此选出来的镜像一定是真正连得上的
 - **Docker 友好**：无缝集成 Docker 容器和构建流程
-- **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
+- **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景，包括用于 TLS 上游的 `HTTPS///` 重写标记 —— 现有的 `sources.list` 条目无需改写即可迁移（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
 - **第三方软件源**：可通过 `passthrough` 白名单指定要缓存的源站（PPA、厂商源、内部源），默认关闭 —— apt-proxy 不是开放转发代理
 - **域名根仓库**：仓库直接放在域名根目录、路径里没有前缀可匹配时（`security.debian.org`、`apt.armbian.com`），按请求 `Host` 路由，可通过 `host_pattern` 按发行版配置
 - **零配置**：开箱即用，默认配置即可满足大多数场景
