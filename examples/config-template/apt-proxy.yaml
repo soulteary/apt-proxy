@@ -70,6 +70,20 @@ storage:
 # Hot-reload with SIGHUP or POST /api/mirrors/refresh
 # distributions_config: ./config/distributions.yaml
 
+# Third-party origins apt-proxy may fetch and cache unrewritten: a PPA, a
+# vendor repository, an internal archive. Empty (the default) means apt-proxy
+# serves only the distributions it is configured for and 404s everything else.
+#
+# Only applies to clients using apt-proxy as their HTTP proxy (http_proxy=...),
+# because that is what names the origin in the request. An entry without a port
+# matches ports 80 and 443 only; https:// forces the upstream request to TLS.
+# Wildcards, loopback/private addresses and localhost are rejected at startup.
+#
+# passthrough:
+#   - ppa.launchpad.net
+#   - https://download.docker.com
+#   - archive.internal.example:8080
+
 # Mirror configuration
 # Use full URLs or shortcuts (e.g., cn:tsinghua, cn:ustc, cn:aliyun)
 mirrors:

@@ -18,6 +18,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -39,6 +40,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
+	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
@@ -223,6 +225,15 @@ func (s *Server) initialize() error {
 	// Initialize proxy with async benchmark for faster startup.
 	// This uses default mirrors immediately and updates to the fastest mirror
 	// in the background after benchmarking completes.
+	// ValidateConfig already rejected a malformed allowlist, so a failure here
+	// would mean the config changed underneath us; treat it as an init error
+	// rather than starting with a list that is not what was written.
+	allowlist, err := passthrough.Parse(s.config.Passthrough)
+	if err != nil {
+		return wrapErr(apperrors.ErrServerInit, "failed to parse passthrough allowlist", err)
+	}
+	s.logPassthrough(allowlist)
+
 	ps, err := proxy.NewPackageStruct(proxy.Options{
 		State:           s.state,
 		Registry:        s.registry,
@@ -231,6 +242,7 @@ func (s *Server) initialize() error {
 		Mode:            s.state.GetProxyMode(),
 		EnableKeepAlive: s.config.UpstreamKeepAlive,
 		Async:           true,
+		Passthrough:     allowlist,
 	})
 	if err != nil {
 		return wrapErr(apperrors.ErrServerInit, "failed to initialize proxy", err)
@@ -621,6 +633,29 @@ func (s *Server) logRegisteredDistributions() {
 		Str("config", path).
 		Strs("distributions", ids).
 		Msg("distributions registered")
+}
+
+// logPassthrough reports the allowlisted origins at startup. Widening what a
+// shared proxy will fetch is worth a line in the log, and it is the only way
+// to tell a list that parsed from one that was never read.
+func (s *Server) logPassthrough(list *passthrough.List) {
+	if list.Empty() {
+		return
+	}
+	origins := make([]string, 0, len(list.Rules()))
+	for _, rule := range list.Rules() {
+		origin := rule.Host
+		if rule.Port != "" {
+			origin = net.JoinHostPort(rule.Host, rule.Port)
+		}
+		if rule.ForceHTTPS {
+			origin = "https://" + origin
+		}
+		origins = append(origins, origin)
+	}
+	s.log.Info().
+		Strs("origins", origins).
+		Msg("passthrough enabled for third-party origins")
 }
 
 // refreshMirrors reloads distributions config (when configured) and
