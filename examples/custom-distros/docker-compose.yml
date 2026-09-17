@@ -1,0 +1,20 @@
+name: apt-cache-custom-distros
+
+services:
+  apt-proxy:
+    image: soulteary/apt-proxy
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      # Name the file explicitly. /etc/apt-proxy/distributions.yaml is one of
+      # the paths apt-proxy searches, but the search only runs on releases that
+      # carry it, and naming the path works on every release. It also keeps
+      # `docker compose config` honest about where the file comes from.
+      - APT_PROXY_DISTRIBUTIONS_CONFIG=/etc/apt-proxy/distributions.yaml
+    ports:
+      - "3142:3142"
+    volumes:
+      # An absolute path rather than ./config/: the image's WORKDIR is the
+      # cache directory, so the relative search path would put a read-only
+      # config file inside that volume.
+      - ./distributions.yaml:/etc/apt-proxy/distributions.yaml:ro
