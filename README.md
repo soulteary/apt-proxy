@@ -1115,6 +1115,8 @@ curl -X POST http://localhost:3142/api/mirrors/refresh
 
 Both paths are equivalent: they reload `distributions.yaml` and re-run mirror selection. SIGHUP signals are debounced (consecutive signals within ~500ms are coalesced) and queued (at most one extra reload is scheduled while a reload is in progress), so it is safe to invoke them rapidly from scripts.
 
+A reload does not interrupt serving. Mirror re-election is network-bound and can take a while, and for that whole window requests continue to be answered from the previous configuration; the new distributions and their mirrors become visible together, in one step, once the election finishes. A distribution added by the reload is simply not routable until then, rather than matching a rule whose mirror does not exist yet.
+
 ## Observability
 
 ### Metrics
@@ -1289,6 +1291,46 @@ to add. Other statuses from a marker URL:
 Both spellings apt-cacher-ng documents are accepted — `Host: HTTPS` with the
 origin in the path, and the marker embedded in a path against apt-proxy's own
 address — in any case.
+
+### Routing changed after upgrading to v0.17.0
+
+Before v0.17.0 a `distributions.yaml` was read **only** when its path was named
+with `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG`. A file sitting
+on one of the search paths was silently ignored, and SIGHUP reloaded nothing for
+such a deployment. Both now behave as this README describes them — see
+[Adding a distribution apt-proxy does not ship](#adding-a-distribution-apt-proxy-does-not-ship).
+
+That is a fix, but it is visible on upgrade. A `distributions.yaml` left at
+`./config/`, `./`, `/etc/apt-proxy/` or `~/.config/apt-proxy/` — an experiment, a
+template copied out of this repository, a leftover from an older deployment —
+takes effect the first time you start v0.17.0, with no change to your command
+line. Entries whose `type` is `1`–`5` **reconfigure the built-in distribution**
+of that type, so mirrors and `url_pattern` can move under you.
+
+The startup log names the file in effect and everything that registered:
+
+```text
+config="config/distributions.yaml" distributions=["alpine","centos","debian","deepin","ubuntu","ubuntu-ports"]
+```
+
+`config="(built-in defaults)"` means no external configuration is in effect —
+which is **not** the same as no file being found. A file that exists but cannot
+be read, parsed or validated is rejected as a whole, and startup falls back to
+the built-ins and logs that same value. The warning just above it is what tells
+the two apart:
+
+```text
+failed to load distributions config; using built-in defaults  error="invalid distribution config for x: ..."
+```
+
+That warning appears *only* when a file was found and rejected, so its presence
+is the answer: no warning means nothing was found; a warning means your file is
+there and broken, and its `error` field says why. (It does not name the file
+when the file came from the search path rather than being named explicitly —
+check the four paths above in order.)
+
+If a file you did not expect is named in `config=`, move or delete it, or name
+the one you do want explicitly.
 
 ### `404` on a PPA or vendor repository
 
