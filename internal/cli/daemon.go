@@ -29,13 +29,16 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
-	health "github.com/soulteary/health-kit/v2"
+	health "github.com/soulteary/health-kit/v4"
+	healthfiber "github.com/soulteary/health-kit/v4/fiberadapter"
 	logger "github.com/soulteary/logger-kit/v3"
 	loggerfiber "github.com/soulteary/logger-kit/v3/fiberadapter"
 	metrics "github.com/soulteary/metrics-kit/v3"
-	middleware "github.com/soulteary/middleware-kit/v2"
+	middleware "github.com/soulteary/middleware-kit/v3"
+	mwfiber "github.com/soulteary/middleware-kit/v3/fiberadapter"
 	tracing "github.com/soulteary/tracing-kit"
-	version "github.com/soulteary/version-kit/v2"
+	version "github.com/soulteary/version-kit/v4"
+	versionfiber "github.com/soulteary/version-kit/v4/fiberadapter"
 
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
@@ -422,9 +425,9 @@ func (s *Server) createFiberApp() *fiber.App {
 	})
 
 	// Version headers for all responses
-	app.Use(version.FiberMiddleware(s.versionInfo, "X-"))
+	app.Use(versionfiber.Middleware(s.versionInfo, "X-"))
 	// Security headers
-	app.Use(middleware.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
+	app.Use(mwfiber.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
 
 	// Request logging: logger-kit fiberadapter middleware, unified with request_id and cache/size for proxy.
 	// The fiber.Ctx-typed hooks live on loggerfiber.Config since logger-kit v3
@@ -453,18 +456,18 @@ func (s *Server) createFiberApp() *fiber.App {
 	}))
 
 	// Health check endpoints (Fiber native)
-	// We deliberately use a local handler instead of health.FiberHandler /
-	// health.FiberReadinessHandler: the upstream helpers feed the fasthttp
+	// We deliberately use a local handler instead of healthfiber.Handler /
+	// healthfiber.ReadinessHandler: the upstream helpers feed the fasthttp
 	// *RequestCtx into context.WithTimeout, which spawns a propagateCancel
 	// goroutine that races with fiber/fasthttp's ShutdownWithContext during
 	// graceful shutdown (see internal/cli/health.go). Liveness has no
 	// aggregator and is safe to use as-is.
 	app.Get("/healthz", fiberHealthHandler(s.healthAggregator))
-	app.Get("/livez", health.FiberLivenessHandler("apt-proxy"))
+	app.Get("/livez", healthfiber.LivenessHandler("apt-proxy"))
 	app.Get("/readyz", fiberHealthHandler(s.healthAggregator))
 
 	// Version endpoint (Fiber native)
-	app.Get("/version", version.FiberHandler(version.HandlerConfig{
+	app.Get("/version", versionfiber.Handler(version.HandlerConfig{
 		Info:   s.versionInfo,
 		Pretty: true,
 	}))
