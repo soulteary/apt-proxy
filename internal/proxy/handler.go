@@ -29,7 +29,7 @@ import (
 	"time"
 
 	logger "github.com/soulteary/logger-kit/v3"
-	tracing "github.com/soulteary/tracing-kit"
+	tracing "github.com/soulteary/tracing-kit/v2"
 
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"

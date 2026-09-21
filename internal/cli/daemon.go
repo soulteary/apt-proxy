@@ -36,7 +36,8 @@ import (
 	metrics "github.com/soulteary/metrics-kit/v3"
 	middleware "github.com/soulteary/middleware-kit/v3"
 	mwfiber "github.com/soulteary/middleware-kit/v3/fiberadapter"
-	tracing "github.com/soulteary/tracing-kit"
+	tracing "github.com/soulteary/tracing-kit/v2"
+	otlp "github.com/soulteary/tracing-kit/v2/otlp"
 	version "github.com/soulteary/version-kit/v4"
 	versionfiber "github.com/soulteary/version-kit/v4/fiberadapter"
 
@@ -146,7 +147,7 @@ func (s *Server) initTracing() {
 		serviceVersion = "unknown"
 	}
 
-	tp, err := tracing.InitTracer("apt-proxy", serviceVersion, otlpEndpoint)
+	tp, err := otlp.InitTracer("apt-proxy", serviceVersion, otlpEndpoint)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("failed to initialize tracing, continuing without tracing")
 		return

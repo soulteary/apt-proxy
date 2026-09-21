@@ -8,12 +8,12 @@ require (
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/soulteary/cli-kit v1.9.0
 	github.com/soulteary/health-kit/v4 v4.0.0
-	github.com/soulteary/http-kit v1.5.0
+	github.com/soulteary/http-kit/v2 v2.0.0
 	github.com/soulteary/httpcache-kit/v4 v4.0.0
 	github.com/soulteary/logger-kit/v3 v3.0.0
 	github.com/soulteary/metrics-kit/v3 v3.0.0
 	github.com/soulteary/middleware-kit/v3 v3.0.0
-	github.com/soulteary/tracing-kit v1.5.0
+	github.com/soulteary/tracing-kit/v2 v2.0.0
 	github.com/soulteary/version-kit/v4 v4.0.0
 	github.com/soulteary/vfs-kit v1.4.2
 	go.opentelemetry.io/otel v1.46.0

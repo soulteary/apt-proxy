@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	httpkit "github.com/soulteary/http-kit"
+	httpkit "github.com/soulteary/http-kit/v2"
 )
 
 // TestRetryableTransportRetriesOn5xx ensures the transport retries on a 5xx
