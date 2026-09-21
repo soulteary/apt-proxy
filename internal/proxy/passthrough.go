@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"strings"
 
-	tracing "github.com/soulteary/tracing-kit"
+	tracing "github.com/soulteary/tracing-kit/v2"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/soulteary/apt-proxy/internal/distro"

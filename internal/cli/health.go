@@ -18,10 +18,10 @@ import (
 	"context"
 
 	"github.com/gofiber/fiber/v3"
-	health "github.com/soulteary/health-kit/v2"
+	health "github.com/soulteary/health-kit/v4"
 )
 
-// fiberHealthHandler is a Fiber-native replacement for health.FiberHandler that
+// fiberHealthHandler is a Fiber-native replacement for healthfiber.Handler that
 // avoids passing the fasthttp *RequestCtx down into health-kit. The upstream
 // helper calls aggregator.Check(c.Context()), and aggregator.Check then calls
 // context.WithTimeout(parent, ...) which spawns a goroutine reading

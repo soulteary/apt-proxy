@@ -17,10 +17,10 @@ package api
 import (
 	"net/http"
 
-	logger "github.com/soulteary/logger-kit/v2"
+	logger "github.com/soulteary/logger-kit/v3"
 
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
-	httpcache "github.com/soulteary/httpcache-kit/v2"
+	httpcache "github.com/soulteary/httpcache-kit/v4"
 )
 
 // CacheHandler handles cache-related API endpoints
@@ -46,9 +46,9 @@ func (h *CacheHandler) HandleCacheStats(w http.ResponseWriter, r *http.Request) 
 
 	stats := h.cache.Stats()
 
-	if metrics := httpcache.GetDefaultMetrics(); metrics != nil {
-		metrics.UpdateCacheStats(stats)
-	}
+	// httpcache v4 always returns a recorder (NopMetrics when unset), so the
+	// old nil guard would now be a nil-interface panic waiting to happen.
+	httpcache.GetDefaultMetrics().UpdateCacheStats(stats)
 
 	resp := CacheStatsResponse{
 		TotalSizeBytes: stats.TotalSize,

@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	logger "github.com/soulteary/logger-kit/v2"
+	logger "github.com/soulteary/logger-kit/v3"
 	"golang.org/x/sync/singleflight"
 )
 

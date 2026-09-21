@@ -19,12 +19,12 @@ import (
 	"net/http"
 	"time"
 
-	httpkit "github.com/soulteary/http-kit"
+	httpkit "github.com/soulteary/http-kit/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 
-	tracing "github.com/soulteary/tracing-kit"
+	tracing "github.com/soulteary/tracing-kit/v2"
 )
 
 // RetryableTransport wraps an http.RoundTripper with retry logic and tracing support

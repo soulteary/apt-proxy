@@ -28,8 +28,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	logger "github.com/soulteary/logger-kit/v2"
-	tracing "github.com/soulteary/tracing-kit"
+	logger "github.com/soulteary/logger-kit/v3"
+	tracing "github.com/soulteary/tracing-kit/v2"
 
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
