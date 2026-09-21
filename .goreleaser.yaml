@@ -85,6 +85,14 @@ changelog:
     - title: Performance
       regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
       order: 2
+    # Both prefixes this repository actually uses for dependency work: `deps:`
+    # by hand and `chore(deps):` from Dependabot. Neither is caught by the
+    # `^chore:` exclude above, so without this group they land in Others --
+    # which for a release that is entirely dependency work means the whole
+    # release body renders as one untitled list.
+    - title: Dependencies
+      regexp: '^.*?(deps(\([[:word:]]+\))?|[[:word:]]+\(deps\))!?:.+$'
+      order: 3
     - title: Others
       order: 999
 
