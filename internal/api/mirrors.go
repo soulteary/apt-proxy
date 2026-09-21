@@ -18,7 +18,7 @@ import (
 	"net/http"
 	"time"
 
-	logger "github.com/soulteary/logger-kit/v2"
+	logger "github.com/soulteary/logger-kit/v3"
 
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 )

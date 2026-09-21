@@ -30,8 +30,9 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	health "github.com/soulteary/health-kit/v2"
-	logger "github.com/soulteary/logger-kit/v2"
-	metrics "github.com/soulteary/metrics-kit/v2"
+	logger "github.com/soulteary/logger-kit/v3"
+	loggerfiber "github.com/soulteary/logger-kit/v3/fiberadapter"
+	metrics "github.com/soulteary/metrics-kit/v3"
 	middleware "github.com/soulteary/middleware-kit/v2"
 	tracing "github.com/soulteary/tracing-kit"
 	version "github.com/soulteary/version-kit/v2"
@@ -44,7 +45,8 @@ import (
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
-	httpcache "github.com/soulteary/httpcache-kit/v2"
+	httpcache "github.com/soulteary/httpcache-kit/v4"
+	prometheusmetrics "github.com/soulteary/httpcache-kit/v4/prometheusmetrics"
 	vfs "github.com/soulteary/vfs-kit"
 )
 
@@ -190,7 +192,7 @@ func (s *Server) initialize() error {
 	s.metricsRegistry = metrics.NewRegistry("apt_proxy")
 
 	// Initialize cache metrics
-	httpcache.NewCacheMetrics(s.metricsRegistry)
+	prometheusmetrics.New(s.metricsRegistry)
 
 	// Initialize health check aggregator
 	s.initHealthChecks()
@@ -424,7 +426,9 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Security headers
 	app.Use(middleware.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
 
-	// Request logging: logger-kit FiberMiddleware, unified with request_id and cache/size for proxy
+	// Request logging: logger-kit fiberadapter middleware, unified with request_id and cache/size for proxy.
+	// The fiber.Ctx-typed hooks live on loggerfiber.Config since logger-kit v3
+	// dropped them from the root MiddlewareConfig.
 	logCfg := logger.DefaultMiddlewareConfig()
 	logCfg.Logger = s.log
 	logCfg.SkipPaths = []string{"/healthz", "/livez", "/readyz"} // skip health noise
@@ -432,19 +436,21 @@ func (s *Server) createFiberApp() *fiber.App {
 		logCfg.IncludeHeaders = true
 		logCfg.IncludeBody = true
 	}
-	logCfg.CustomFieldsFiber = func(c fiber.Ctx) map[string]interface{} {
-		// Use Content-Length header when available so we don't pull the
-		// (potentially streamed) body into memory just to record its size.
-		size := c.Response().Header.ContentLength()
-		if size <= 0 {
-			size = len(c.Response().Body())
-		}
-		return map[string]interface{}{
-			"cache": cacheLabelFromHeader(string(c.Response().Header.Peek("X-Cache"))),
-			"size":  size,
-		}
-	}
-	app.Use(logger.FiberMiddleware(logCfg))
+	app.Use(loggerfiber.Middleware(loggerfiber.Config{
+		MiddlewareConfig: logCfg,
+		CustomFields: func(c fiber.Ctx) map[string]interface{} {
+			// Use Content-Length header when available so we don't pull the
+			// (potentially streamed) body into memory just to record its size.
+			size := c.Response().Header.ContentLength()
+			if size <= 0 {
+				size = len(c.Response().Body())
+			}
+			return map[string]interface{}{
+				"cache": cacheLabelFromHeader(string(c.Response().Header.Peek("X-Cache"))),
+				"size":  size,
+			}
+		},
+	}))
 
 	// Health check endpoints (Fiber native)
 	// We deliberately use a local handler instead of health.FiberHandler /

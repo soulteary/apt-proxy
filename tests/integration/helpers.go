@@ -26,13 +26,13 @@ import (
 	"testing"
 	"time"
 
-	logger "github.com/soulteary/logger-kit/v2"
+	logger "github.com/soulteary/logger-kit/v3"
 
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
-	httpcache "github.com/soulteary/httpcache-kit/v2"
+	httpcache "github.com/soulteary/httpcache-kit/v4"
 )
 
 // sharedTestLogger reuses one logger across newTestServer calls.

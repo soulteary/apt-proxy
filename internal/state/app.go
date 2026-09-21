@@ -25,7 +25,7 @@ import (
 	"net/url"
 	"sync/atomic"
 
-	logger "github.com/soulteary/logger-kit/v2"
+	logger "github.com/soulteary/logger-kit/v3"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 	mirrors "github.com/soulteary/apt-proxy/internal/mirrors"

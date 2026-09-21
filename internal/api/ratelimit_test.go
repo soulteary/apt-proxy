@@ -20,7 +20,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	logger "github.com/soulteary/logger-kit/v2"
+	logger "github.com/soulteary/logger-kit/v3"
 )
 
 func newTestLogger() *logger.Logger {
