@@ -67,15 +67,16 @@ jobs:
           cache: true
 
       - name: Tests with coverage (race + short)
+        if: "!(github.event_name == 'pull_request' && runner.os == 'Linux')"
         run: |
           go test -race -short -count=1 -coverprofile=coverage.out -covermode=atomic ./...
           go tool cover -func=coverage.out | tail -n 1
 
       # Gate here rather than only at release time: a coverage regression that
       # is first reported on a tag push has already been merged.
-        if: "!(github.event_name == 'pull_request' && runner.os == 'Linux')"
       - name: Remove stale generated report evidence
-        if: always() && (github.event_name == 'pull_request' && runner.os == 'Linux')
+        id: report_cleanup
+        if: "!cancelled() && (github.event_name == 'pull_request' && runner.os == 'Linux')"
         shell: bash
         run: |
           set -euo pipefail
@@ -96,6 +97,7 @@ jobs:
           commit: "false"
         if: github.event_name == 'pull_request' && runner.os == 'Linux'
       - name: Go quality report (v1.1.3)
+        if: "!cancelled() && (github.event_name == 'pull_request' && runner.os == 'Linux') && steps.report_cleanup.outcome == 'success'"
         id: go_report_card
         uses: soulteary/goreportcard-action@fc43049a5fe61c3313294d217c2a783f375a7970  # v1.1.3
         with:
@@ -104,7 +106,6 @@ jobs:
           threshold: "0"
           report: "true"
           commit: "false"
-        if: always() && github.event_name == 'pull_request' && runner.os == 'Linux'
       - name: Reuse GTR coverage profile
         if: github.event_name == 'pull_request' && runner.os == 'Linux'
         shell: bash
@@ -133,7 +134,7 @@ jobs:
           retention-days: 7
 
       - name: Upload read-only PR quality evidence
-        if: always() && (github.event_name == 'pull_request' && runner.os == 'Linux')
+        if: "always() && steps.report_cleanup.outcome == 'success' && ((github.event_name == 'pull_request' && runner.os == 'Linux'))"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pr-go-quality-${{ github.job }}-${{ github.run_id }}
