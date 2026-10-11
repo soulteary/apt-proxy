@@ -100,19 +100,25 @@ distributions:
       - pattern: "PackagesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Packages\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Packages(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "SourcesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Sources\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Sources(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "Release(\\.gpg)?$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+      - pattern: "(^|/)Translation-[A-Za-z][A-Za-z0-9_-]*(\\.(gz|bz2|bzip2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)Contents-[A-Za-z0-9_-]+(\\.(gz|bz2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)(Packages|Sources|Contents-[A-Za-z0-9_-]+|Translation-[A-Za-z][A-Za-z0-9_-]*)\\.diff/(Index|[A-Za-z0-9_.-]+\\.(gz|xz))$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"
@@ -158,19 +164,25 @@ distributions:
       - pattern: "PackagesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Packages\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Packages(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "SourcesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Sources\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Sources(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "Release(\\.gpg)?$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+      - pattern: "(^|/)Translation-[A-Za-z][A-Za-z0-9_-]*(\\.(gz|bz2|bzip2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)Contents-[A-Za-z0-9_-]+(\\.(gz|bz2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)(Packages|Sources|Contents-[A-Za-z0-9_-]+|Translation-[A-Za-z][A-Za-z0-9_-]*)\\.diff/(Index|[A-Za-z0-9_.-]+\\.(gz|xz))$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"
@@ -210,19 +222,25 @@ distributions:
       - pattern: "PackagesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Packages\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Packages(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "SourcesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Sources\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Sources(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "Release(\\.gpg)?$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+      - pattern: "(^|/)Translation-[A-Za-z][A-Za-z0-9_-]*(\\.(gz|bz2|bzip2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)Contents-[A-Za-z0-9_-]+(\\.(gz|bz2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)(Packages|Sources|Contents-[A-Za-z0-9_-]+|Translation-[A-Za-z][A-Za-z0-9_-]*)\\.diff/(Index|[A-Za-z0-9_.-]+\\.(gz|xz))$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"
