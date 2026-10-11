@@ -217,3 +217,32 @@ func TestCreateNewRewritersAsyncReturnsImmediately(t *testing.T) {
 		t.Errorf("rewritten host = %q, want mirrors.example.com", req.URL.Host)
 	}
 }
+
+// Client cache directives must survive repository matching and URL rewriting.
+func TestRepositoryPreservesClientCacheControl(t *testing.T) {
+	for _, directive := range []string{"no-cache", "no-store", "max-age=0", "only-if-cached", "no-cache, max-age=0"} {
+		t.Run(directive, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("Cache-Control"); got != directive {
+					t.Errorf("upstream Cache-Control = %q, want %q", got, directive)
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer upstream.Close()
+			st := newTestState()
+			st.SetMirror(distro.TypeUbuntu, upstream.URL+"/ubuntu/")
+			st.SetProxyMode(distro.TypeAllDistros)
+			ps, err := NewPackageStruct(Options{State: st, Registry: newTestRegistry(), Mode: distro.TypeAllDistros, Logger: logger.Default()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodGet, "/ubuntu/dists/jammy/InRelease", nil)
+			req.Header.Set("Cache-Control", directive)
+			rec := httptest.NewRecorder()
+			ps.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d", rec.Code)
+			}
+		})
+	}
+}
