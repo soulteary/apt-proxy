@@ -35,7 +35,7 @@ var debStyleCachePatterns = []struct {
 	{regexp.MustCompile(`Release(\.gpg)?$`), `max-age=3600`},
 	{regexp.MustCompile(`(^|/)Translation-[A-Za-z][A-Za-z0-9_-]*(\.(gz|bz2|bzip2|lzma|xz|zst))?$`), `max-age=3600`},
 	{regexp.MustCompile(`(^|/)Contents-[A-Za-z0-9_-]+(\.(gz|bz2|lzma|xz|zst))?$`), `max-age=3600`},
-	{regexp.MustCompile(`(^|/)(Packages|Sources|Translation-[A-Za-z][A-Za-z0-9_-]*)\.diff/(Index|[A-Za-z0-9_.-]+\.(gz|xz))$`), `max-age=3600`},
+	{regexp.MustCompile(`(^|/)(Packages|Sources|Contents-[A-Za-z0-9_-]+|Translation-[A-Za-z][A-Za-z0-9_-]*)\.diff/(Index|[A-Za-z0-9_.-]+\.(gz|xz))$`), `max-age=3600`},
 	{regexp.MustCompile(`\/by-hash\/`), `max-age=3600`},
 }
 
