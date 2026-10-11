@@ -181,3 +181,46 @@ func TestCanceledColdLeaderDoesNotStrandFollowers(t *testing.T) {
 		t.Fatalf("recovery downloads=%d, want 2", hits.Load())
 	}
 }
+
+func TestSpooledDownloadPreservesTrailersAndCache(t *testing.T) {
+	var hits atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Trailer", "Digest, X-Download-Status")
+		io.WriteString(w, "complete")
+		w.Header().Set("Digest", "sha-256=test-digest")
+		w.Header().Set("X-Download-Status", "verified")
+	}))
+	defer upstream.Close()
+	server, cache := downloadTestServer(t, upstream.URL)
+	client := &http.Client{Timeout: 3 * time.Second}
+	for i := 0; i < 2; i++ {
+		res, err := client.Get(server.URL + "/ubuntu/pool/trailers.deb")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(res.Body)
+		res.Body.Close()
+		if err != nil || string(body) != "complete" {
+			t.Fatalf("body=%q err=%v", body, err)
+		}
+		if res.Header.Get("Digest") != "sha-256=test-digest" || res.Header.Get("X-Download-Status") != "verified" {
+			t.Fatalf("trailers lost after spooling: header=%v trailer=%v", res.Header, res.Trailer)
+		}
+		if len(res.Trailer) != 0 || res.Header.Get("Trailer") != "" {
+			t.Fatal("fixed-length response still announces trailers")
+		}
+		if i == 0 {
+			deadline := time.Now().Add(2 * time.Second)
+			for cache.Stats().ItemCount == 0 && time.Now().Before(deadline) {
+				time.Sleep(5 * time.Millisecond)
+			}
+			if cache.Stats().ItemCount == 0 {
+				t.Fatal("spooled object not cached")
+			}
+		}
+	}
+	if hits.Load() != 1 {
+		t.Fatal("trailer-bearing object not reused from cache")
+	}
+}

@@ -78,6 +78,15 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 	if res.Header == nil {
 		res.Header = make(http.Header)
 	}
+	// EOF has populated trailer values. Promote them before switching to
+	// fixed-length framing, which cannot serialize HTTP/1 trailing fields.
+	for name, values := range res.Trailer {
+		for _, value := range values {
+			res.Header.Add(name, value)
+		}
+	}
+	res.Trailer = nil
+	res.Header.Del("Trailer")
 	res.Header.Set("Content-Length", fmt.Sprint(size))
 	return res, nil
 }

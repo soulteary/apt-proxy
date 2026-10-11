@@ -15,7 +15,9 @@ no usable cache entry.
 Unknown-length responses, including chunked and automatically decompressed
 responses, are fully spooled to a temporary file before headers are exposed to
 the cache or client. A failed body read returns an upstream error (502); a clean
-EOF produces a fixed-length response. Closing that response removes the
+EOF produces a fixed-length response. Trailer values received at EOF are
+promoted to ordinary response headers, and the trailer announcement is removed
+so fields such as Digest remain visible to clients and cache hits. Closing that response removes the
 file. Disk deployments spool in `cache_dir`; S3 deployments use
 `storage.s3.temp_dir` (or the system temporary directory when unset). The
 selected directory must already exist and be writable. HEAD, no-body responses and protocol upgrades retain their existing
