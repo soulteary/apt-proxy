@@ -571,7 +571,6 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, rules
 		return nil
 	}
 
-	r.Header.Del("Cache-Control")
 	if rule.Rewrite {
 		ap.rewriteRequest(r, rt, rule)
 	}
