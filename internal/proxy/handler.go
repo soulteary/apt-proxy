@@ -279,6 +279,11 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		Handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
 			Transport: transport,
+			ModifyResponse: func(resp *http.Response) error {
+				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)
+				applyRepositoryCachePolicy(resp.Header, resp.StatusCode, rule)
+				return nil
+			},
 		},
 	}
 	ps.routing.Store(&routing{
@@ -443,7 +448,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
 			return
 		}
-		ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
+		ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r.WithContext(context.WithValue(r.Context(), cacheRuleKey{}, rule)))
 		return
 	}
 
@@ -456,7 +461,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		if ap.Handler != nil {
-			ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
+			ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r.WithContext(context.WithValue(r.Context(), cacheRuleKey{}, rule)))
 		} else {
 			tracing.RecordError(span, http.ErrAbortHandler)
 			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
@@ -640,21 +645,26 @@ func (ap *PackageStruct) BenchmarkEngine() *benchmarks.Engine {
 // WriteHeader implements http.ResponseWriter interface. It injects cache control
 // headers based on the matched rule before writing the status code.
 func (rw *responseWriter) WriteHeader(status int) {
-	if status == http.StatusNotFound && rw.rule != nil {
-		// Mirror publication is not atomic: a package or index can briefly be
-		// absent while the mirror synchronizes. Keep negative caching short and
-		// independent from immutable package TTLs.
-		rw.Header().Set("Cache-Control", "public, max-age=30")
-	} else if rw.shouldSetCacheControl(status) {
-		rw.Header().Set("Cache-Control", rw.rule.CacheControl)
-	}
+	applyRepositoryCachePolicy(rw.Header(), status, rw.rule)
 	rw.ResponseWriter.WriteHeader(status)
 }
 
-// shouldSetCacheControl determines whether cache control headers should be set
-// for the given HTTP status code. Only certain status codes are cacheable.
-func (rw *responseWriter) shouldSetCacheControl(status int) bool {
-	return rw.rule != nil &&
-		rw.rule.CacheControl != "" &&
-		status == http.StatusOK
+// cacheRuleKey carries the matched rule into the reverse proxy, inside the cache.
+type cacheRuleKey struct{}
+
+// Explicit upstream freshness and privacy directives take precedence over local
+// defaults. Applying defaults in ModifyResponse lets the cache store the same
+// policy that the client receives, including the short negative-cache lifetime.
+func applyRepositoryCachePolicy(header http.Header, status int, rule *distro.Rule) {
+	if rule == nil || rule == passthroughRule || len(header.Values("Cache-Control")) != 0 {
+		return
+	}
+	switch status {
+	case http.StatusOK:
+		if rule.CacheControl != "" {
+			header.Set("Cache-Control", rule.CacheControl)
+		}
+	case http.StatusNotFound:
+		header.Set("Cache-Control", "public, max-age=30")
+	}
 }
