@@ -48,6 +48,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
+	"github.com/soulteary/apt-proxy/internal/storage"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
 	httpcache "github.com/soulteary/httpcache-kit/v4"
 	prometheusmetrics "github.com/soulteary/httpcache-kit/v4/prometheusmetrics"
@@ -190,7 +191,7 @@ func (s *Server) initialize() error {
 	if err != nil {
 		return wrapErr(apperrors.ErrCacheInit, "failed to initialize cache", err)
 	}
-	s.cache = cache
+	s.cache = &storage.VerifiedCache{ExtendedCache: cache}
 
 	// Initialize metrics registry
 	s.metricsRegistry = metrics.NewRegistry("apt_proxy")
