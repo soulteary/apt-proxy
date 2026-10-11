@@ -52,7 +52,7 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 	}
 	file, err := os.CreateTemp("", "apt-proxy-download-*.tmp")
 	if err != nil {
-		res.Body.Close()
+		_ = res.Body.Close()
 		return nil, fmt.Errorf("prepare unknown-length download: %w", err)
 	}
 	path := file.Name()
@@ -65,8 +65,8 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 		_, copyErr = file.Seek(0, io.SeekStart)
 	}
 	if copyErr != nil {
-		file.Close()
-		os.Remove(path)
+		_ = file.Close()
+		_ = os.Remove(path)
 		return nil, fmt.Errorf("incomplete unknown-length download: %w", copyErr)
 	}
 	res.Body = &downloadFile{File: file, path: path}
