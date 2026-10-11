@@ -244,7 +244,7 @@ distributions:
 - `host_pattern` — 可选，用于匹配请求 `Host` 头的正则。适用于仓库直接放在域名根目录、路径里没有前缀可供 `url_pattern` 匹配的情况（例如 `deb http://security.debian.org <suite>-security main`，或 `apt.armbian.com`）。仅在 `url_pattern` 未命中时才会尝试；命中后会把整个请求路径拼到上游镜像后。请使用 `^...$` 锚定，避免相似域名冒充你的发行版。匹配前会把 host 转为小写，因此模式请写成小写。省略该字段时会继承该发行版类型的内置匹配器（Debian 保留 `security.debian.org`），与省略 `mirrors` 时沿用内置镜像列表的行为一致；显式设置则覆盖内置值。只有内置的 Debian security 域名会路由到专用的 Debian Security 镜像 —— 你为 type `3` 自行配置的 `host_pattern` 会解析到该条目自己的镜像。
 - `benchmark_url` — 镜像测速用的相对路径。
 - `geo_mirror_api` — 可选，返回地理镜像列表（Ubuntu 风格的 `mirrors.txt`）。
-- `cache_rules[]` — 按规则注入 `Cache-Control`（仅对 `200`/`404` 响应生效），以及是否对该模式做 URL 重写。
+- `cache_rules[]` — 上游没有提供 `Cache-Control` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式提供的较短有效期、`private` 和 `no-store` 等指令会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。
 - `mirrors.official` / `mirrors.custom` — 镜像主机列表。基于主机末段会自动生成 `cn:<name>` 形式的别名（如 `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`）。
 - `aliases` — 显式别名映射，可覆盖/补充自动生成的别名。
 
