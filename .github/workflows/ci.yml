@@ -73,6 +73,37 @@ jobs:
 
       # Gate here rather than only at release time: a coverage regression that
       # is first reported on a tag push has already been merged.
+        if: "!(github.event_name == 'pull_request' && runner.os == 'Linux')"
+      - name: Test, race and coverage (GTR v1.1.2)
+        id: go_test_report
+        uses: soulteary/go-test-report-action@bf04b539f7bf2a6f67d602da4259904b3dcdeba1  # v1.1.2
+        with:
+          directory: "."
+          packages: "./..."
+          race: "true"
+          coverage_threshold: "80"
+          test_args: "-short -count=1"
+          version: "v1.1.2"
+          cover_mode: "atomic"
+          commit: "false"
+        if: github.event_name == 'pull_request' && runner.os == 'Linux'
+      - name: Go quality report (v1.1.3)
+        id: go_report_card
+        uses: soulteary/goreportcard-action@fc43049a5fe61c3313294d217c2a783f375a7970  # v1.1.3
+        with:
+          directory: "."
+          version: "v1.1.3"
+          threshold: "0"
+          report: "true"
+          commit: "false"
+        if: github.event_name == 'pull_request' && runner.os == 'Linux'
+      - name: Reuse GTR coverage profile
+        if: github.event_name == 'pull_request' && runner.os == 'Linux'
+        shell: bash
+        env:
+          PROFILE: ${{ steps.go_test_report.outputs.coverage_profile }}
+        run: |-
+          cp "$PROFILE" coverage.out
       - name: Check coverage threshold
         if: matrix.os == 'ubuntu-latest'
         run: scripts/check-coverage.sh coverage.out
@@ -93,6 +124,23 @@ jobs:
           path: coverage.out
           retention-days: 7
 
+      - name: Upload read-only PR quality evidence
+        if: always() && (github.event_name == 'pull_request' && runner.os == 'Linux')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pr-go-quality-${{ github.job }}-${{ github.run_id }}
+          path: |
+            .github/go-test-report.md
+            .github/go-test-report.json
+            .github/coverage.svg
+            .github/goreportcard.svg
+            .github/goreportcard-report.md
+            .github/test-results/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+    permissions:
+      contents: read
   build:
     name: Build
     runs-on: ubuntu-latest
