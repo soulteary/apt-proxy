@@ -20,4 +20,4 @@ Per-package floor: `0%`.
 Quality-score floor: `0%`.
 Raw profiles/test logs are artifacts, never committed.
 
-Published releases with a CI skip annotation use the release-event fallback. Ordinary releases use the tag-push report run; the release gate skips duplicate tests. Stable artifacts containing only reports under `.github` are downloaded into that directory explicitly; mixed report/document artifacts retain the repository hierarchy.
+Published releases query actual tag-push report runs for the tested commit. A successful or active tag run prevents duplicate tests; missing, failed, cancelled, or skipped runs allow the release event to generate reports. This covers skipped commits and releases whose tag push produced no workflow event. API lookup errors fail the gate rather than silently assume a report exists. Stable report-only artifacts explicitly restore `.github` on download; mixed report/document artifacts retain repository hierarchy.
