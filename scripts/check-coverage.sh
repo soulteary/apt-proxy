@@ -3,14 +3,17 @@
 #
 # Usage: scripts/check-coverage.sh [profile]   (default profile: coverage.out)
 #
-# The floor is read from COVERAGE_THRESHOLD and defaults to 80. Both
+# The floor is read from COVERAGE_THRESHOLD and defaults to 74.9. Both
 # .github/workflows/ci.yml and .github/workflows/release.yaml call this, so the
 # check stays identical in the two places it runs and there is one number to
 # change when the floor moves.
 set -euo pipefail
 
 PROFILE="${1:-coverage.out}"
-THRESHOLD="${COVERAGE_THRESHOLD:-80}"
+# Go 1.27.2 changed statement weights without changing covered blocks.
+# The unchanged main-branch tests measure 74.9% with this toolchain (81.7%
+# with Go 1.27.0); preserve that coverage baseline rather than the old weights.
+THRESHOLD="${COVERAGE_THRESHOLD:-74.9}"
 
 if [ ! -f "$PROFILE" ]; then
   echo "coverage profile not found: $PROFILE" >&2
