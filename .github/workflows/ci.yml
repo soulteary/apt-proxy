@@ -74,6 +74,14 @@ jobs:
       # Gate here rather than only at release time: a coverage regression that
       # is first reported on a tag push has already been merged.
         if: "!(github.event_name == 'pull_request' && runner.os == 'Linux')"
+      - name: Remove stale generated report evidence
+        if: always() && (github.event_name == 'pull_request' && runner.os == 'Linux')
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -L .github
+          rm -f -- .github/go-test-report.md .github/go-test-report.json .github/coverage.svg .github/goreportcard.svg .github/goreportcard-report.md
+          rm -rf -- .github/test-results
       - name: Test, race and coverage (GTR v1.1.2)
         id: go_test_report
         uses: soulteary/go-test-report-action@bf04b539f7bf2a6f67d602da4259904b3dcdeba1  # v1.1.2
@@ -96,7 +104,7 @@ jobs:
           threshold: "0"
           report: "true"
           commit: "false"
-        if: github.event_name == 'pull_request' && runner.os == 'Linux'
+        if: always() && github.event_name == 'pull_request' && runner.os == 'Linux'
       - name: Reuse GTR coverage profile
         if: github.event_name == 'pull_request' && runner.os == 'Linux'
         shell: bash
