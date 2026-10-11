@@ -137,7 +137,7 @@ jobs:
         if: "always() && steps.report_cleanup.outcome == 'success' && ((github.event_name == 'pull_request' && runner.os == 'Linux'))"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: pr-go-quality-${{ github.job }}-${{ github.run_id }}
+          name: pr-go-quality-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             .github/go-test-report.md
             .github/go-test-report.json

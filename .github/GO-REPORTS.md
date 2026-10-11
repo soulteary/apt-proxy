@@ -8,7 +8,7 @@ integration, benchmarks and fuzz workflows retain their distinct checks.
 
 Reports run on pushed tags and `workflow_dispatch`. They do not generate bot
 commits on branch pushes. A separate job may commit the five stable reports in
-one `[skip ci]` commit, only if the tested commit still equals the default branch
+one report commit, only if the tested commit still equals the default branch
 head. Older release tags and non-default manual refs retain downloadable reports
 without overwriting the current branch. PRs never enter that write job. Protected
 branches can reject writeback; no PAT, bypass, or force-push is used.
