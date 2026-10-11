@@ -3,6 +3,8 @@ on:
   push:
     tags:
       - '*'
+  release:
+    types: [published]
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,7 +12,36 @@ concurrency:
   group: go-quality-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  release_gate:
+    name: Select tag or skipped-release report run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      enabled: ${{ steps.trigger.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Avoid repeating ordinary tag reports
+        id: trigger
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          enabled=true
+          if [ "$EVENT_NAME" = release ]; then
+            message=$(git log -1 --format=%B)
+            if ! printf '%s\n' "$message" | grep -Eiq '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|skip-checks:[[:space:]]*true'; then
+              enabled=false
+              echo "Normal release commit: reports are handled by the tag push." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
   reports:
+    needs: release_gate
+    if: needs.release_gate.outputs.enabled == 'true'
     name: Release and manual Go reports
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -75,7 +106,7 @@ jobs:
     name: Publish reports once (unchanged default branch only)
     needs:
       - reports
-    if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 
+    if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || github.event_name == 'release' || startsWith(github.ref,
       'refs/tags/'))
     runs-on: ubuntu-latest
     permissions:
@@ -91,7 +122,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           name: go-quality-stable-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/go-quality-stable
+          path: ${{ runner.temp }}/go-quality-stable/.github
       - name: Commit only verified stable reports
         shell: bash
         env:
