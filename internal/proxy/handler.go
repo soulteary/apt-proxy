@@ -649,14 +649,6 @@ func (rw *responseWriter) WriteHeader(status int) {
 	rw.ResponseWriter.WriteHeader(status)
 }
 
-// shouldSetCacheControl determines whether cache control headers should be set
-// for the given HTTP status code. Only certain status codes are cacheable.
-func (rw *responseWriter) shouldSetCacheControl(status int) bool {
-	return rw.rule != nil &&
-		rw.rule.CacheControl != "" &&
-		status == http.StatusOK
-}
-
 // cacheRuleKey carries the matched rule into the reverse proxy, inside the cache.
 type cacheRuleKey struct{}
 
@@ -664,12 +656,14 @@ type cacheRuleKey struct{}
 // defaults. Applying defaults in ModifyResponse lets the cache store the same
 // policy that the client receives, including the short negative-cache lifetime.
 func applyRepositoryCachePolicy(header http.Header, status int, rule *distro.Rule) {
-	if rule == nil || rule.CacheControl == "" || len(header.Values("Cache-Control")) != 0 {
+	if rule == nil || rule == passthroughRule || len(header.Values("Cache-Control")) != 0 {
 		return
 	}
 	switch status {
 	case http.StatusOK:
-		header.Set("Cache-Control", rule.CacheControl)
+		if rule.CacheControl != "" {
+			header.Set("Cache-Control", rule.CacheControl)
+		}
 	case http.StatusNotFound:
 		header.Set("Cache-Control", "public, max-age=30")
 	}
