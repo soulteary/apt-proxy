@@ -191,7 +191,7 @@ jobs:
           report: "true"
           commit: "false"
       - name: Upload stable reports
-        if: always()
+        if: "!cancelled() && steps.report_cleanup.outcome == 'success'"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ${{ steps.source.outputs.artifact_name }}
@@ -205,7 +205,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Upload raw test evidence
-        if: always()
+        if: "!cancelled() && steps.report_cleanup.outcome == 'success'"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: go-quality-raw-${{ github.run_id }}-${{ github.run_attempt }}
