@@ -16,6 +16,7 @@ require (
 	github.com/soulteary/tracing-kit/v2 v2.0.1
 	github.com/soulteary/version-kit/v4 v4.0.1
 	github.com/soulteary/vfs-kit v1.4.3
+	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 	golang.org/x/sync v0.24.0
