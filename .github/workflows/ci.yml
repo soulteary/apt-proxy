@@ -104,7 +104,7 @@ jobs:
           threshold: "0"
           report: "true"
           commit: "false"
-        if: github.event_name == 'pull_request' && runner.os == 'Linux'
+        if: always() && github.event_name == 'pull_request' && runner.os == 'Linux'
       - name: Reuse GTR coverage profile
         if: github.event_name == 'pull_request' && runner.os == 'Linux'
         shell: bash
