@@ -40,7 +40,10 @@ func (h *abortSafeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // their headers to the cache. A clean EOF is the only completeness signal for
 // chunked/decompressed responses; spooling keeps memory bounded and makes that
 // signal observable before any partial object can be cached.
-type completeUnknownBodyTransport struct{ http.RoundTripper }
+type completeUnknownBodyTransport struct {
+	http.RoundTripper
+	tempDir string
+}
 
 func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	res, err := t.RoundTripper.RoundTrip(r)
@@ -50,7 +53,7 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 	if r.Method == http.MethodHead || res.StatusCode < 200 || res.StatusCode == 204 || res.StatusCode == 304 || res.Body == nil || res.Body == http.NoBody || res.ContentLength >= 0 {
 		return res, nil
 	}
-	file, err := os.CreateTemp("", "apt-proxy-download-*.tmp")
+	file, err := os.CreateTemp(t.tempDir, "apt-proxy-download-*.tmp")
 	if err != nil {
 		_ = res.Body.Close()
 		return nil, fmt.Errorf("prepare unknown-length download: %w", err)
