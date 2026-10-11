@@ -29,16 +29,34 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          set -euo pipefail
-          enabled=true
-          if [ "$EVENT_NAME" = release ]; then
-            message=$(git log -1 --format=%B)
-            if ! printf '%s\n' "$message" | grep -Eiq '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|skip-checks:[[:space:]]*true'; then
-              enabled=false
-              echo "Normal release commit: reports are handled by the tag push." >> "$GITHUB_STEP_SUMMARY"
-            fi
-          fi
-          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+          python3 - <<'PYTHON'
+          import os
+          import re
+          import subprocess
+
+          message = subprocess.check_output(["git", "log", "-1", "--format=%B"], text=True)
+          annotation = re.search(r"\[(skip ci|ci skip|no ci|skip actions|actions skip)\]", message, re.I)
+          # GitHub requires two empty lines before the final trailer section.
+          parts = message.rstrip("\n").rsplit("\n\n\n", 1)
+          valid_trailer = False
+          if len(parts) == 2:
+              block = parts[1].splitlines()
+              parsed = subprocess.check_output(
+                  ["git", "interpret-trailers", "--parse"], input=message, text=True
+              ).splitlines()
+              valid_trailer = bool(
+                  block and parsed
+                  and all(re.fullmatch(r"[A-Za-z0-9-]+:[ \t]*.*", line) for line in block)
+                  and re.fullmatch(r"skip-checks:[ \t]*true[ \t]*", block[-1])
+                  and re.fullmatch(r"skip-checks:[ \t]*true[ \t]*", parsed[-1])
+              )
+          enabled = os.environ["EVENT_NAME"] != "release" or bool(annotation) or valid_trailer
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"enabled={str(enabled).lower()}\n")
+          if not enabled:
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+                  summary.write("Normal release commit: reports are handled by the tag push.\n")
+          PYTHON
   reports:
     needs: release_gate
     if: needs.release_gate.outputs.enabled == 'true'
