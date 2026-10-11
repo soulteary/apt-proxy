@@ -1,0 +1,109 @@
+{
+  "schema_version": "1.0",
+  "tests": {
+    "total": 321,
+    "passed": 320,
+    "failed": 0,
+    "skipped": 1
+  },
+  "coverage": {
+    "covered_statements": 2054,
+    "total_statements": 2543,
+    "percentage": 80.77,
+    "threshold": 80
+  },
+  "packages": [
+    {
+      "name": "cmd/apt-proxy",
+      "status": "no_tests",
+      "tests": 0,
+      "failed": 0,
+      "coverage": 0
+    },
+    {
+      "name": "internal/api",
+      "status": "pass",
+      "tests": 33,
+      "failed": 0,
+      "coverage": 87.85
+    },
+    {
+      "name": "internal/benchmarks",
+      "status": "pass",
+      "tests": 21,
+      "failed": 0,
+      "coverage": 85.06
+    },
+    {
+      "name": "internal/cli",
+      "status": "pass",
+      "tests": 47,
+      "failed": 0,
+      "coverage": 59.73
+    },
+    {
+      "name": "internal/config",
+      "status": "pass",
+      "tests": 39,
+      "failed": 0,
+      "coverage": 73.2
+    },
+    {
+      "name": "internal/distro",
+      "status": "pass",
+      "tests": 30,
+      "failed": 0,
+      "coverage": 94.44
+    },
+    {
+      "name": "internal/errors",
+      "status": "pass",
+      "tests": 15,
+      "failed": 0,
+      "coverage": 94.29
+    },
+    {
+      "name": "internal/mirrors",
+      "status": "pass",
+      "tests": 16,
+      "failed": 0,
+      "coverage": 95.77
+    },
+    {
+      "name": "internal/passthrough",
+      "status": "pass",
+      "tests": 4,
+      "failed": 0,
+      "coverage": 94.44
+    },
+    {
+      "name": "internal/proxy",
+      "status": "pass",
+      "tests": 85,
+      "failed": 0,
+      "coverage": 82.65
+    },
+    {
+      "name": "internal/state",
+      "status": "pass",
+      "tests": 12,
+      "failed": 0,
+      "coverage": 94.64
+    },
+    {
+      "name": "internal/storage/s3vfs",
+      "status": "pass",
+      "tests": 13,
+      "failed": 0,
+      "coverage": 84.68
+    },
+    {
+      "name": "internal/system",
+      "status": "pass",
+      "tests": 6,
+      "failed": 0,
+      "coverage": 81.03
+    }
+  ],
+  "failures": null
+}
