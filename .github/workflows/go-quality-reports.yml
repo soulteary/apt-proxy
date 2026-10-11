@@ -83,8 +83,30 @@ jobs:
                                   for artifact in artifacts.get("artifacts", []):
                                       match = re.fullmatch(f"go-quality-stable-{run['id']}-([1-9][0-9]*)", artifact.get("name", ""))
                                       if match and int(match.group(1)) <= run["run_attempt"] and artifact.get("expired") is False:
-                                          enabled = False
-                                          break
+                                          attempt = int(match.group(1))
+                                          jobs_url = f"{base}/repos/{os.environ['REPOSITORY']}/actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100"
+                                          producer_succeeded = False
+                                          while jobs_url:
+                                              jobs_request = urllib.request.Request(jobs_url, headers=dict(request.headers))
+                                              with urllib.request.urlopen(jobs_request, timeout=30) as jobs_response:
+                                                  jobs = json.load(jobs_response)
+                                                  jobs_link = jobs_response.headers.get("Link", "")
+                                              producer_succeeded = producer_succeeded or any(
+                                                  job.get("name") == "Release and manual Go reports"
+                                                  and job.get("conclusion") == "success"
+                                                  for job in jobs.get("jobs", [])
+                                              )
+                                              jobs_url = None
+                                              for relation in jobs_link.split(","):
+                                                  if 'rel="next"' in relation:
+                                                      candidate = relation.strip().split(">", 1)[0].lstrip("<")
+                                                      if not candidate.startswith(base + "/"):
+                                                          raise RuntimeError("Unexpected jobs pagination API host")
+                                                      jobs_url = candidate
+                                                      break
+                                          if producer_succeeded:
+                                              enabled = False
+                                              break
                                   if not enabled:
                                       break
                                   artifact_url = None
@@ -127,6 +149,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ inputs.source_ref || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Record tested source
@@ -196,6 +219,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     concurrency:
       group: go-report-writeback-${{ github.repository }}-${{ needs.reports.outputs.source_sha }}
       cancel-in-progress: false
@@ -206,6 +230,8 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
           name: ${{ needs.reports.outputs.artifact_name }}
           path: ${{ runner.temp }}/go-quality-stable/.github
       - name: Commit only verified stable reports
