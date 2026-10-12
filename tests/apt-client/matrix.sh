@@ -8,7 +8,7 @@ mkdir -p "$evidence_root"
 evidence_root=$(cd "$evidence_root" && pwd -P)
 image_ids=()
 for client_image in "$@"; do
-  image_id=$(printf '%s' "$client_image" | tr '/:' '--')
+  image_id=$(printf '%s' "$client_image" | tr '/:' '--' | LC_ALL=C tr '[:upper:]' '[:lower:]')
   case "$image_id" in ""|.|..) echo "Invalid evidence directory name" >&2; exit 1 ;; esac
   # Validate the whole selection before clearing any previous evidence.
   for previous_id in "${image_ids[@]-}"; do
@@ -32,7 +32,7 @@ cd "$repo_root"
 CGO_ENABLED=0 GOOS=linux GOARCH="$go_arch" go build -o "$build_context/apt-proxy" ./cmd/apt-proxy
 cp tests/apt-client/{Dockerfile,fixture.py,run.sh} "$build_context/"
 for client_image in "$@"; do
-  image_id=$(printf '%s' "$client_image" | tr '/:' '--')
+  image_id=$(printf '%s' "$client_image" | tr '/:' '--' | LC_ALL=C tr '[:upper:]' '[:lower:]')
   docker build --platform "linux/$go_arch" --build-arg "APT_CLIENT_IMAGE=$client_image" -t "apt-proxy-client-test:$image_id" "$build_context"
   docker run --platform "linux/$go_arch" --rm --network bridge --mount "type=bind,src=$evidence_root/$image_id,dst=/evidence" "apt-proxy-client-test:$image_id"
 done
