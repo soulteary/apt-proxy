@@ -90,6 +90,9 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	if _, err := access.NewUpstream(cfg.UpstreamAccess); err != nil {
+		return nil, err
+	}
 	s := &Server{
 		downloadClients: downloadClients,
 		config:          cfg,
@@ -249,6 +252,7 @@ func (s *Server) initialize() error {
 	s.logPassthrough(allowlist)
 
 	ps, err := proxy.NewPackageStruct(proxy.Options{
+		UpstreamAccess:     s.config.UpstreamAccess,
 		State:              s.state,
 		Registry:           s.registry,
 		CacheDir:           s.config.CacheDir,

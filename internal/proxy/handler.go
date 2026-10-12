@@ -31,6 +31,7 @@ import (
 	logger "github.com/soulteary/logger-kit/v3"
 	tracing "github.com/soulteary/tracing-kit/v2"
 
+	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
@@ -230,6 +231,7 @@ type PackageStruct struct {
 
 // Options configures NewPackageStruct.
 type Options struct {
+	UpstreamAccess     *access.UpstreamConfig
 	State              *state.AppState
 	Registry           *distro.Registry
 	CacheDir           string
@@ -261,9 +263,21 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		log = logger.Default()
 	}
 
+	policy, err := access.NewUpstream(opts.UpstreamAccess)
+	if err != nil {
+		return nil, err
+	}
+	if policy != nil && opts.TransportOverride != nil {
+		return nil, errors.New("proxy: upstream policy cannot use an overridden transport")
+	}
 	transport := opts.TransportOverride
 	if transport == nil {
-		transport = NewRetryableTransport(NewUpstreamTransport(opts.EnableKeepAlive))
+		base := NewUpstreamTransport(opts.EnableKeepAlive)
+		var upstream http.RoundTripper = base
+		if policy != nil {
+			upstream = policy.Transport(base)
+		}
+		transport = NewRetryableTransport(upstream)
 	}
 
 	if opts.DownloadMaxBytes < 0 || opts.DownloadTotalBytes < 0 || opts.DownloadTimeout < 0 {

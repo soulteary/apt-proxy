@@ -32,6 +32,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	}
 
 	result := *base
+	if override.UpstreamAccess != nil {
+		result.UpstreamAccess = override.UpstreamAccess
+	}
 
 	if ex.Debug {
 		result.Debug = override.Debug
@@ -164,6 +167,9 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 
 	result := *base
+	if override.UpstreamAccess != nil {
+		result.UpstreamAccess = override.UpstreamAccess
+	}
 
 	// Override non-zero values
 	if override.Debug {

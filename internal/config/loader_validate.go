@@ -66,6 +66,9 @@ func ValidateConfig(config *Config) error {
 	if _, err := access.NewClients(config.Security.DownloadAllowCIDRs, config.Security.DownloadDenyCIDRs); err != nil {
 		return err
 	}
+	if _, err := access.NewUpstream(config.UpstreamAccess); err != nil {
+		return err
+	}
 	if config.Download.MaxSpoolMB < 0 || config.Download.TotalSpoolMB < 0 || config.Download.TimeoutSeconds < 0 {
 		return fmt.Errorf("download limits cannot be negative")
 	}

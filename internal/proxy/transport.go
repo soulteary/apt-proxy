@@ -15,6 +15,7 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -25,6 +26,8 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 
 	tracing "github.com/soulteary/tracing-kit/v2"
+
+	"github.com/soulteary/apt-proxy/internal/access"
 )
 
 // RetryableTransport wraps an http.RoundTripper with retry logic and tracing support
@@ -120,7 +123,7 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		resp, err := rt.baseTransport.RoundTrip(req)
 		if err != nil {
 			lastErr = err
-			if !canRetry || !rt.retryOpts.IsRetryableError(err, 0) {
+			if errors.Is(err, access.ErrUpstreamDenied) || !canRetry || !rt.retryOpts.IsRetryableError(err, 0) {
 				tracing.RecordError(span, err)
 				return nil, fmt.Errorf("failed to execute request: %w", err)
 			}
