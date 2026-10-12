@@ -332,7 +332,7 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 		return attachDebianSecurityMirror(mode, st, rewriter)
 	}
 
-	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(reg, mode)
+	mirrorURLs := benchEngine(bench).MirrorCandidates(reg, mode)
 	// Use cache-aware benchmark to avoid repeated testing
 	fastest, err := benchEngine(bench).GetTheFastestMirrorWithCache(mode, mirrorURLs, benchmarkURL)
 	if err != nil {
@@ -369,7 +369,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		return attachDebianSecurityMirror(mode, st, rewriter)
 	}
 
-	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(reg, mode)
+	mirrorURLs := benchEngine(bench).MirrorCandidates(reg, mode)
 
 	// Check if we have a cached result
 	if cached, ok := engine.Cache().GetCachedResult(mode); ok {

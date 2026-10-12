@@ -74,7 +74,13 @@ var ubuntuGeoMirrorLookup = GetUbuntuMirrorUrlsByGeo
 // GetGeoMirrorUrlsByMode returns the candidate upstream mirror URLs
 // for the given proxy mode. When reg is non-nil, registry-loaded
 // mirrors are preferred over the compile-time built-ins.
-func GetGeoMirrorUrlsByMode(reg *distro.Registry, mode int) (mirrors []string) {
+func GetGeoMirrorUrlsByMode(reg *distro.Registry, mode int) []string {
+	return GetGeoMirrorUrlsByModeWithLookup(reg, mode, ubuntuGeoMirrorLookup)
+}
+
+// GetGeoMirrorUrlsByModeWithLookup uses caller-owned discovery without mutating
+// process-wide lookup state. Configuration and built-in fallback remain unchanged.
+func GetGeoMirrorUrlsByModeWithLookup(reg *distro.Registry, mode int, lookup func() ([]string, error)) (mirrors []string) {
 	// Prefer user-configured registry mirrors. The daemon also seeds the
 	// registry with built-ins, which must not suppress Ubuntu geo discovery.
 	if reg != nil {
@@ -93,8 +99,8 @@ func GetGeoMirrorUrlsByMode(reg *distro.Registry, mode int) (mirrors []string) {
 	// Ubuntu's mirrors.txt endpoint lists archive mirrors. It does not
 	// guarantee that those hosts also publish the distinct ubuntu-ports
 	// archive, so only use geo-discovered candidates for regular Ubuntu.
-	if mode == distro.TypeUbuntu {
-		online, err := ubuntuGeoMirrorLookup()
+	if mode == distro.TypeUbuntu && lookup != nil {
+		online, err := lookup()
 		if err == nil && len(online) > 0 {
 			return online
 		}
