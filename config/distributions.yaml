@@ -91,6 +91,13 @@ distributions:
       - pattern: "udeb$"
         cache_control: "max-age=100000"
         rewrite: true
+      # Common installer files, including mutable current/ paths.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|netboot\.tar\.gz|mini\.iso|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$'
+        cache_control: "max-age=3600"
+        rewrite: true
       # Versioned source artifacts; this does not enable arbitrary archive caching.
       - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
         cache_control: "max-age=100000"
@@ -159,6 +166,13 @@ distributions:
       - pattern: "udeb$"
         cache_control: "max-age=100000"
         rewrite: true
+      # Common installer files, including mutable current/ paths.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|netboot\.tar\.gz|mini\.iso|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$'
+        cache_control: "max-age=3600"
+        rewrite: true
       # Versioned source artifacts; this does not enable arbitrary archive caching.
       - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
         cache_control: "max-age=100000"
@@ -220,6 +234,13 @@ distributions:
         rewrite: true
       - pattern: "udeb$"
         cache_control: "max-age=100000"
+        rewrite: true
+      # Common installer files, including mutable current/ paths.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|netboot\.tar\.gz|mini\.iso|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$'
+        cache_control: "max-age=3600"
         rewrite: true
       # Versioned source artifacts; this does not enable arbitrary archive caching.
       - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'

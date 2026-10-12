@@ -1397,3 +1397,10 @@ Ubuntu、Ubuntu Ports 和 Debian 的源码池文件现可经配置的镜像代�
 及原始归档的 `.asc` 签名。规则仅匹配 Debian 风格源码池中的带版本文件，
 保留上游缓存指令。已有自定义发行版 YAML 需要明确加入新规则。
 支持范围和客户端验证职责见 [源码包覆盖说明](docs/apt-source-packages.md)。
+
+### Debian 系安装器文件
+
+常用 netboot、hd-media、cdrom 启动文件及安装器校验清单现可经配置的镜像
+代理并缓存。规则限定到 Debian 风格安装器 `images/` 或 `legacy-images/` 目录中的具体文件名，默认缓存
+3600 秒；自定义 YAML 需显式补充新规则。支持范围及客户端校验职责见
+[安装器文件覆盖说明](docs/apt-installer-files.md)。

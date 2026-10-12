@@ -26,6 +26,9 @@ var debStyleCachePatterns = []struct {
 }{
 	{regexp.MustCompile(`deb$`), `max-age=100000`},
 	{regexp.MustCompile(`udeb$`), `max-age=100000`},
+	// Common installer files are mutable, including those under current/.
+	{regexp.MustCompile(`(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$`), `max-age=3600`},
+	{regexp.MustCompile(`(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|netboot\.tar\.gz|mini\.iso|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$`), `max-age=3600`},
 	// Versioned source artifacts in Debian-style pool layouts, including legacy security pools.
 	{regexp.MustCompile(`(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$`), `max-age=100000`},
 	{regexp.MustCompile(`InRelease$`), `max-age=3600`},

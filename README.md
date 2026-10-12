@@ -1485,3 +1485,11 @@ Rules are limited to versioned source filenames in Debian-style pools and
 preserve upstream cache directives. Existing custom distribution YAML must
 adopt the new rule explicitly. See [source package coverage](docs/apt-source-packages.md)
 for supported formats and client-side verification responsibilities.
+
+### Debian-family installer files
+
+Common netboot, hd-media and cdrom boot files and installer checksum manifests
+can now use configured mirrors and the cache. Rules require exact filenames in
+Debian-style `images/` or `legacy-images/` installer directories, with fallback `max-age=3600`. Custom YAML
+must adopt the new rules explicitly. See [installer file coverage](docs/apt-installer-files.md)
+for the supported subset and client verification responsibilities.
