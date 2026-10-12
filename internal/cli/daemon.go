@@ -242,15 +242,18 @@ func (s *Server) initialize() error {
 	s.logPassthrough(allowlist)
 
 	ps, err := proxy.NewPackageStruct(proxy.Options{
-		State:           s.state,
-		Registry:        s.registry,
-		CacheDir:        s.config.CacheDir,
-		DownloadTempDir: s.downloadTempDir(),
-		Logger:          s.log,
-		Mode:            s.state.GetProxyMode(),
-		EnableKeepAlive: s.config.UpstreamKeepAlive,
-		Async:           true,
-		Passthrough:     allowlist,
+		State:              s.state,
+		Registry:           s.registry,
+		CacheDir:           s.config.CacheDir,
+		DownloadTempDir:    s.downloadTempDir(),
+		DownloadMaxBytes:   s.config.Download.MaxSpoolMB * (1 << 20),
+		DownloadTotalBytes: s.config.Download.TotalSpoolMB * (1 << 20),
+		DownloadTimeout:    time.Duration(s.config.Download.TimeoutSeconds) * time.Second,
+		Logger:             s.log,
+		Mode:               s.state.GetProxyMode(),
+		EnableKeepAlive:    s.config.UpstreamKeepAlive,
+		Async:              true,
+		Passthrough:        allowlist,
 	})
 	if err != nil {
 		return wrapErr(apperrors.ErrServerInit, "failed to initialize proxy", err)
