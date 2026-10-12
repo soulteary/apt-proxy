@@ -75,6 +75,9 @@ func ValidateConfig(config *Config) error {
 	if config.Download.MaxSpoolMB > math.MaxInt64/(1<<20) || config.Download.TotalSpoolMB > math.MaxInt64/(1<<20) || config.Download.TimeoutSeconds > math.MaxInt64/int64(time.Second) {
 		return fmt.Errorf("download limits overflow internal units")
 	}
+	if err := ValidateCacheIntegrity(config.Cache.Integrity); err != nil {
+		return err
+	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address must be specified")
 	}

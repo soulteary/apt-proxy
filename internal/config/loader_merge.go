@@ -32,6 +32,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	}
 
 	result := *base
+	if override.Cache.Integrity != "" {
+		result.Cache.Integrity = override.Cache.Integrity
+	}
 	if override.UpstreamAccess != nil {
 		result.UpstreamAccess = override.UpstreamAccess
 	}
@@ -167,6 +170,9 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 
 	result := *base
+	if override.Cache.Integrity != "" {
+		result.Cache.Integrity = override.Cache.Integrity
+	}
 	if override.UpstreamAccess != nil {
 		result.UpstreamAccess = override.UpstreamAccess
 	}

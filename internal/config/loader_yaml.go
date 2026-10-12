@@ -39,6 +39,7 @@ type YAMLConfig struct {
 	} `yaml:"server"`
 
 	Cache struct {
+		Integrity          string `yaml:"integrity"`
 		Dir                string `yaml:"dir"`
 		MaxSizeGB          int64  `yaml:"max_size_gb"`
 		TTLHours           int    `yaml:"ttl_hours"`
@@ -180,6 +181,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			Alpine:         yamlCfg.Mirrors.Alpine,
 		},
 		Cache: CacheConfig{
+			Integrity:          yamlCfg.Cache.Integrity,
 			MaxSizeGB:          yamlCfg.Cache.MaxSizeGB,
 			TTLHours:           yamlCfg.Cache.TTLHours,
 			CleanupIntervalMin: yamlCfg.Cache.CleanupIntervalMin,
