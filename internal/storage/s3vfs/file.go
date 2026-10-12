@@ -15,11 +15,14 @@
 package s3vfs
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
 	"os"
+	"time"
+
+	"github.com/soulteary/apt-proxy/internal/resource"
+	httpcache "github.com/soulteary/httpcache-kit/v4"
 
 	"github.com/minio/minio-go/v7"
 )
@@ -54,6 +57,9 @@ func (r *s3RFile) ReadAt(p []byte, off int64) (int, error)   { return r.obj.Read
 // disk, while large .deb / .rpm payloads spill exactly once.
 const inlineSpillThreshold = 32 << 20
 
+// Single PUT avoids SDK multipart staging copies outside the shared budget.
+const maxBoundedObjectBytes int64 = 5 << 30
+
 // s3WFile implements vfs.WFile. It buffers writes in memory up to inlineMax
 // bytes; if the writer keeps going past that threshold it transparently
 // spills to an anonymous temporary file. Close() finally PUTs the accumulated
@@ -68,11 +74,15 @@ type s3WFile struct {
 	tmpDir    string
 	inlineMax int64
 
-	inlineBuf bytes.Buffer
-	tmp       *os.File
-	spilled   bool
-	written   int64
-	closed    bool
+	inlineBuf               inlineBuffer
+	budget                  httpcache.StagingBudget
+	inlineLease, spillLease httpcache.StagingLease
+	uploadTimeout           time.Duration
+	writeErr                error
+	tmp                     *os.File
+	spilled                 bool
+	written                 int64
+	closed                  bool
 
 	onClose func(logical string) // metadata cache invalidation hook
 }
@@ -101,21 +111,41 @@ func (w *s3WFile) Write(p []byte) (int, error) {
 	if w.closed {
 		return 0, os.ErrClosed
 	}
+	if w.writeErr != nil {
+		return 0, w.writeErr
+	}
+	if int64(len(p)) > maxBoundedObjectBytes-w.written {
+		w.writeErr = resource.ErrObjectTooLarge
+		return 0, w.writeErr
+	}
 
 	// Decide whether this Write would cross the inline threshold. We spill
 	// before the write so the buffer never exceeds inlineMax in memory.
 	if !w.spilled && w.written+int64(len(p)) > w.inlineMax {
 		if err := w.spill(); err != nil {
+			w.writeErr = err
 			return 0, err
 		}
 	}
 
 	if w.spilled {
+		if err := w.reserve(&w.spillLease, resource.StageS3Spill, int64(len(p))); err != nil {
+			w.writeErr = err
+			return 0, err
+		}
 		n, err := w.tmp.Write(p)
+		if w.spillLease != nil {
+			w.spillLease.Release(int64(len(p) - n))
+		}
+		w.writeErr = err
 		w.written += int64(n)
 		return n, err
 	}
 
+	if err := w.reserve(&w.inlineLease, resource.StageS3Inline, int64(len(p))); err != nil {
+		w.writeErr = err
+		return 0, err
+	}
 	n, err := w.inlineBuf.Write(p)
 	w.written += int64(n)
 	return n, err
@@ -136,12 +166,20 @@ func (w *s3WFile) spill() error {
 		_ = tmp.Close()
 		return err
 	}
+	if err := w.reserve(&w.spillLease, resource.StageS3Spill, int64(w.inlineBuf.Len())); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if w.inlineBuf.Len() > 0 {
-		if _, err := tmp.Write(w.inlineBuf.Bytes()); err != nil {
+		if _, err := io.Copy(tmp, w.inlineBuf.Reader()); err != nil {
 			_ = tmp.Close()
 			return err
 		}
 		w.inlineBuf.Reset()
+	}
+	if w.inlineLease != nil {
+		w.inlineLease.Close()
+		w.inlineLease = nil
 	}
 	w.tmp = tmp
 	w.spilled = true
@@ -157,6 +195,31 @@ func (w *s3WFile) Close() error {
 		return nil
 	}
 	w.closed = true
+	defer func() {
+		w.inlineBuf.Reset()
+		if w.inlineLease != nil {
+			w.inlineLease.Close()
+		}
+		if w.spillLease != nil {
+			w.spillLease.Close()
+		}
+	}()
+	if w.writeErr != nil {
+		if w.tmp != nil {
+			_ = w.tmp.Close()
+		}
+		return w.writeErr
+	}
+	ctx := w.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	limit := w.uploadTimeout
+	if limit <= 0 {
+		limit = 20 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 
 	defer func() {
 		if w.onClose != nil {
@@ -168,7 +231,8 @@ func (w *s3WFile) Close() error {
 		// Use a generic content-type; the actual HTTP body sent to clients
 		// re-derives it from cached headers, so the S3 metadata is purely
 		// informative.
-		ContentType: "application/octet-stream",
+		ContentType:      "application/octet-stream",
+		DisableMultipart: true,
 	}
 
 	if w.spilled {
@@ -176,11 +240,35 @@ func (w *s3WFile) Close() error {
 		if _, err := w.tmp.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		_, err := w.client.PutObject(w.ctx, w.bucket, w.key, w.tmp, w.written, opts)
+		_, err := w.client.PutObject(ctx, w.bucket, w.key, w.tmp, w.written, opts)
 		return err
 	}
 
-	body := bytes.NewReader(w.inlineBuf.Bytes())
-	_, err := w.client.PutObject(w.ctx, w.bucket, w.key, body, int64(w.inlineBuf.Len()), opts)
+	body := w.inlineBuf.Reader()
+	_, err := w.client.PutObject(ctx, w.bucket, w.key, body, int64(w.inlineBuf.Len()), opts)
 	return err
+}
+
+func (w *s3WFile) reserve(slot *httpcache.StagingLease, kind httpcache.StageKind, n int64) error {
+	if w.budget == nil {
+		return nil
+	}
+	if *slot == nil {
+		ctx := w.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		lease, err := w.budget.NewLease(ctx, kind)
+		if err != nil {
+			if lease != nil {
+				lease.Close()
+			}
+			return err
+		}
+		if lease == nil {
+			return errors.New("s3vfs: staging budget returned nil lease")
+		}
+		*slot = lease
+	}
+	return (*slot).Reserve(n)
 }

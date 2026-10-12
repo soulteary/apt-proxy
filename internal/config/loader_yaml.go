@@ -31,6 +31,7 @@ import (
 // YAMLConfig represents the YAML configuration file structure.
 // It uses a more user-friendly structure that maps to the internal Config.
 type YAMLConfig struct {
+	Resources      ResourceConfig         `yaml:"resources"`
 	UpstreamAccess *access.UpstreamConfig `yaml:"upstream_access"`
 	Server         struct {
 		Host  string `yaml:"host"`
@@ -199,6 +200,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
 		},
+		Resources:      yamlCfg.Resources,
 		Download:       yamlCfg.Download,
 		UpstreamAccess: yamlCfg.UpstreamAccess,
 		Storage: StorageConfig{

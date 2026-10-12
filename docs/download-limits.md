@@ -2,7 +2,9 @@
 
 The proxy limits unknown-length response spooling by both response size and a
 budget shared by all downloads in the same proxy instance. Known-length bodies
-continue to stream without consuming this spool budget.
+stream without consuming this legacy spool sub-limit, while the
+[shared resource manager](resource-limits.md) also bounds their object size,
+active downloads and cache staging copies.
 
 Configure limits in the existing YAML configuration file:
 
@@ -30,8 +32,9 @@ later requests. If the filename cannot be unlinked, the proxy closes the file
 and fails before copying any body bytes or reserving body capacity. Named files
 from older versions require an offline cleanup; see
 [interrupted downloads](interrupted-downloads.md).
-Limit failures before forwarding headers return the reverse
-proxy's upstream-error response (502) and do not cache a partial object.
+Legacy spool size/budget failures before forwarding headers return 502 and do
+not cache a partial object. A refusal by the shared temporary-resource or active
+download budget returns 503 with `Retry-After: 1`.
 
 The timeout starts before the upstream request, including its retries and header
 wait, and remains active during reads of a known-length body or spooling of an
@@ -43,11 +46,12 @@ before their headers are forwarded. The timer is released when the upstream body
 closes; it does not impose a deadline on delivering a completed spool file to a
 slow client. Protocol-upgrade responses bypass spooling and preserve their bidirectional body interface; the upstream timeout also applies to their connection context.
 
-The shared budget is per instance, not distributed across processes. It covers
-only the unknown-length guard's temporary files, not the permanent cache,
-httpcache-kit's separate temporary copy or S3 write buffers. It is not a global
-filesystem quota or a limit on known-length package sizes. Operators should
-leave space for these other consumers and configure limits for their workload.
+The legacy spool sub-limit is per instance and covers the unknown-length guard's
+temporary files. The additional shared resource budget covers that spool,
+httpcache-kit's response/native staging copies and S3 payload buffers together.
+Neither counter is a global filesystem quota; persistent cache admission remains
+separate. See [resource limits](resource-limits.md) for known-length admission,
+disk headroom checks and the scope of each counter.
 
 Regression tests cover exact/oversized response admission, eight simultaneous
 spools competing for a two-response budget, release and reuse, temporary-file

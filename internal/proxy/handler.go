@@ -37,6 +37,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
+	"github.com/soulteary/apt-proxy/internal/resource"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
@@ -241,6 +242,7 @@ type PackageStruct struct {
 
 // Options configures NewPackageStruct.
 type Options struct {
+	Resources          *resource.Manager
 	UpstreamAccess     *access.UpstreamConfig
 	State              *state.AppState
 	Registry           *distro.Registry
@@ -313,10 +315,15 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		transport:   transport,
 		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
-			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}},
+			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}, resources: opts.Resources},
 			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 				log.Error().Err(logsafe.Error(err)).Msg("upstream request failed")
-				w.WriteHeader(http.StatusBadGateway)
+				if errors.Is(err, resource.ErrAdmission) {
+					w.Header().Set("Retry-After", "1")
+					w.WriteHeader(http.StatusServiceUnavailable)
+				} else {
+					w.WriteHeader(http.StatusBadGateway)
+				}
 			},
 			ModifyResponse: func(resp *http.Response) error {
 				protectPrivateRepositoryResponse(resp)
