@@ -1493,3 +1493,7 @@ can now use configured mirrors and the cache. Rules require exact filenames in
 Debian-style `images/` or `legacy-images/` installer directories, with fallback `max-age=3600`. Custom YAML
 must adopt the new rules explicitly. See [installer file coverage](docs/apt-installer-files.md)
 for the supported subset and client verification responsibilities.
+
+Common installer PXE/UEFI resources are also covered: EFI loaders, the default
+PXELINUX configuration, boot menus and GRUB modules. Paths stay confined to
+installer netboot trees; this does not add DHCP/TFTP or boot configuration rewriting.
