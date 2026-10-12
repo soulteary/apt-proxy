@@ -1541,6 +1541,12 @@ now use the mirror and cache, including clients that fall back from by-hash URLs
 Rules stay confined to `dists/<suite>/<component>/dep11/`; this does not allow
 arbitrary YAML/JSON files or tarballs. See [AppStream coverage](docs/apt-appstream.md).
 
+## Persistent cache integrity
+
+Persistent cache SHA256 verification is enabled by default. See
+[cache integrity](docs/cache-integrity.md) for legacy-cache migration, storage
+I/O cost and the explicit `cache.integrity: none` opt-out.
+
 ### Complete repository snapshots and offline access
 
 `apt-proxy repository` can prefetch a selected suite/component/architecture's

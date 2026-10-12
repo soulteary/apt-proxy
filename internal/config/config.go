@@ -140,6 +140,8 @@ type MirrorConfig struct {
 // `yaml:"-"` so the struct does not falsely advertise YAML support for
 // "max_size" / "ttl" / "cleanup_interval" etc.
 type CacheConfig struct {
+	// Integrity is sha256 (default) or none, configured via YAML.
+	Integrity string `yaml:"-"`
 	// MaxSize is the maximum cache size in bytes (default: 10GB).
 	// Internal representation; not read from YAML.
 	MaxSize int64 `yaml:"-"`

@@ -97,6 +97,9 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	if _, err := access.NewUpstream(cfg.UpstreamAccess); err != nil {
 		return nil, err
 	}
+	if err := config.ValidateCacheIntegrity(cfg.Cache.Integrity); err != nil {
+		return nil, err
+	}
 	s := &Server{
 		downloadClients: downloadClients,
 		config:          cfg,
@@ -395,6 +398,7 @@ func (s *Server) initCache(cacheConfig *httpcache.CacheConfig) (httpcache.Extend
 // buildCacheConfig creates a cache configuration from the application config
 func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
 	cacheConfig := httpcache.DefaultCacheConfig()
+	applyCacheIntegrity(cacheConfig, s.config.Cache.Integrity)
 
 	// Apply custom settings if provided
 	if s.config.Cache.MaxSize > 0 {
