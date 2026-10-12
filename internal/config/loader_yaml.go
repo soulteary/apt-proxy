@@ -90,7 +90,8 @@ type YAMLConfig struct {
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors.
 	// Pointer to distinguish "user did not set" (nil → leave to defaults
 	// or CLI/ENV) from "user explicitly set false" (disable keep-alive).
-	UpstreamKeepAlive *bool `yaml:"upstream_keep_alive"`
+	Download          DownloadConfig `yaml:"download"`
+	UpstreamKeepAlive *bool          `yaml:"upstream_keep_alive"`
 }
 
 // LoadConfigFile loads configuration from a YAML file.
@@ -189,6 +190,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
 		},
+		Download: yamlCfg.Download,
 		Storage: StorageConfig{
 			Backend: yamlCfg.Storage.Backend,
 			S3: S3Config{

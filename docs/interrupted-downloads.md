@@ -20,13 +20,15 @@ promoted to ordinary response headers, and the trailer announcement is removed
 so fields such as Digest remain visible to clients and cache hits. Closing that response removes the
 file. Disk deployments spool in `cache_dir`; S3 deployments use
 `storage.s3.temp_dir` (or the system temporary directory when unset). The
-selected directory must already exist and be writable. HEAD, no-body responses and protocol upgrades retain their existing
-behavior.
+selected directory must already exist and be writable. HEAD and no-body responses retain their existing framing. Protocol upgrades
+bypass spooling and preserve bidirectional bodies; the total upstream timeout
+also applies to their connection context.
 
 This intentionally delays the first response byte for unknown-length downloads
 and temporarily consumes space proportional to their size. It keeps memory
-bounded, but does not introduce a disk quota, an overall download deadline or
-persisted partial-segment resume. Known-length streaming is unchanged. Successful
+bounded. [Download limits](download-limits.md) now bound the guard's per-response
+and shared temporary usage and upstream fetch time; persisted partial-segment
+resume is still unsupported. Known-length streaming is unchanged. Successful
 unknown-length responses subsequently use the normal cache storage path, which
 can require an additional temporary copy.
 

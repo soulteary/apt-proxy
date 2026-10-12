@@ -230,16 +230,19 @@ type PackageStruct struct {
 
 // Options configures NewPackageStruct.
 type Options struct {
-	State             *state.AppState
-	Registry          *distro.Registry
-	CacheDir          string
-	DownloadTempDir   string // directory for unknown-length download spools; empty uses os.TempDir()
-	Logger            *logger.Logger
-	Mode              int
-	EnableKeepAlive   bool
-	Async             bool              // when true, use async (non-blocking) benchmarks during construction
-	TransportOverride http.RoundTripper // optional: caller-supplied transport (mainly for tests)
-	Passthrough       *passthrough.List // optional: allowlisted third-party origins
+	State              *state.AppState
+	Registry           *distro.Registry
+	CacheDir           string
+	DownloadMaxBytes   int64
+	DownloadTotalBytes int64
+	DownloadTimeout    time.Duration
+	DownloadTempDir    string // directory for unknown-length download spools; empty uses os.TempDir()
+	Logger             *logger.Logger
+	Mode               int
+	EnableKeepAlive    bool
+	Async              bool              // when true, use async (non-blocking) benchmarks during construction
+	TransportOverride  http.RoundTripper // optional: caller-supplied transport (mainly for tests)
+	Passthrough        *passthrough.List // optional: allowlisted third-party origins
 }
 
 // NewPackageStruct constructs a fully wired PackageStruct using the
@@ -263,6 +266,13 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		transport = NewRetryableTransport(NewUpstreamTransport(opts.EnableKeepAlive))
 	}
 
+	if opts.DownloadMaxBytes < 0 || opts.DownloadTotalBytes < 0 || opts.DownloadTimeout < 0 {
+		return nil, errors.New("proxy: download limits cannot be negative")
+	}
+	totalBytes := opts.DownloadTotalBytes
+	if totalBytes == 0 {
+		totalBytes = DefaultTotalSpoolBytes
+	}
 	mode := opts.Mode
 	bench := benchmarks.NewEngine()
 	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async, bench)
@@ -279,7 +289,7 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		transport:   transport,
 		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
-			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir},
+			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}},
 			ModifyResponse: func(resp *http.Response) error {
 				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)
 				applyRepositoryCachePolicy(resp.Header, resp.StatusCode, rule)

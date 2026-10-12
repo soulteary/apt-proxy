@@ -1445,3 +1445,7 @@ This project builds upon the excellent work of:
 ---
 
 Made with ❤️ by the APT Proxy community
+
+### Download resource limits
+
+Unknown-length downloads default to a 1 GiB per-response spool limit and a 4 GiB shared spool budget per instance. Upstream fetches default to a 20-minute total timeout. Configure `download.max_spool_mb`, `download.total_spool_mb`, and `download.timeout_seconds` in YAML; zero selects the defaults. See [download limits](docs/download-limits.md) for scope and failure behavior.

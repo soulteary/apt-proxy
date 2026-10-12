@@ -208,6 +208,17 @@ func MergeConfigs(base, override *Config) *Config {
 		result.Cache.CleanupInterval = override.Cache.CleanupInterval
 	}
 
+	// Preserve zero fields from the base; retain nonzero values for validation.
+	if override.Download.MaxSpoolMB != 0 {
+		result.Download.MaxSpoolMB = override.Download.MaxSpoolMB
+	}
+	if override.Download.TotalSpoolMB != 0 {
+		result.Download.TotalSpoolMB = override.Download.TotalSpoolMB
+	}
+	if override.Download.TimeoutSeconds != 0 {
+		result.Download.TimeoutSeconds = override.Download.TimeoutSeconds
+	}
+
 	// Merge TLSConfig
 	if override.TLS.Enabled {
 		result.TLS.Enabled = override.TLS.Enabled

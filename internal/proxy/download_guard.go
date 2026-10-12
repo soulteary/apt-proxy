@@ -15,10 +15,14 @@
 package proxy
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"sync"
+	"time"
 )
 
 // abortSafeHandler contains ReverseProxy's intentional copy-error panic in the
@@ -42,24 +46,64 @@ func (h *abortSafeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // signal observable before any partial object can be cached.
 type completeUnknownBodyTransport struct {
 	http.RoundTripper
-	tempDir string
+	tempDir  string
+	maxBytes int64
+	timeout  time.Duration
+	budget   *spoolBudget
+	initOnce sync.Once
 }
 
 func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	res, err := t.RoundTripper.RoundTrip(r)
+	t.initOnce.Do(func() {
+		if t.maxBytes == 0 {
+			t.maxBytes = DefaultMaxSpoolBytes
+		}
+		if t.timeout == 0 {
+			t.timeout = DefaultDownloadTimeout
+		}
+		if t.budget == nil {
+			t.budget = &spoolBudget{limit: DefaultTotalSpoolBytes}
+		}
+	})
+	ctx, cancel := context.WithTimeout(r.Context(), t.timeout)
+	res, err := t.RoundTripper.RoundTrip(r.WithContext(ctx))
 	if err != nil {
+		cancel()
 		return nil, err
 	}
-	if r.Method == http.MethodHead || res.StatusCode < 200 || res.StatusCode == 204 || res.StatusCode == 304 || res.Body == nil || res.Body == http.NoBody || res.ContentLength >= 0 {
+	if res.StatusCode == http.StatusSwitchingProtocols {
+		if body, ok := res.Body.(io.ReadWriteCloser); ok {
+			upgrade := &timeoutUpgradeBody{ReadWriteCloser: body, cancel: cancel}
+			// The HTTP transport transfers connection ownership after 101 and no
+			// longer interrupts reads when the request context expires.
+			upgrade.stop = context.AfterFunc(ctx, func() { _ = upgrade.closeBody() })
+			if halfCloser, ok := body.(interface{ CloseWrite() error }); ok {
+				res.Body = &timeoutUpgradeHalfCloser{timeoutUpgradeBody: upgrade, closeWriter: halfCloser}
+			} else {
+				res.Body = upgrade
+			}
+		} else {
+			cancel()
+		}
 		return res, nil
 	}
+	if r.Method == http.MethodHead || res.StatusCode < 200 || res.StatusCode == 204 || res.StatusCode == 304 || res.Body == nil || res.Body == http.NoBody {
+		cancel()
+		return res, nil
+	}
+	res.Body = &timeoutBody{ReadCloser: res.Body, ctx: ctx, cancel: cancel}
+	if res.ContentLength >= 0 {
+		return res, nil
+	}
+	defer cancel()
 	file, err := os.CreateTemp(t.tempDir, "apt-proxy-download-*.tmp")
 	if err != nil {
 		_ = res.Body.Close()
 		return nil, fmt.Errorf("prepare unknown-length download: %w", err)
 	}
 	path := file.Name()
-	size, copyErr := io.Copy(file, res.Body)
+	writer := &budgetWriter{writer: file, budget: t.budget, max: t.maxBytes}
+	size, copyErr := io.Copy(writer, res.Body)
 	closeErr := res.Body.Close()
 	if copyErr == nil {
 		copyErr = closeErr
@@ -68,11 +112,11 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 		_, copyErr = file.Seek(0, io.SeekStart)
 	}
 	if copyErr != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return nil, fmt.Errorf("incomplete unknown-length download: %w", copyErr)
+		spool := &downloadFile{File: file, path: path, release: writer.release}
+		cleanupErr := spool.Close()
+		return nil, fmt.Errorf("incomplete unknown-length download: %w", errors.Join(copyErr, cleanupErr))
 	}
-	res.Body = &downloadFile{File: file, path: path}
+	res.Body = &downloadFile{File: file, path: path, release: writer.release}
 	res.ContentLength = size
 	res.TransferEncoding = nil
 	if res.Header == nil {
@@ -93,14 +137,25 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 
 type downloadFile struct {
 	*os.File
-	path string
+	path      string
+	release   func()
+	closeOnce sync.Once
+	closeErr  error
+	cleanupMu sync.Mutex
 }
 
 func (f *downloadFile) Close() error {
-	err := f.File.Close()
+	f.cleanupMu.Lock()
+	defer f.cleanupMu.Unlock()
+	f.closeOnce.Do(func() { f.closeErr = f.File.Close() })
 	removeErr := os.Remove(f.path)
-	if err != nil {
-		return err
+	if os.IsNotExist(removeErr) {
+		removeErr = nil
 	}
-	return removeErr
+	// Failed deletion still consumes disk: keep it charged, allowing a later
+	// Close to retry removal without closing the file descriptor again.
+	if removeErr == nil && f.release != nil {
+		f.release()
+	}
+	return errors.Join(f.closeErr, removeErr)
 }
