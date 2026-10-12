@@ -230,6 +230,12 @@ func MergeConfigs(base, override *Config) *Config {
 		result.TLS.KeyFile = override.TLS.KeyFile
 	}
 
+	if override.Security.DownloadAllowCIDRs != nil {
+		result.Security.DownloadAllowCIDRs = append([]string(nil), override.Security.DownloadAllowCIDRs...)
+	}
+	if override.Security.DownloadDenyCIDRs != nil {
+		result.Security.DownloadDenyCIDRs = append([]string(nil), override.Security.DownloadDenyCIDRs...)
+	}
 	// Merge SecurityConfig
 	if override.Security.APIKey != "" {
 		result.Security.APIKey = override.Security.APIKey

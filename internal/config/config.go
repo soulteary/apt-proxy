@@ -90,6 +90,10 @@ type S3Config struct {
 
 // SecurityConfig holds security-related configuration
 type SecurityConfig struct {
+	// DownloadAllowCIDRs restricts package downloads by connection peer. Empty allows all.
+	DownloadAllowCIDRs []string `yaml:"download_allow_cidrs"`
+	// DownloadDenyCIDRs takes precedence over the allow list.
+	DownloadDenyCIDRs []string `yaml:"download_deny_cidrs"`
 	// APIKey is the key required for accessing protected API endpoints.
 	// If empty, API authentication is disabled.
 	APIKey string `yaml:"api_key"`

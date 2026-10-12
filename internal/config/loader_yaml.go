@@ -58,7 +58,9 @@ type YAMLConfig struct {
 	} `yaml:"tls"`
 
 	Security struct {
-		APIKey string `yaml:"api_key"`
+		DownloadAllowCIDRs []string `yaml:"download_allow_cidrs"`
+		DownloadDenyCIDRs  []string `yaml:"download_deny_cidrs"`
+		APIKey             string   `yaml:"api_key"`
 		// Pointer preserves the distinction between an omitted value (API key
 		// implies authentication) and an explicit false override.
 		EnableAPIAuth         *bool    `yaml:"enable_api_auth"`
@@ -185,6 +187,8 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			KeyFile:  yamlCfg.TLS.KeyFile,
 		},
 		Security: SecurityConfig{
+			DownloadAllowCIDRs:    append([]string(nil), yamlCfg.Security.DownloadAllowCIDRs...),
+			DownloadDenyCIDRs:     append([]string(nil), yamlCfg.Security.DownloadDenyCIDRs...),
 			APIKey:                yamlCfg.Security.APIKey,
 			EnableAPIAuth:         enableAPIAuth,
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
