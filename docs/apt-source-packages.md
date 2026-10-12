@@ -37,8 +37,9 @@ and valid repository metadata. This change adds routing/cache coverage, not
 source-list configuration, dependency resolution, archive extraction, signature
 or repository checksum verification. Existing custom distribution YAML files
 must add the source rule themselves or adopt the updated shipped example;
-they are not silently modified. Installer images, release checksum listings and
-other unsupported repository artifacts remain outside this batch.
+they are not silently modified. Common installer boot files and manifests have separate
+[installer rules](apt-installer-files.md); other repository artifacts are not
+automatically enabled by the source pool rules.
 
 Tests exercise built-in and shipped YAML rules across all three distributions,
 negative suffix/path cases and actual daemon mirror rewriting, byte preservation,
