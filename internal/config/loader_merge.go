@@ -32,6 +32,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	}
 
 	result := *base
+	if override.SharedCache != nil {
+		result.SharedCache = override.SharedCache
+	}
 	mergeResourceConfig(&result.Resources, override.Resources)
 	if override.Cache.Integrity != "" {
 		result.Cache.Integrity = override.Cache.Integrity
@@ -174,6 +177,9 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 
 	result := *base
+	if override.SharedCache != nil {
+		result.SharedCache = override.SharedCache
+	}
 	mergeResourceConfig(&result.Resources, override.Resources)
 	if override.Cache.Integrity != "" {
 		result.Cache.Integrity = override.Cache.Integrity

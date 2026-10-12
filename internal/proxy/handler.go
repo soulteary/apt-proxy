@@ -260,9 +260,10 @@ type Options struct {
 	Logger             *logger.Logger
 	Mode               int
 	EnableKeepAlive    bool
-	Async              bool              // when true, use async (non-blocking) benchmarks during construction
-	TransportOverride  http.RoundTripper // optional: caller-supplied transport (mainly for tests)
-	Passthrough        *passthrough.List // optional: allowlisted third-party origins
+	Async              bool                                      // when true, use async (non-blocking) benchmarks during construction
+	TransportWrapper   func(http.RoundTripper) http.RoundTripper // trusted verification after policy and mirror selection
+	TransportOverride  http.RoundTripper                         // optional: caller-supplied transport (mainly for tests)
+	Passthrough        *passthrough.List                         // optional: allowlisted third-party origins
 }
 
 // NewPackageStruct constructs a fully wired PackageStruct using the
@@ -322,6 +323,9 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		totalBytes = DefaultTotalSpoolBytes
 	}
 	mode := opts.Mode
+	if opts.TransportWrapper != nil {
+		transport = opts.TransportWrapper(transport)
+	}
 	bench := benchmarks.NewEngineWithPolicy(policy)
 	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async, bench)
 

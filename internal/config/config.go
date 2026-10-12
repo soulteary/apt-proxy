@@ -20,6 +20,7 @@ import (
 
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
+	"github.com/soulteary/apt-proxy/internal/sharedcache"
 )
 
 // Storage backend identifiers used by StorageConfig.Backend.
@@ -30,6 +31,7 @@ const (
 
 // Config holds all application configuration
 type Config struct {
+	SharedCache             *sharedcache.Config    `yaml:"shared_cache"`
 	MirrorHealth            *mirrorhealth.Config   `yaml:"mirror_health"`
 	UpstreamAccess          *access.UpstreamConfig `yaml:"upstream_access"`
 	Resources               ResourceConfig         `yaml:"resources"`

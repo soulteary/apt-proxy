@@ -51,6 +51,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/resource"
+	"github.com/soulteary/apt-proxy/internal/sharedcache"
 	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/internal/storage"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
@@ -215,11 +216,35 @@ func (s *Server) initialize() error {
 	s.resources = resources
 	cacheConfig := s.buildCacheConfig()
 	cacheConfig.StagingBudget = s.resources
+	identity, err := sharedcache.New(s.config.SharedCache)
+	if err != nil {
+		return err
+	}
+	var coordinator *sharedcache.FileCoordinator
+	if s.config.SharedCache != nil && s.config.SharedCache.CoordinationDir != "" {
+		if s.config.Storage.Backend != "" && s.config.Storage.Backend != config.StorageBackendDisk {
+			return fmt.Errorf("shared disk coordination requires disk storage")
+		}
+		coordinator, err = sharedcache.NewFileCoordinator(s.config.SharedCache.CoordinationDir)
+		if err != nil {
+			return err
+		}
+		cacheConfig.MaxSize = 0
+		cacheConfig.TTL = 0
+		cacheConfig.CleanupInterval = 0
+		cacheConfig.DisableStagingSweep = true
+	}
+	if identity != nil {
+		cacheConfig.Integrity = httpcache.IntegritySHA256
+	}
 	cache, err := s.initCache(cacheConfig)
 	if err != nil {
 		return wrapErr(apperrors.ErrCacheInit, "failed to initialize cache", err)
 	}
 	s.cache = &storage.VerifiedCache{ExtendedCache: cache}
+	if coordinator != nil {
+		s.cache = &sharedcache.LockedCache{ExtendedCache: s.cache, Coordinator: coordinator}
+	}
 
 	// Initialize metrics registry
 	s.metricsRegistry = metrics.NewRegistry("apt_proxy")
@@ -270,7 +295,10 @@ func (s *Server) initialize() error {
 	s.logPassthrough(allowlist)
 
 	ps, err := proxy.NewPackageStruct(proxy.Options{
-		Resources:          s.resources,
+		Resources: s.resources,
+		TransportWrapper: func(next http.RoundTripper) http.RoundTripper {
+			return identity.WrapTransportWithBudget(next, s.downloadTempDir(), s.resources)
+		},
 		MirrorHealth:       s.config.MirrorHealth,
 		UpstreamAccess:     s.config.UpstreamAccess,
 		State:              s.state,
@@ -292,12 +320,19 @@ func (s *Server) initialize() error {
 	s.proxy = ps
 
 	// Wrap proxy with cache (request logging is done by logger-kit FiberMiddleware)
-	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, &httpcache.HandlerOptions{Logger: s.log, StagingBudget: s.resources, TempDir: s.downloadTempDir()})
+	cacheOptions := &httpcache.HandlerOptions{Logger: s.log, StagingBudget: s.resources, TempDir: s.downloadTempDir()}
+	if identity != nil {
+		cacheOptions.RequestKey = identity.RequestKey
+	}
+	if coordinator != nil {
+		cacheOptions.MissCoordinator = coordinator
+	}
+	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, cacheOptions)
 	// apt-proxy serves multiple clients and is therefore a shared cache. This
 	// activates RFC shared-cache protections for Authorization/private data.
 	cachedHandler.Shared = true
 	s.cacheProxy = cachedHandler
-	s.proxy.Handler = cachedHandler
+	s.proxy.Handler = identity.WrapHandler(cachedHandler, s.proxy.Handler)
 
 	if s.config.Debug {
 		s.log.Debug().Msg("debug mode enabled")

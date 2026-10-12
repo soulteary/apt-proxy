@@ -27,6 +27,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
+	"github.com/soulteary/apt-proxy/internal/sharedcache"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
@@ -83,6 +84,17 @@ func ValidateConfig(config *Config) error {
 	}
 	if err := ValidateCacheIntegrity(config.Cache.Integrity); err != nil {
 		return err
+	}
+	if _, err := sharedcache.New(config.SharedCache); err != nil {
+		return err
+	}
+	if config.SharedCache != nil && config.SharedCache.CoordinationDir != "" {
+		if config.Storage.Backend != "" && config.Storage.Backend != StorageBackendDisk {
+			return fmt.Errorf("shared disk coordination requires disk storage")
+		}
+		if _, err := sharedcache.NewFileCoordinator(config.SharedCache.CoordinationDir); err != nil {
+			return err
+		}
 	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address must be specified")

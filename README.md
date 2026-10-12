@@ -1564,3 +1564,5 @@ snapshot. Verify, repair, export and import operate on that selected set; `serve
 provides an offline HTTP endpoint with no network fallback. APT verifies the
 preserved signatures. Selected xz indexes require the system `xz` executable.
 See [repository snapshots](docs/repository-offline.md) for commands, scope and limits.
+
+Explicit public repository identities and Unix shared disk coordination: [configuration and operational limits](docs/shared-repository-cache.md).
