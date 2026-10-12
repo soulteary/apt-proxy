@@ -16,6 +16,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,7 +73,15 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 	}
 	if res.StatusCode == http.StatusSwitchingProtocols {
 		if body, ok := res.Body.(io.ReadWriteCloser); ok {
-			res.Body = &timeoutUpgradeBody{ReadWriteCloser: body, cancel: cancel}
+			upgrade := &timeoutUpgradeBody{ReadWriteCloser: body, cancel: cancel}
+			// The HTTP transport transfers connection ownership after 101 and no
+			// longer interrupts reads when the request context expires.
+			upgrade.stop = context.AfterFunc(ctx, func() { _ = upgrade.closeBody() })
+			if halfCloser, ok := body.(interface{ CloseWrite() error }); ok {
+				res.Body = &timeoutUpgradeHalfCloser{timeoutUpgradeBody: upgrade, closeWriter: halfCloser}
+			} else {
+				res.Body = upgrade
+			}
 		} else {
 			cancel()
 		}
@@ -103,10 +112,9 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 		_, copyErr = file.Seek(0, io.SeekStart)
 	}
 	if copyErr != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
-		writer.release()
-		return nil, fmt.Errorf("incomplete unknown-length download: %w", copyErr)
+		spool := &downloadFile{File: file, path: path, release: writer.release}
+		cleanupErr := spool.Close()
+		return nil, fmt.Errorf("incomplete unknown-length download: %w", errors.Join(copyErr, cleanupErr))
 	}
 	res.Body = &downloadFile{File: file, path: path, release: writer.release}
 	res.ContentLength = size
@@ -129,18 +137,25 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 
 type downloadFile struct {
 	*os.File
-	path    string
-	release func()
+	path      string
+	release   func()
+	closeOnce sync.Once
+	closeErr  error
+	cleanupMu sync.Mutex
 }
 
 func (f *downloadFile) Close() error {
-	if f.release != nil {
-		defer f.release()
-	}
-	err := f.File.Close()
+	f.cleanupMu.Lock()
+	defer f.cleanupMu.Unlock()
+	f.closeOnce.Do(func() { f.closeErr = f.File.Close() })
 	removeErr := os.Remove(f.path)
-	if err != nil {
-		return err
+	if os.IsNotExist(removeErr) {
+		removeErr = nil
 	}
-	return removeErr
+	// Failed deletion still consumes disk: keep it charged, allowing a later
+	// Close to retry removal without closing the file descriptor again.
+	if removeErr == nil && f.release != nil {
+		f.release()
+	}
+	return errors.Join(f.closeErr, removeErr)
 }
