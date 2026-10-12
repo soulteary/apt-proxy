@@ -19,6 +19,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -279,5 +281,145 @@ func TestUpstreamDNSDeadlineAndPolicySnapshot(t *testing.T) {
 	defer cancel()
 	if _, err := p.DialContext(ctx, "tcp", "mirror.example:443"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("DNS deadline error: %v", err)
+	}
+}
+
+func racingPolicy(t *testing.T, ips ...string) *Upstream {
+	t.Helper()
+	p := mustPolicy(t, UpstreamConfig{Enabled: true})
+	p.fallbackDelay = 20 * time.Millisecond
+	addresses := make([]netip.Addr, len(ips))
+	for i, ip := range ips {
+		addresses[i] = netip.MustParseAddr(ip)
+	}
+	p.lookup = func(context.Context, string, string) ([]netip.Addr, error) { return addresses, nil }
+	return p
+}
+
+func TestUpstreamDualStackFallbackCancelsBlackhole(t *testing.T) {
+	p := racingPolicy(t, "2606:4700::1111", "93.184.216.34")
+	winner, peer := net.Pipe()
+	defer peer.Close()
+	canceled := make(chan struct{})
+	p.dial = func(ctx context.Context, _, address string) (net.Conn, error) {
+		if address == "[2606:4700::1111]:443" {
+			<-ctx.Done()
+			close(canceled)
+			return nil, ctx.Err()
+		}
+		if address != "93.184.216.34:443" {
+			return nil, fmt.Errorf("unexpected dial %s", address)
+		}
+		return winner, nil
+	}
+	start := time.Now()
+	conn, err := p.DialContext(context.Background(), "tcp", "mirror.example:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if time.Since(start) > time.Second {
+		t.Fatal("working family waited for blackholed address")
+	}
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("losing dial not canceled")
+	}
+}
+
+func TestUpstreamLateLosingConnectionIsClosed(t *testing.T) {
+	p := racingPolicy(t, "2606:4700::1111", "93.184.216.34")
+	loser, loserPeer := net.Pipe()
+	defer loserPeer.Close()
+	winner, winnerPeer := net.Pipe()
+	defer winnerPeer.Close()
+	p.dial = func(ctx context.Context, _, address string) (net.Conn, error) {
+		if address == "[2606:4700::1111]:443" {
+			<-ctx.Done()
+			return loser, nil
+		}
+		return winner, nil
+	}
+	conn, err := p.DialContext(context.Background(), "tcp", "mirror.example:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := loserPeer.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var one [1]byte
+	if _, err := loserPeer.Read(one[:]); !errors.Is(err, io.EOF) {
+		t.Fatalf("losing connection was not closed: %v", err)
+	}
+}
+
+func TestUpstreamEarlyFailureStartsFallbackImmediately(t *testing.T) {
+	p := racingPolicy(t, "2606:4700::1111", "93.184.216.34")
+	p.fallbackDelay = 5 * time.Second
+	winner, peer := net.Pipe()
+	defer peer.Close()
+	p.dial = func(_ context.Context, _, address string) (net.Conn, error) {
+		if address == "[2606:4700::1111]:443" {
+			return nil, errors.New("unreachable family")
+		}
+		return winner, nil
+	}
+	start := time.Now()
+	conn, err := p.DialContext(context.Background(), "tcp", "mirror.example:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if time.Since(start) > time.Second {
+		t.Fatal("early failure waited for fallback delay")
+	}
+}
+
+func TestUpstreamSameFamilySharesDeadline(t *testing.T) {
+	p := racingPolicy(t, "93.184.216.34", "93.184.216.35")
+	p.dialTimeout = 120 * time.Millisecond
+	winner, peer := net.Pipe()
+	defer peer.Close()
+	p.dial = func(ctx context.Context, _, address string) (net.Conn, error) {
+		if address == "93.184.216.34:443" {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return winner, nil
+	}
+	conn, err := p.DialContext(context.Background(), "tcp", "mirror.example:443")
+	if err != nil {
+		t.Fatalf("first address consumed entire budget: %v", err)
+	}
+	defer conn.Close()
+}
+
+func TestUpstreamSharedDeadlineCancelsBothFamilies(t *testing.T) {
+	p := racingPolicy(t, "2606:4700::1111", "93.184.216.34")
+	p.dialTimeout = 100 * time.Millisecond
+	finished := make(chan struct{}, 2)
+	p.dial = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		<-ctx.Done()
+		finished <- struct{}{}
+		return nil, ctx.Err()
+	}
+	conn, err := p.DialContext(context.Background(), "tcp", "mirror.example:443")
+	if conn != nil {
+		_ = conn.Close()
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("shared deadline: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-finished:
+		case <-time.After(time.Second):
+			t.Fatal("family runner did not stop")
+		}
 	}
 }

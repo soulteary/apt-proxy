@@ -44,11 +44,13 @@ type UpstreamConfig struct {
 // Upstream checks request authorities and pins new connections to approved IPs.
 // Its policy is immutable once constructed.
 type Upstream struct {
-	hosts      map[string]bool
-	ports      map[int]bool
-	exceptions []netip.Prefix
-	lookup     func(context.Context, string, string) ([]netip.Addr, error)
-	dial       func(context.Context, string, string) (net.Conn, error)
+	hosts         map[string]bool
+	ports         map[int]bool
+	exceptions    []netip.Prefix
+	lookup        func(context.Context, string, string) ([]netip.Addr, error)
+	dial          func(context.Context, string, string) (net.Conn, error)
+	dialTimeout   time.Duration
+	fallbackDelay time.Duration
 }
 
 var hostName = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
@@ -77,7 +79,7 @@ func NewUpstream(cfg *UpstreamConfig) (*Upstream, error) {
 	if cfg == nil {
 		return nil, nil
 	}
-	p := &Upstream{hosts: map[string]bool{}, ports: map[int]bool{}, lookup: net.DefaultResolver.LookupNetIP, dial: (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext}
+	p := &Upstream{dialTimeout: 30 * time.Second, fallbackDelay: 300 * time.Millisecond, hosts: map[string]bool{}, ports: map[int]bool{}, lookup: net.DefaultResolver.LookupNetIP, dial: (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext}
 	for _, host := range cfg.AllowedHosts {
 		normalized, err := canonicalHost(host)
 		if err != nil {
@@ -178,6 +180,8 @@ func (p *Upstream) DialContext(ctx context.Context, network, address string) (ne
 	if err := p.authority(host, port); err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, p.dialTimeout)
+	defer cancel()
 	var addresses []netip.Addr
 	if ip, err := netip.ParseAddr(host); err == nil {
 		addresses = []netip.Addr{ip}
@@ -195,18 +199,102 @@ func (p *Upstream) DialContext(ctx context.Context, network, address string) (ne
 			return nil, denied("upstream address is not allowed")
 		}
 	}
+	return p.dialApproved(ctx, network, port, addresses)
+}
+
+type dialResult struct {
+	conn net.Conn
+	err  error
+}
+
+// dialGroup divides the remaining shared deadline among its approved addresses.
+// Only one connection attempt in each address family is active at a time.
+func (p *Upstream) dialGroup(ctx context.Context, network, port string, addresses []netip.Addr) (net.Conn, error) {
 	var lastErr error
-	for _, ip := range addresses {
+	for i, ip := range addresses {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		conn, err := p.dial(ctx, network, net.JoinHostPort(ip.Unmap().String(), port))
+		deadline, _ := ctx.Deadline()
+		attempt, cancel := context.WithTimeout(ctx, time.Until(deadline)/time.Duration(len(addresses)-i))
+		conn, err := p.dial(attempt, network, net.JoinHostPort(ip.Unmap().String(), port))
+		cancel()
 		if err == nil {
 			return conn, nil
 		}
 		lastErr = err
 	}
-	return nil, fmt.Errorf("upstream connection failed: %w", lastErr)
+	return nil, lastErr
+}
+
+// dialApproved races at most two family runners, preserving address order within
+// each family. All candidates have passed policy validation before either starts.
+func (p *Upstream) dialApproved(ctx context.Context, network, port string, addresses []netip.Addr) (net.Conn, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var primary, secondary []netip.Addr
+	firstIs4 := addresses[0].Unmap().Is4()
+	for _, ip := range addresses {
+		if ip.Unmap().Is4() == firstIs4 {
+			primary = append(primary, ip)
+		} else {
+			secondary = append(secondary, ip)
+		}
+	}
+	results := make(chan dialResult)
+	start := func(group []netip.Addr) {
+		go func() {
+			conn, err := p.dialGroup(ctx, network, port, group)
+			select {
+			case results <- dialResult{conn, err}:
+			case <-ctx.Done():
+				if conn != nil {
+					_ = conn.Close()
+				}
+			}
+		}()
+	}
+	start(primary)
+	pending := 1
+	fallbackStarted := len(secondary) == 0
+	timer := time.NewTimer(p.fallbackDelay)
+	defer timer.Stop()
+	var timerC <-chan time.Time
+	if !fallbackStarted {
+		timerC = timer.C
+	}
+	var lastErr error
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timerC:
+			timerC = nil
+			fallbackStarted = true
+			pending++
+			start(secondary)
+		case result := <-results:
+			pending--
+			if result.conn != nil {
+				if err := ctx.Err(); err != nil {
+					_ = result.conn.Close()
+					return nil, err
+				}
+				return result.conn, nil
+			}
+			lastErr = result.err
+			if !fallbackStarted {
+				timer.Stop()
+				timerC = nil
+				fallbackStarted = true
+				pending++
+				start(secondary)
+			}
+			if pending == 0 {
+				return nil, fmt.Errorf("upstream connection failed: %w", lastErr)
+			}
+		}
+	}
 }
 
 type upstreamTransport struct {

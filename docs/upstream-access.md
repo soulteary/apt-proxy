@@ -26,8 +26,11 @@ When enabled:
   Ports must be between 1 and 65535.
 - Each new connection resolves its host once, checks every returned address,
   then dials an approved numeric IP. Mixed allowed/denied DNS answers fail
-  closed; there is no second hostname lookup at dial time. Failed approved IP
-  connections may try other addresses from that checked result. A fresh
+  closed; there is no second hostname lookup at dial time. Approved IPv4/IPv6 families
+  race with a 300 ms fallback delay (immediate fallback after an early failure),
+  with at most two concurrent dials. DNS and all dials share a 30-second budget
+  or the shorter request deadline. Within each family the remaining budget is
+  divided across remaining addresses. Losing connections are canceled/closed. A fresh
   connection re-resolves and rechecks DNS. Existing pooled connections retain
   their previously checked peer.
 - Private, loopback, link-local, unspecified and multicast addresses are
