@@ -15,8 +15,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/soulteary/apt-proxy/internal/cli"
 )
@@ -30,6 +33,16 @@ var (
 
 func main() {
 	cli.SetBuildInfo(version, commit, date)
+	if len(os.Args) > 1 && os.Args[1] == "repository" {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		err := cli.RunRepository(ctx, os.Args[2:], os.Stdout)
+		cancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	flags, err := cli.ParseFlags()
 	if err != nil {

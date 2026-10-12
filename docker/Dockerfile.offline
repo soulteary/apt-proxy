@@ -1,0 +1,22 @@
+# Optional repository snapshot image. Includes bounded xz parsing support.
+FROM golang:1.27.2-alpine3.24 AS builder
+RUN apk add --no-cache ca-certificates git
+WORKDIR /build
+ENV CGO_ENABLED=0
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -trimpath -ldflags "-s -w" -o /out/apt-proxy ./cmd/apt-proxy
+
+FROM alpine:3.24
+RUN apk add --no-cache ca-certificates xz && \
+    addgroup -g 1000 aptproxy && \
+    adduser -D -u 1000 -G aptproxy aptproxy && \
+    mkdir -p /var/lib/apt-proxy/repository && \
+    chown -R aptproxy:aptproxy /var/lib/apt-proxy
+COPY --from=builder /out/apt-proxy /usr/bin/apt-proxy
+USER aptproxy:aptproxy
+WORKDIR /var/lib/apt-proxy
+EXPOSE 3143/tcp
+ENTRYPOINT ["/usr/bin/apt-proxy"]
+CMD ["repository", "serve", "--dir", "/var/lib/apt-proxy/repository", "--listen", "0.0.0.0:3143"]
