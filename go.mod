@@ -9,7 +9,7 @@ require (
 	github.com/soulteary/cli-kit v1.9.1
 	github.com/soulteary/health-kit/v4 v4.0.1
 	github.com/soulteary/http-kit/v2 v2.0.1
-	github.com/soulteary/httpcache-kit/v4 v4.0.2-0.20261012183449-e05a2f7a1720
+	github.com/soulteary/httpcache-kit/v4 v4.0.2-0.20261012190006-6b8080bf5077
 	github.com/soulteary/logger-kit/v3 v3.0.1
 	github.com/soulteary/metrics-kit/v3 v3.0.1
 	github.com/soulteary/middleware-kit/v3 v3.0.1
