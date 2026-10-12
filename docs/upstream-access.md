@@ -1,7 +1,8 @@
-# Guarded package-download connections
+# Guarded repository upstream connections
 
 `upstream_access` is an optional YAML-only policy for the daemon's package
-reverse-proxy transport. It is disabled by default for compatibility with
+reverse-proxy transport, mirror probes and Ubuntu geo discovery. It is disabled
+by default for compatibility with
 internal repositories and existing forward-proxy deployments.
 
 ```yaml
@@ -17,11 +18,11 @@ upstream_access:
 
 When enabled:
 
-- Only HTTP and HTTPS download targets are accepted. A nonempty host list
+- Only HTTP and HTTPS repository targets are accepted. A nonempty host list
   matches exact names or IP literals, case-insensitively with a single trailing
   DNS dot normalized. Wildcards, URLs and bare IPv6 zones are invalid. Use ASCII
-  names or IDNA punycode. Empty host lists retain repository/passthrough routing
-  as the host-selection boundary.
+  names or IDNA punycode. Empty host lists leave host selection to repository/passthrough routing
+  and mirror candidate lists.
 - Empty port lists allow 80 and 443; a supplied list replaces these defaults.
   Ports must be between 1 and 65535.
 - Each new connection resolves its host once, checks every returned address,
@@ -47,11 +48,22 @@ When enabled:
 
 ## Proxies, redirects and errors
 
-Enabled download transports use direct connections and ignore HTTP_PROXY,
+Enabled download, benchmark and geo-discovery transports use direct connections
+and ignore HTTP_PROXY,
 HTTPS_PROXY and NO_PROXY. A remote forward proxy could resolve or route to an
 unchecked destination, so this implementation does not claim to enforce the
 policy through one. Disabling this policy retains existing proxy behavior.
 Custom transport overrides are rejected with an active policy.
+
+Mirror probes and geo discovery follow redirects through the same guarded
+transport: every hop is checked, including its resolved addresses. HEAD probes
+that fall back to GET also use that transport. Geo discovery is capped at five
+seconds (or an earlier caller deadline), and only HTTP 200 bodies become mirror
+candidates. When discovery fails or is denied, built-in candidate lists remain
+available; their probes and subsequent downloads are still guarded. Host lists
+must allow `mirrors.ubuntu.com` (and any permitted redirect hosts) to enable
+Ubuntu geo discovery, as well as the intended mirror hosts. User-configured
+registry mirror lists keep their existing precedence.
 
 The package reverse proxy returns upstream redirects to the client; it does
 not follow them. No proxy-side connection is made to a Location target. If a
@@ -80,10 +92,14 @@ Restart to apply changes. SIGHUP refreshes repositories/mirrors and does not
 reload this policy. Policies are immutable per proxy instance, without shared
 configuration state.
 
-This batch protects package-download HTTP transports, including rewritten
-mirrors and passthrough origins. Mirror election/benchmarking, geo lookup,
-S3 storage, telemetry and other background HTTP clients are outside this
-boundary. In particular, treat configured mirror/benchmark sources as trusted
-until a later change installs the same policy on those clients. Use network
-controls if all process egress must be restricted. CONNECT tunneling and
-forward-proxy policy propagation are not added here.
+The daemon applies one immutable policy to package-download transports,
+mirror election/benchmarking and Ubuntu geo discovery. Startup, async election,
+SIGHUP and management API refresh all use the same per-instance guarded engine.
+No discovery failure switches to an unguarded network client; built-in candidate
+fallback changes the list, not the transport. Separate daemon instances retain
+independent policies, clients and benchmark caches. Legacy package-level mirror
+and benchmark helpers without a policy retain their original behavior.
+
+S3 storage, telemetry and other non-repository HTTP clients remain outside this
+boundary. Use network controls if all process egress must be restricted. CONNECT
+tunneling and forward-proxy policy propagation are not added here.

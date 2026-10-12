@@ -17,6 +17,7 @@ package mirrors
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -39,17 +40,31 @@ func GetUbuntuMirrorUrlsByGeo() (mirrors []string, err error) {
 
 // GetUbuntuMirrorUrlsByGeoCtx fetches Ubuntu's mirror list honoring the
 // caller-provided context for cancellation/deadline.
-func GetUbuntuMirrorUrlsByGeoCtx(ctx context.Context) (mirrors []string, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, distro.UbuntuGeoMirrorAPI, nil)
+func GetUbuntuMirrorUrlsByGeoCtx(ctx context.Context) ([]string, error) {
+	return GetUbuntuMirrorUrlsByGeoWithClient(ctx, &http.Client{Timeout: ubuntuGeoLookupTimeout})
+}
+
+// GetUbuntuMirrorUrlsByGeoWithClient routes discovery and redirects through a
+// caller-owned client. The geo deadline also bounds DNS and response-body reads.
+func GetUbuntuMirrorUrlsByGeoWithClient(ctx context.Context, client *http.Client) ([]string, error) {
+	return ubuntuMirrorsWithClient(ctx, client, distro.UbuntuGeoMirrorAPI)
+}
+
+func ubuntuMirrorsWithClient(ctx context.Context, client *http.Client, endpoint string) (mirrors []string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, ubuntuGeoLookupTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return mirrors, err
 	}
-	client := &http.Client{Timeout: ubuntuGeoLookupTimeout}
 	response, err := client.Do(req)
 	if err != nil {
 		return mirrors, err
 	}
 	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ubuntu geo discovery returned HTTP %d", response.StatusCode)
+	}
 
 	scanner := bufio.NewScanner(response.Body)
 	for scanner.Scan() {

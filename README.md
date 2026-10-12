@@ -1466,10 +1466,12 @@ See [download access control](docs/download-access.md) for configuration and sco
 
 ### Guarded download upstreams
 
-Optional YAML `upstream_access.enabled: true` restricts package-download target
-hosts, ports and resolved IPs. New connections validate all DNS answers and
+Optional YAML `upstream_access.enabled: true` restricts package downloads, mirror
+probes and Ubuntu geo discovery by target hosts, ports and resolved IPs. New connections validate all DNS answers and
 connect directly to approved IPs, preserving TLS hostname verification.
-Private repositories require explicit CIDR exceptions. Enabled download
-transports ignore environment forward proxies. Restart to change policy.
+Private repositories require explicit CIDR exceptions. Enabled repository
+transports ignore environment forward proxies; probe/discovery redirects and
+HEAD-to-GET fallback remain guarded. Startup and mirror refresh use the same
+per-instance policy. Restart to change policy.
 See [upstream access](docs/upstream-access.md) for examples and the separate
 background-client boundary.

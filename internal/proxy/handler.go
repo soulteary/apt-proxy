@@ -288,7 +288,7 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		totalBytes = DefaultTotalSpoolBytes
 	}
 	mode := opts.Mode
-	bench := benchmarks.NewEngine()
+	bench := benchmarks.NewEngineWithPolicy(policy)
 	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async, bench)
 
 	ps := &PackageStruct{
