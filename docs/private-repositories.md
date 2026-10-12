@@ -9,15 +9,16 @@ directive to prevent downstream storage.
 URL userinfo is converted to Basic Authorization before cache lookup and removed
 from the request URL. An explicit Authorization header retains precedence.
 Incoming URL credentials are normalized on the detached request before routing;
-configured mirror URL credentials are normalized after rewriting. Passwords and
-all query values are redacted in mirror selection/benchmark logs, request and
+configured mirror URL credentials are normalized after rewriting. All URL
+userinfo (including username-only access tokens) and all query values are
+redacted in mirror configuration/selection/benchmark logs, request and
 upstream URL spans, rewrite debug fields and the daemon's query log field.
 URL-bearing wrapped errors are sanitized at those diagnostic boundaries without
 changing routing or the errors returned to callers. This does not constitute a
 complete audit of arbitrary headers, bodies or other configuration logging.
 
 Authenticated/cookie-bearing only-if-cached requests return 504 without touching
-the upstream, including when an anonymous object exists for the same URL. A
+the upstream, including when an anonymous object exists for the same URL.
 The no-store bypass is placed first in a combined Cache-Control field, including
 when the client already supplied repeated directives. A response containing
 Set-Cookie is never stored, regardless of its upstream

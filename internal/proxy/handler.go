@@ -305,6 +305,10 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
 			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}},
+			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+				log.Error().Err(logsafe.Error(err)).Msg("upstream request failed")
+				w.WriteHeader(http.StatusBadGateway)
+			},
 			ModifyResponse: func(resp *http.Response) error {
 				protectPrivateRepositoryResponse(resp)
 				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)

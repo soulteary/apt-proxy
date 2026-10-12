@@ -16,6 +16,9 @@ func URL(raw string) string {
 	if err != nil || u.Opaque != "" {
 		return "[invalid repository URL redacted]"
 	}
+	// Tokens are sometimes supplied as the username without a password, so
+	// password-only redaction would still expose repository credentials.
+	u.User = nil
 	if u.RawQuery != "" {
 		u.RawQuery = Query(u.RawQuery)
 	}
@@ -23,7 +26,7 @@ func URL(raw string) string {
 		u.Fragment = "[redacted]"
 		u.RawFragment = ""
 	}
-	return u.Redacted()
+	return u.String()
 }
 
 // Query keeps query keys for diagnostics but never logs their values.
