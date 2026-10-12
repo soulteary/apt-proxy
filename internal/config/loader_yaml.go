@@ -25,12 +25,17 @@ import (
 	"time"
 
 	"github.com/soulteary/apt-proxy/internal/access"
+	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
+	"github.com/soulteary/apt-proxy/internal/sharedcache"
 	"gopkg.in/yaml.v3"
 )
 
 // YAMLConfig represents the YAML configuration file structure.
 // It uses a more user-friendly structure that maps to the internal Config.
 type YAMLConfig struct {
+	SharedCache    *sharedcache.Config    `yaml:"shared_cache"`
+	Resources      ResourceConfig         `yaml:"resources"`
+	MirrorHealth   *mirrorhealth.Config   `yaml:"mirror_health"`
 	UpstreamAccess *access.UpstreamConfig `yaml:"upstream_access"`
 	Server         struct {
 		Host  string `yaml:"host"`
@@ -39,6 +44,7 @@ type YAMLConfig struct {
 	} `yaml:"server"`
 
 	Cache struct {
+		Integrity          string `yaml:"integrity"`
 		Dir                string `yaml:"dir"`
 		MaxSizeGB          int64  `yaml:"max_size_gb"`
 		TTLHours           int    `yaml:"ttl_hours"`
@@ -169,8 +175,10 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 	}
 
 	cfg := &Config{
-		Debug:    yamlCfg.Server.Debug,
-		CacheDir: yamlCfg.Cache.Dir,
+		SharedCache:  yamlCfg.SharedCache,
+		MirrorHealth: yamlCfg.MirrorHealth,
+		Debug:        yamlCfg.Server.Debug,
+		CacheDir:     yamlCfg.Cache.Dir,
 		Mirrors: MirrorConfig{
 			Ubuntu:         yamlCfg.Mirrors.Ubuntu,
 			UbuntuPorts:    yamlCfg.Mirrors.UbuntuPorts,
@@ -180,6 +188,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			Alpine:         yamlCfg.Mirrors.Alpine,
 		},
 		Cache: CacheConfig{
+			Integrity:          yamlCfg.Cache.Integrity,
 			MaxSizeGB:          yamlCfg.Cache.MaxSizeGB,
 			TTLHours:           yamlCfg.Cache.TTLHours,
 			CleanupIntervalMin: yamlCfg.Cache.CleanupIntervalMin,
@@ -197,6 +206,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
 		},
+		Resources:      yamlCfg.Resources,
 		Download:       yamlCfg.Download,
 		UpstreamAccess: yamlCfg.UpstreamAccess,
 		Storage: StorageConfig{

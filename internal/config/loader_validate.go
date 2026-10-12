@@ -27,6 +27,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
+	"github.com/soulteary/apt-proxy/internal/sharedcache"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
@@ -62,6 +63,9 @@ func ValidateConfig(config *Config) error {
 	if config == nil {
 		return fmt.Errorf("configuration cannot be nil")
 	}
+	if err := config.MirrorHealth.Validate(); err != nil {
+		return err
+	}
 
 	if _, err := access.NewClients(config.Security.DownloadAllowCIDRs, config.Security.DownloadDenyCIDRs); err != nil {
 		return err
@@ -74,6 +78,23 @@ func ValidateConfig(config *Config) error {
 	}
 	if config.Download.MaxSpoolMB > math.MaxInt64/(1<<20) || config.Download.TotalSpoolMB > math.MaxInt64/(1<<20) || config.Download.TimeoutSeconds > math.MaxInt64/int64(time.Second) {
 		return fmt.Errorf("download limits overflow internal units")
+	}
+	if err := ValidateResourceBackend(config.Resources, config.Storage.Backend); err != nil {
+		return err
+	}
+	if err := ValidateCacheIntegrity(config.Cache.Integrity); err != nil {
+		return err
+	}
+	if _, err := sharedcache.New(config.SharedCache); err != nil {
+		return err
+	}
+	if config.SharedCache != nil && config.SharedCache.CoordinationDir != "" {
+		if config.Storage.Backend != "" && config.Storage.Backend != StorageBackendDisk {
+			return fmt.Errorf("shared disk coordination requires disk storage")
+		}
+		if _, err := sharedcache.NewFileCoordinator(config.SharedCache.CoordinationDir); err != nil {
+			return err
+		}
 	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address must be specified")

@@ -50,6 +50,8 @@ import (
 	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/proxy"
+	"github.com/soulteary/apt-proxy/internal/resource"
+	"github.com/soulteary/apt-proxy/internal/sharedcache"
 	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/internal/storage"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
@@ -63,6 +65,7 @@ import (
 type Server struct {
 	// mirrorRefreshMu serializes registry/state updates with routing publication.
 	mirrorRefreshMu     sync.Mutex
+	resources           *resource.Manager
 	downloadClients     *access.Clients
 	config              *config.Config           // Application configuration
 	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
@@ -95,6 +98,12 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, err
 	}
 	if _, err := access.NewUpstream(cfg.UpstreamAccess); err != nil {
+		return nil, err
+	}
+	if err := config.ValidateResourceBackend(cfg.Resources, cfg.Storage.Backend); err != nil {
+		return nil, err
+	}
+	if err := config.ValidateCacheIntegrity(cfg.Cache.Integrity); err != nil {
 		return nil, err
 	}
 	s := &Server{
@@ -200,12 +209,42 @@ func (s *Server) initialize() error {
 	// Initialize cache with configuration. Storage backend is selected by
 	// config.Storage.Backend; "disk" (default) keeps the historical
 	// behaviour, "s3" plugs an S3-compatible bucket in via the s3vfs VFS.
+	resources, err := s.buildResourceManager()
+	if err != nil {
+		return err
+	}
+	s.resources = resources
 	cacheConfig := s.buildCacheConfig()
+	cacheConfig.StagingBudget = s.resources
+	identity, err := sharedcache.New(s.config.SharedCache)
+	if err != nil {
+		return err
+	}
+	var coordinator *sharedcache.FileCoordinator
+	if s.config.SharedCache != nil && s.config.SharedCache.CoordinationDir != "" {
+		if s.config.Storage.Backend != "" && s.config.Storage.Backend != config.StorageBackendDisk {
+			return fmt.Errorf("shared disk coordination requires disk storage")
+		}
+		coordinator, err = sharedcache.NewFileCoordinator(s.config.SharedCache.CoordinationDir)
+		if err != nil {
+			return err
+		}
+		cacheConfig.MaxSize = 0
+		cacheConfig.TTL = 0
+		cacheConfig.CleanupInterval = 0
+		cacheConfig.DisableStagingSweep = true
+	}
+	if identity != nil {
+		cacheConfig.Integrity = httpcache.IntegritySHA256
+	}
 	cache, err := s.initCache(cacheConfig)
 	if err != nil {
 		return wrapErr(apperrors.ErrCacheInit, "failed to initialize cache", err)
 	}
 	s.cache = &storage.VerifiedCache{ExtendedCache: cache}
+	if coordinator != nil {
+		s.cache = &sharedcache.LockedCache{ExtendedCache: s.cache, Coordinator: coordinator}
+	}
 
 	// Initialize metrics registry
 	s.metricsRegistry = metrics.NewRegistry("apt_proxy")
@@ -256,6 +295,11 @@ func (s *Server) initialize() error {
 	s.logPassthrough(allowlist)
 
 	ps, err := proxy.NewPackageStruct(proxy.Options{
+		Resources: s.resources,
+		TransportWrapper: func(next http.RoundTripper) http.RoundTripper {
+			return identity.WrapTransportWithBudget(next, s.downloadTempDir(), s.resources)
+		},
+		MirrorHealth:       s.config.MirrorHealth,
 		UpstreamAccess:     s.config.UpstreamAccess,
 		State:              s.state,
 		Registry:           s.registry,
@@ -276,12 +320,19 @@ func (s *Server) initialize() error {
 	s.proxy = ps
 
 	// Wrap proxy with cache (request logging is done by logger-kit FiberMiddleware)
-	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, &httpcache.HandlerOptions{Logger: s.log})
+	cacheOptions := &httpcache.HandlerOptions{Logger: s.log, StagingBudget: s.resources, TempDir: s.downloadTempDir()}
+	if identity != nil {
+		cacheOptions.RequestKey = identity.RequestKey
+	}
+	if coordinator != nil {
+		cacheOptions.MissCoordinator = coordinator
+	}
+	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, cacheOptions)
 	// apt-proxy serves multiple clients and is therefore a shared cache. This
 	// activates RFC shared-cache protections for Authorization/private data.
 	cachedHandler.Shared = true
 	s.cacheProxy = cachedHandler
-	s.proxy.Handler = cachedHandler
+	s.proxy.Handler = identity.WrapHandler(cachedHandler, s.proxy.Handler)
 
 	if s.config.Debug {
 		s.log.Debug().Msg("debug mode enabled")
@@ -376,6 +427,8 @@ func (s *Server) initCache(cacheConfig *httpcache.CacheConfig) (httpcache.Extend
 			UsePathStyle:   s3cfg.UsePathStyle,
 			InlineMaxBytes: inlineMaxBytes,
 			TempDir:        s3cfg.TempDir,
+			StagingBudget:  s.resources,
+			UploadTimeout:  time.Duration(s.config.Download.TimeoutSeconds) * time.Second,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("s3 backend: %w", err)
@@ -395,6 +448,7 @@ func (s *Server) initCache(cacheConfig *httpcache.CacheConfig) (httpcache.Extend
 // buildCacheConfig creates a cache configuration from the application config
 func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
 	cacheConfig := httpcache.DefaultCacheConfig()
+	applyCacheIntegrity(cacheConfig, s.config.Cache.Integrity)
 
 	// Apply custom settings if provided
 	if s.config.Cache.MaxSize > 0 {
@@ -524,6 +578,17 @@ func (s *Server) createFiberApp() *fiber.App {
 	app.All("/api/cache/purge", adaptor.HTTPHandler(mutatingAPIHandler(s.cacheHandler.HandleCachePurge)))
 	app.All("/api/cache/cleanup", adaptor.HTTPHandler(mutatingAPIHandler(s.cacheHandler.HandleCacheCleanup)))
 	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(mutatingAPIHandler(s.mirrorsHandler.HandleMirrorsRefresh)))
+	app.All("/api/mirrors/status", adaptor.HTTPHandler(apiHandler(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			api.WriteAppError(w, apperrors.New(apperrors.ErrMethodNotAllowed, "Method not allowed"))
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		if err := api.WriteJSON(w, http.StatusOK, s.proxy.MirrorHealthStatus()); err != nil {
+			s.log.Error().Err(err).Msg("failed to write mirror health status")
+		}
+	})))
 
 	// Ping (/_/ping and /_/ping/ and /_/ping/...)
 	pingHandler := func(c fiber.Ctx) error {
@@ -546,7 +611,7 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Route through PackageStruct rather than its cached upstream directly:
 	// ServeHTTP performs distro matching and mirror URL rewriting before it
 	// delegates to the cache/reverse-proxy chain.
-	app.All("/*", adaptor.HTTPHandler(s.downloadClients.Wrap(s.proxy)))
+	app.All("/*", repositoryHTTPHandler(s.downloadClients.Wrap(s.proxy)))
 
 	return app
 }

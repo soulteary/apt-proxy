@@ -1446,3 +1446,5 @@ DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可
 提供 verify、repair、export、import，以及无上游回退的离线 HTTP serve 命令。
 原始签名由 APT 验证；选定的 xz 索引需要系统 xz，另有包含 xz 的可选容器镜像。
 命令、支持范围和限制见[仓库快照说明](docs/repository-offline.md)。
+
+显式公共仓库身份与 Unix 共享磁盘协调：[配置和运行边界](docs/shared-repository-cache.md)。

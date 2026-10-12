@@ -859,7 +859,12 @@ same mirror, second request   -> upstream contacted once   (cache hit)
 after switching the mirror    -> refetched from the new mirror
 ```
 
-Mirror election runs at startup and on an explicit refresh. Benchmark results
+Mirror election runs at startup and on an explicit refresh. Opt-in
+[runtime mirror health](docs/runtime-mirror-health.md) additionally supports
+snapshot-checked failover between explicitly equivalent public APT archives,
+with bounded probes, cooldown and `GET /api/mirrors/status` observability.
+Unknown/divergent snapshots and private requests cannot switch automatically.
+Benchmark results
 are not persisted, so **a restart re-elects**, and so do `SIGHUP` and `POST
 /api/mirrors/refresh`. A mirror timing out during benchmarking is dropped from
 that run's candidates. If an election fails during refresh, the complete previous
@@ -1081,6 +1086,7 @@ APT Proxy provides REST API endpoints for monitoring and management:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/mirrors/refresh` | POST | Reload distributions/mirrors config (distributions.yaml) and refresh mirrors |
+| `/api/mirrors/status` | GET | Inspect process-local runtime mirror health and selection decisions |
 
 ### API Authentication
 
@@ -1541,6 +1547,15 @@ now use the mirror and cache, including clients that fall back from by-hash URLs
 Rules stay confined to `dists/<suite>/<component>/dep11/`; this does not allow
 arbitrary YAML/JSON files or tarballs. See [AppStream coverage](docs/apt-appstream.md).
 
+## Temporary resources and cache integrity
+
+Repository downloads now share nonblocking temporary-storage and active-download
+admission, including declared-length responses and overlapping cache/S3 copies.
+See [resource limits](docs/resource-limits.md) for YAML defaults and overload
+behavior. Persistent cache SHA256 verification is enabled by default; see
+[cache integrity](docs/cache-integrity.md) for legacy-cache migration, storage I/O
+cost and the explicit `cache.integrity: none` opt-out.
+
 ### Complete repository snapshots and offline access
 
 `apt-proxy repository` can prefetch a selected suite/component/architecture's
@@ -1549,3 +1564,5 @@ snapshot. Verify, repair, export and import operate on that selected set; `serve
 provides an offline HTTP endpoint with no network fallback. APT verifies the
 preserved signatures. Selected xz indexes require the system `xz` executable.
 See [repository snapshots](docs/repository-offline.md) for commands, scope and limits.
+
+Explicit public repository identities and Unix shared disk coordination: [configuration and operational limits](docs/shared-repository-cache.md).

@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/soulteary/apt-proxy/internal/access"
+	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
+	"github.com/soulteary/apt-proxy/internal/sharedcache"
 )
 
 // Storage backend identifiers used by StorageConfig.Backend.
@@ -29,7 +31,10 @@ const (
 
 // Config holds all application configuration
 type Config struct {
+	SharedCache             *sharedcache.Config    `yaml:"shared_cache"`
+	MirrorHealth            *mirrorhealth.Config   `yaml:"mirror_health"`
 	UpstreamAccess          *access.UpstreamConfig `yaml:"upstream_access"`
+	Resources               ResourceConfig         `yaml:"resources"`
 	Download                DownloadConfig         `yaml:"download"`
 	Debug                   bool                   `yaml:"debug"`
 	CacheDir                string                 `yaml:"cache_dir"`
@@ -140,6 +145,8 @@ type MirrorConfig struct {
 // `yaml:"-"` so the struct does not falsely advertise YAML support for
 // "max_size" / "ttl" / "cleanup_interval" etc.
 type CacheConfig struct {
+	// Integrity is sha256 (default) or none, configured via YAML.
+	Integrity string `yaml:"-"`
 	// MaxSize is the maximum cache size in bytes (default: 10GB).
 	// Internal representation; not read from YAML.
 	MaxSize int64 `yaml:"-"`

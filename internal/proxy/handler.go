@@ -17,6 +17,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -36,7 +37,9 @@ import (
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/logsafe"
+	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
+	"github.com/soulteary/apt-proxy/internal/resource"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
@@ -104,7 +107,8 @@ func detachHeader(header http.Header) http.Header {
 // preserves insertion order so the rule selected for a request is
 // deterministic across builds (Go map iteration is intentionally randomised).
 type hostPatternEntry struct {
-	pattern *regexp.Regexp
+	repositoryID string
+	pattern      *regexp.Regexp
 	// hostPattern, when set, matches the request's Host header for archives
 	// served from the host root. It is tried only after pattern fails.
 	hostPattern *regexp.Regexp
@@ -115,11 +119,11 @@ type hostPatternEntry struct {
 // supplied registry has no usable entries (e.g. tests that constructed
 // a bare PackageStruct without registering distributions).
 var defaultHostPatterns = []hostPatternEntry{
-	{pattern: distro.UbuntuHostPattern, rules: distro.UbuntuDefaultCacheRules},
-	{pattern: distro.UbuntuPortsHostPattern, rules: distro.UbuntuPortsDefaultCacheRules},
-	{pattern: distro.DebianHostPattern, hostPattern: distro.DebianSecurityHostPattern, rules: distro.DebianDefaultCacheRules},
-	{pattern: distro.CentosHostPattern, rules: distro.CentosDefaultCacheRules},
-	{pattern: distro.AlpineHostPattern, rules: distro.AlpineDefaultCacheRules},
+	{repositoryID: distro.DistroUbuntu, pattern: distro.UbuntuHostPattern, rules: distro.UbuntuDefaultCacheRules},
+	{repositoryID: distro.DistroUbuntuPorts, pattern: distro.UbuntuPortsHostPattern, rules: distro.UbuntuPortsDefaultCacheRules},
+	{repositoryID: distro.DistroDebian, pattern: distro.DebianHostPattern, hostPattern: distro.DebianSecurityHostPattern, rules: distro.DebianDefaultCacheRules},
+	{repositoryID: distro.DistroCentOS, pattern: distro.CentosHostPattern, rules: distro.CentosDefaultCacheRules},
+	{repositoryID: distro.DistroAlpine, pattern: distro.AlpineHostPattern, rules: distro.AlpineDefaultCacheRules},
 }
 
 // hostPatternsFromRegistry materialises the registry's pattern→rules map
@@ -137,7 +141,7 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 			if d.Type != mode || d.URLPattern == nil || len(d.CacheRules) == 0 {
 				continue
 			}
-			out = append(out, hostPatternEntry{pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
+			out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
 			seen[id] = struct{}{}
 		}
 	}
@@ -156,7 +160,7 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 		if d.URLPattern == nil || len(d.CacheRules) == 0 {
 			continue
 		}
-		out = append(out, hostPatternEntry{pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
+		out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
 	}
 	return out
 }
@@ -194,18 +198,20 @@ func NewUpstreamTransport(enableKeepAlive bool) *http.Transport {
 // Reversing the order only mirrors the window. The fix is to build both sides
 // before either goes live, which is what RefreshMirrors now does.
 type routing struct {
-	patterns  []hostPatternEntry
-	rewriters *URLRewriters
+	healthEpoch uint64
+	patterns    []hostPatternEntry
+	rewriters   *URLRewriters
 }
 
 // distribution-specific handlers and applies caching rules. It owns all of
 // the per-Server state previously held in package-level globals: the
 // AppState, distro Registry, URL rewriters, and the host-pattern cache.
 type PackageStruct struct {
-	Handler  http.Handler   // The underlying HTTP handler (typically a reverse proxy)
-	Rules    []distro.Rule  // Caching rules for different package types
-	CacheDir string         // Cache directory path for statistics
-	log      *logger.Logger // Structured logger
+	mirrorHealth *mirrorhealth.Controller
+	Handler      http.Handler   // The underlying HTTP handler (typically a reverse proxy)
+	Rules        []distro.Rule  // Caching rules for different package types
+	CacheDir     string         // Cache directory path for statistics
+	log          *logger.Logger // Structured logger
 
 	state    *state.AppState
 	registry *distro.Registry
@@ -241,6 +247,8 @@ type PackageStruct struct {
 
 // Options configures NewPackageStruct.
 type Options struct {
+	Resources          *resource.Manager
+	MirrorHealth       *mirrorhealth.Config
 	UpstreamAccess     *access.UpstreamConfig
 	State              *state.AppState
 	Registry           *distro.Registry
@@ -252,9 +260,10 @@ type Options struct {
 	Logger             *logger.Logger
 	Mode               int
 	EnableKeepAlive    bool
-	Async              bool              // when true, use async (non-blocking) benchmarks during construction
-	TransportOverride  http.RoundTripper // optional: caller-supplied transport (mainly for tests)
-	Passthrough        *passthrough.List // optional: allowlisted third-party origins
+	Async              bool                                      // when true, use async (non-blocking) benchmarks during construction
+	TransportWrapper   func(http.RoundTripper) http.RoundTripper // trusted verification after policy and mirror selection
+	TransportOverride  http.RoundTripper                         // optional: caller-supplied transport (mainly for tests)
+	Passthrough        *passthrough.List                         // optional: allowlisted third-party origins
 }
 
 // NewPackageStruct constructs a fully wired PackageStruct using the
@@ -281,13 +290,29 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		return nil, errors.New("proxy: upstream policy cannot use an overridden transport")
 	}
 	transport := opts.TransportOverride
+	probeTransport := transport
 	if transport == nil {
 		base := NewUpstreamTransport(opts.EnableKeepAlive)
 		var upstream http.RoundTripper = base
 		if policy != nil {
 			upstream = policy.Transport(base)
 		}
+		probeTransport = upstream
 		transport = NewRetryableTransport(upstream)
+	}
+	if opts.MirrorHealth != nil && opts.MirrorHealth.Enabled {
+		for _, repo := range opts.MirrorHealth.Repositories {
+			if _, ok := opts.Registry.GetByID(repo.ID); !ok {
+				return nil, fmt.Errorf("mirror_health: unknown distribution %s", repo.ID)
+			}
+		}
+	}
+	health, err := mirrorhealth.New(opts.MirrorHealth, transport, probeTransport, log)
+	if err != nil {
+		return nil, err
+	}
+	if health != nil {
+		transport = &mirrorHealthTransport{controller: health, base: transport}
 	}
 
 	if opts.DownloadMaxBytes < 0 || opts.DownloadTotalBytes < 0 || opts.DownloadTimeout < 0 {
@@ -298,25 +323,34 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		totalBytes = DefaultTotalSpoolBytes
 	}
 	mode := opts.Mode
+	if opts.TransportWrapper != nil {
+		transport = opts.TransportWrapper(transport)
+	}
 	bench := benchmarks.NewEngineWithPolicy(policy)
 	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async, bench)
 
 	ps := &PackageStruct{
-		Rules:       GetRewriteRulesByMode(opts.Registry, mode),
-		CacheDir:    opts.CacheDir,
-		log:         log,
-		state:       opts.State,
-		registry:    opts.Registry,
-		mode:        mode,
-		passthrough: opts.Passthrough,
-		bench:       bench,
-		transport:   transport,
+		mirrorHealth: health,
+		Rules:        GetRewriteRulesByMode(opts.Registry, mode),
+		CacheDir:     opts.CacheDir,
+		log:          log,
+		state:        opts.State,
+		registry:     opts.Registry,
+		mode:         mode,
+		passthrough:  opts.Passthrough,
+		bench:        bench,
+		transport:    transport,
 		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
-			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}},
+			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}, resources: opts.Resources},
 			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 				log.Error().Err(logsafe.Error(err)).Msg("upstream request failed")
-				w.WriteHeader(http.StatusBadGateway)
+				if errors.Is(err, resource.ErrAdmission) {
+					w.Header().Set("Retry-After", "1")
+					w.WriteHeader(http.StatusServiceUnavailable)
+				} else {
+					w.WriteHeader(http.StatusBadGateway)
+				}
 			},
 			ModifyResponse: func(resp *http.Response) error {
 				protectPrivateRepositoryResponse(resp)
@@ -327,8 +361,9 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		}},
 	}
 	ps.routing.Store(&routing{
-		patterns:  hostPatternsFromRegistry(opts.Registry),
-		rewriters: rewriters,
+		healthEpoch: health.Epoch(),
+		patterns:    hostPatternsFromRegistry(opts.Registry),
+		rewriters:   rewriters,
 	})
 	return ps, nil
 }
@@ -545,9 +580,9 @@ func (ap *PackageStruct) currentRouting() *routing {
 
 	entries := hostPatternsFromRegistry(ap.registry)
 	if len(entries) == 0 {
-		return &routing{patterns: defaultHostPatterns, rewriters: cur.rewriters}
+		return &routing{patterns: defaultHostPatterns, rewriters: cur.rewriters, healthEpoch: cur.healthEpoch}
 	}
-	next := &routing{patterns: entries, rewriters: cur.rewriters}
+	next := &routing{patterns: entries, rewriters: cur.rewriters, healthEpoch: cur.healthEpoch}
 	if ap.routing.CompareAndSwap(cur, next) {
 		return next
 	}
@@ -574,7 +609,7 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	// being answered out of the distribution's own mirror -- see hostprefix.go.
 	for _, entry := range entries {
 		if matchesDistroPath(entry.pattern, path) {
-			return ap.processMatchingRule(r, rt, entry.rules)
+			return ap.processMatchingRule(r, rt, entry)
 		}
 	}
 
@@ -586,7 +621,7 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	}
 	for _, entry := range entries {
 		if entry.hostPattern != nil && entry.hostPattern.MatchString(host) {
-			return ap.processMatchingRule(r, rt, entry.rules)
+			return ap.processMatchingRule(r, rt, entry)
 		}
 	}
 
@@ -614,10 +649,13 @@ func requestHost(r *http.Request) string {
 // processMatchingRule processes a request that matches a distribution pattern.
 // It finds the specific caching rule, preserves client cache directives,
 // and rewrites the URL if necessary.
-func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, rules []distro.Rule) *distro.Rule {
-	rule, match := MatchingRule(r.URL.Path, rules)
+func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, entry hostPatternEntry) *distro.Rule {
+	rule, match := MatchingRule(r.URL.Path, entry.rules)
 	if !match {
 		return nil
+	}
+	if ap.mirrorHealth != nil {
+		*r = *r.WithContext(context.WithValue(r.Context(), mirrorHealthKey{}, mirrorHealthScope{entry.repositoryID, rt.healthEpoch}))
 	}
 
 	if rule.Rewrite {
@@ -674,8 +712,9 @@ func (ap *PackageStruct) RefreshMirrors() error {
 		return err // Keep the complete old routing, including its match patterns.
 	}
 	next := &routing{
-		patterns:  hostPatternsFromRegistry(ap.registry),
-		rewriters: rewriters,
+		healthEpoch: ap.mirrorHealth.Reset(),
+		patterns:    hostPatternsFromRegistry(ap.registry),
+		rewriters:   rewriters,
 	}
 	ap.routing.Store(next)
 	return nil
