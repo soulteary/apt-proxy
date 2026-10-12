@@ -9,13 +9,13 @@ require (
 	github.com/soulteary/cli-kit v1.9.1
 	github.com/soulteary/health-kit/v4 v4.0.1
 	github.com/soulteary/http-kit/v2 v2.0.1
-	github.com/soulteary/httpcache-kit/v4 v4.0.3-0.20261012194216-7b75271a3c95
+	github.com/soulteary/httpcache-kit/v4 v4.0.3-0.20261012220915-608c0927a049
 	github.com/soulteary/logger-kit/v3 v3.0.2
 	github.com/soulteary/metrics-kit/v3 v3.0.2
 	github.com/soulteary/middleware-kit/v3 v3.0.1
 	github.com/soulteary/tracing-kit/v2 v2.0.1
 	github.com/soulteary/version-kit/v4 v4.0.1
-	github.com/soulteary/vfs-kit v1.4.4
+	github.com/soulteary/vfs-kit v1.4.5-0.20261012210923-af6413b52e5b
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0

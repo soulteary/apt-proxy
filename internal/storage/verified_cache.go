@@ -54,7 +54,25 @@ func (c *VerifiedCache) Freshen(res *httpcache.Resource, keys ...string) error {
 }
 
 func (c *VerifiedCache) Retrieve(key string) (*httpcache.Resource, error) {
-	res, err := c.ExtendedCache.Retrieve(privateCacheNamespace + key)
+	return c.retrieve(key, false)
+}
+
+// RetrieveForRecheck preserves verification and ordering while suppressing
+// repeated native cache counts during coordinated fill retries.
+func (c *VerifiedCache) RetrieveForRecheck(key string) (*httpcache.Resource, error) {
+	return c.retrieve(key, true)
+}
+
+func (c *VerifiedCache) retrieve(key string, recheck bool) (*httpcache.Resource, error) {
+	retrieve := c.ExtendedCache.Retrieve
+	if recheck {
+		if cache, ok := c.ExtendedCache.(interface {
+			RetrieveForRecheck(string) (*httpcache.Resource, error)
+		}); ok {
+			retrieve = cache.RetrieveForRecheck
+		}
+	}
+	res, err := retrieve(privateCacheNamespace + key)
 	if err != nil {
 		return nil, err
 	}

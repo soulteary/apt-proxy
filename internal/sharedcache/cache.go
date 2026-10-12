@@ -55,12 +55,30 @@ func (c *LockedCache) Header(key string) (httpcache.Header, error) {
 	return c.ExtendedCache.Header(key)
 }
 func (c *LockedCache) Retrieve(key string) (*httpcache.Resource, error) {
+	return c.retrieve(key, false)
+}
+
+// RetrieveForRecheck preserves verification and ordering while suppressing
+// repeated native cache counts during coordinated fill retries.
+func (c *LockedCache) RetrieveForRecheck(key string) (*httpcache.Resource, error) {
+	return c.retrieve(key, true)
+}
+
+func (c *LockedCache) retrieve(key string, recheck bool) (*httpcache.Resource, error) {
 	release, err := c.hold(context.Background(), []string{key})
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	res, err := c.ExtendedCache.Retrieve(key)
+	retrieve := c.ExtendedCache.Retrieve
+	if recheck {
+		if cache, ok := c.ExtendedCache.(interface {
+			RetrieveForRecheck(string) (*httpcache.Resource, error)
+		}); ok {
+			retrieve = cache.RetrieveForRecheck
+		}
+	}
+	res, err := retrieve(key)
 	if err != nil {
 		return nil, err
 	}

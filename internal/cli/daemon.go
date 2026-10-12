@@ -611,7 +611,7 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Route through PackageStruct rather than its cached upstream directly:
 	// ServeHTTP performs distro matching and mirror URL rewriting before it
 	// delegates to the cache/reverse-proxy chain.
-	app.All("/*", adaptor.HTTPHandler(s.downloadClients.Wrap(s.proxy)))
+	app.All("/*", repositoryHTTPHandler(s.downloadClients.Wrap(s.proxy)))
 
 	return app
 }
