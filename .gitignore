@@ -2,3 +2,6 @@
 coverage.*
 *.test
 apt-proxy
+# Disposable real APT client evidence
+apt-client-evidence/
+__pycache__/

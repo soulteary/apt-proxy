@@ -1,0 +1,31 @@
+name: Real APT clients
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  apt:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [debian:bookworm-slim, debian:trixie-slim, ubuntu:22.04, ubuntu:24.04]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Check matrix image identifiers and evidence isolation
+        run: python3 tests/apt-client/matrix_test.py
+      - name: Exercise APT with a local signed archive
+        env:
+          APT_CLIENT_IMAGE: ${{ matrix.client }}
+        run: bash tests/apt-client/matrix.sh "$APT_CLIENT_IMAGE"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: apt-client-${{ strategy.job-index }}
+          path: apt-client-evidence/
+          retention-days: 14
