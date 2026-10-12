@@ -1490,6 +1490,6 @@ for supported formats and client-side verification responsibilities.
 
 Common netboot, hd-media and cdrom boot files and installer checksum manifests
 can now use configured mirrors and the cache. Rules require exact filenames in
-Debian-style installer directories, with fallback `max-age=3600`. Custom YAML
+Debian-style `images/` or `legacy-images/` installer directories, with fallback `max-age=3600`. Custom YAML
 must adopt the new rules explicitly. See [installer file coverage](docs/apt-installer-files.md)
 for the supported subset and client verification responsibilities.

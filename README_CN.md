@@ -1401,6 +1401,6 @@ Ubuntu、Ubuntu Ports 和 Debian 的源码池文件现可经配置的镜像代�
 ### Debian 系安装器文件
 
 常用 netboot、hd-media、cdrom 启动文件及安装器校验清单现可经配置的镜像
-代理并缓存。规则限定到 Debian 风格安装器目录中的具体文件名，默认缓存
+代理并缓存。规则限定到 Debian 风格安装器 `images/` 或 `legacy-images/` 目录中的具体文件名，默认缓存
 3600 秒；自定义 YAML 需显式补充新规则。支持范围及客户端校验职责见
 [安装器文件覆盖说明](docs/apt-installer-files.md)。

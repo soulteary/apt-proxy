@@ -2,6 +2,8 @@
 
 Built-in and shipped YAML rules for Debian, Ubuntu and Ubuntu Ports recognize
 common files below `dists/<suite>/<component>/installer-<architecture>/<version>/images/`.
+The same exact filenames are accepted under `legacy-images/`, as published by
+[Ubuntu Focal](https://archive.ubuntu.com/ubuntu/dists/focal/main/installer-amd64/current/legacy-images/).
 The version can be `current` or a dated installer version. The configured mirror
 must actually publish these paths; this does not restore installer trees removed
 from newer Ubuntu releases.

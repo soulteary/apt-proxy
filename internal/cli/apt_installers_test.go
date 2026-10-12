@@ -31,8 +31,8 @@ import (
 )
 
 func TestProductionInstallerFilesRewriteAndCache(t *testing.T) {
-	const installerRoot = "dists/trixie/main/installer-amd64/current/images/"
-	artifacts := []string{"SHA256SUMS", "MANIFEST.udebs", "netboot/debian-installer/amd64/linux", "netboot/debian-installer/amd64/initrd.gz", "netboot/netboot.tar.gz", "netboot/mini.iso", "hd-media/boot.img.gz"}
+	const debianRoot = "dists/trixie/main/installer-amd64/current/images/"
+	artifacts := []string{"SHA256SUMS", "MANIFEST.udebs", "netboot/debian-installer/amd64/linux", "netboot/debian-installer/amd64/initrd.gz", "netboot/ubuntu-installer/amd64/linux", "netboot/ubuntu-installer/amd64/initrd.gz", "netboot/netboot.tar.gz", "netboot/mini.iso", "hd-media/boot.img.gz"}
 	for _, distribution := range []struct {
 		name, prefix string
 		mode         int
@@ -41,6 +41,10 @@ func TestProductionInstallerFilesRewriteAndCache(t *testing.T) {
 	} {
 		for _, yamlRules := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/yaml=%v", distribution.name, yamlRules), func(t *testing.T) {
+				installerRoot := debianRoot
+				if distribution.mode == distro.TypeUbuntu {
+					installerRoot = "dists/focal/main/installer-amd64/current/legacy-images/"
+				}
 				var hits atomic.Int32
 				var expectedPath string
 				payload := []byte{0x00, 0x1f, 0x8b, 0xff, 0x78, 0x7a, 0x42}
