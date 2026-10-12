@@ -22,11 +22,14 @@ overrides are provided.
 Reservations are made before writing a chunk to disk. An unknown-length response
 that exceeds its per-response size limit or the available shared budget fails
 rather than waiting indefinitely for space. The guard keeps completed temporary
-files charged until the downstream response body closes. Failed downloads remove
+files charged until the downstream response body closes, even though the filename
+has already been unlinked. Process exit closes these anonymous files, reclaiming
+their disk storage without an application cleanup pass. Failed downloads close
 the temporary file and release their reservation. Released budget can be used by
-later requests. If file deletion fails, its reservation remains charged; another
-body close retries removal. A failed download with no returned body remains
-conservatively charged for that process lifetime when its cleanup fails.
+later requests. If the filename cannot be unlinked, the proxy closes the file
+and fails before copying any body bytes or reserving body capacity. Named files
+from older versions require an offline cleanup; see
+[interrupted downloads](interrupted-downloads.md).
 Limit failures before forwarding headers return the reverse
 proxy's upstream-error response (502) and do not cache a partial object.
 

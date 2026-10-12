@@ -17,6 +17,11 @@ import (
 )
 
 func downloadTestServer(t *testing.T, upstream string) (*httptest.Server, httpcache.ExtendedCache) {
+	server, cache, _ := downloadTestServerWithDir(t, upstream)
+	return server, cache
+}
+
+func downloadTestServerWithDir(t *testing.T, upstream string) (*httptest.Server, httpcache.ExtendedCache, string) {
 	t.Helper()
 	st := newTestState()
 	st.SetMirror(distro.TypeUbuntu, upstream+"/ubuntu/")
@@ -24,7 +29,8 @@ func downloadTestServer(t *testing.T, upstream string) (*httptest.Server, httpca
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend, err := httpcache.NewDiskCacheWithConfig(t.TempDir(), nil)
+	dir := t.TempDir()
+	backend, err := httpcache.NewDiskCacheWithConfig(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +49,7 @@ func downloadTestServer(t *testing.T, upstream string) (*httptest.Server, httpca
 			t.Error(err)
 		}
 	})
-	return server, backend
+	return server, backend, dir
 }
 
 func TestInterruptedUpstreamDownloadRecovers(t *testing.T) {

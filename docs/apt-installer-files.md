@@ -12,6 +12,7 @@ Supported paths relative to `images/`:
 
 - `MD5SUMS`, `SHA256SUMS`, `MANIFEST`, `MANIFEST.udebs`, and `udeb.list`;
 - `netboot/netboot.tar.gz`, `netboot/mini.iso`, and `netboot/pxelinux.0`;
+- `netboot/gtk/netboot.tar.gz` and `netboot/gtk/mini.iso` for graphical installers;
 - `netboot/{debian,ubuntu}-installer/<architecture>/{linux,initrd.gz}`,
   including the corresponding `netboot/gtk/` paths;
 - `{hd-media,cdrom}/{vmlinuz,initrd.gz}`, including their `gtk/` paths;

@@ -2,6 +2,10 @@
 
 [![Go Test Coverage](./.github/coverage.svg)](./.github/go-test-report.md) [![Go Report Card](./.github/goreportcard.svg)](./.github/goreportcard-report.md) [![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
 
+Coverage and quality badges are the last published report snapshots, not results
+for every commit. See [report scope](.github/GO-REPORTS.md) and the CI run for the
+version you deploy.
+
 <p style="text-align: center;">
   <a href="README.md">ENGLISH</a> | <a href="README_CN.md"  target="_blank">中文文档</a>
 </p>
@@ -509,6 +513,11 @@ actually take. They apply only to apt-proxy's own connections to mirror sites;
 clients still reach apt-proxy directly, so do not put apt-proxy's own address in
 `HTTP_PROXY`. In Docker, pass them with `-e`.
 
+When `upstream_access.enabled: true`, repository downloads, mirror probes and
+Ubuntu geo discovery connect directly and ignore these proxy variables. Disable
+that policy to retain forward-proxy routing. See [upstream access](docs/upstream-access.md)
+for its enforcement boundary and configuration.
+
 ## Docker Integration
 
 ### Running APT Proxy in Docker
@@ -716,6 +725,12 @@ cache:
   ttl_hours: 168
   cleanup_interval_min: 60
 
+# YAML-only download bounds; zero selects these defaults, not unlimited values.
+download:
+  max_spool_mb: 1024        # per unknown-length response, MiB
+  total_spool_mb: 4096      # shared unknown-length spool budget, MiB
+  timeout_seconds: 1200     # total upstream fetch time
+
 # Optional: switch the cache to an S3-compatible object store.
 # When backend is "disk" (the default) only the cache.dir field above matters.
 storage:
@@ -746,6 +761,8 @@ tls:
   key_file: /etc/ssl/private/apt-proxy.key
 
 security:
+  download_allow_cidrs: []             # connection-peer ACL, YAML-only
+  download_deny_cidrs: []              # deny takes precedence; empty lists allow all
   api_key: ${APT_PROXY_API_KEY}        # supports ${VAR} and ${VAR:-default} expansion
   enable_api_auth: true
   api_rate_limit_per_minute: 60        # 0 disables; default 60
@@ -754,6 +771,14 @@ security:
     - 192.168.0.0/16
 
 mode: all
+
+# Optional repository connection policy (YAML-only; restart after changes).
+# Lists must be empty while disabled. Enabling this ignores environment proxies.
+upstream_access:
+  enabled: false
+  allowed_hosts: []
+  allowed_ports: []       # empty means 80/443 when enabled
+  allow_cidrs: []         # explicit trusted private-network exceptions
 
 # Upstream transport
 upstream_keep_alive: true
@@ -1497,3 +1522,10 @@ for the supported subset and client verification responsibilities.
 Common installer PXE/UEFI resources are also covered: EFI loaders, the default
 PXELINUX configuration, boot menus and GRUB modules. Paths stay confined to
 installer netboot trees; this does not add DHCP/TFTP or boot configuration rewriting.
+
+### Debian-family AppStream metadata
+
+Direct DEP-11 component indexes, content-ID indexes and known icon archives
+now use the mirror and cache, including clients that fall back from by-hash URLs.
+Rules stay confined to `dists/<suite>/<component>/dep11/`; this does not allow
+arbitrary YAML/JSON files or tarballs. See [AppStream coverage](docs/apt-appstream.md).

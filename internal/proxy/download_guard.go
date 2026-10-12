@@ -102,6 +102,15 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 		return nil, fmt.Errorf("prepare unknown-length download: %w", err)
 	}
 	path := file.Name()
+	// Linux and macOS keep an unlinked file readable through its open descriptor.
+	// Remove the name before writing any body bytes, so process exit (including
+	// SIGKILL) reclaims the spool without depending on application cleanup. Do not
+	// sweep a shared directory: another proxy may have an active download there.
+	if err := os.Remove(path); err != nil {
+		_ = file.Close()
+		_ = res.Body.Close()
+		return nil, fmt.Errorf("unlink unknown-length download: %w", err)
+	}
 	writer := &budgetWriter{writer: file, budget: t.budget, max: t.maxBytes}
 	size, copyErr := io.Copy(writer, res.Body)
 	closeErr := res.Body.Close()
@@ -112,11 +121,11 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 		_, copyErr = file.Seek(0, io.SeekStart)
 	}
 	if copyErr != nil {
-		spool := &downloadFile{File: file, path: path, release: writer.release}
+		spool := &downloadFile{File: file, path: path, unlinked: true, release: writer.release}
 		cleanupErr := spool.Close()
 		return nil, fmt.Errorf("incomplete unknown-length download: %w", errors.Join(copyErr, cleanupErr))
 	}
-	res.Body = &downloadFile{File: file, path: path, release: writer.release}
+	res.Body = &downloadFile{File: file, path: path, unlinked: true, release: writer.release}
 	res.ContentLength = size
 	res.TransferEncoding = nil
 	if res.Header == nil {
@@ -138,6 +147,7 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 type downloadFile struct {
 	*os.File
 	path      string
+	unlinked  bool
 	release   func()
 	closeOnce sync.Once
 	closeErr  error
@@ -148,7 +158,10 @@ func (f *downloadFile) Close() error {
 	f.cleanupMu.Lock()
 	defer f.cleanupMu.Unlock()
 	f.closeOnce.Do(func() { f.closeErr = f.File.Close() })
-	removeErr := os.Remove(f.path)
+	var removeErr error
+	if !f.unlinked {
+		removeErr = os.Remove(f.path)
+	}
 	if os.IsNotExist(removeErr) {
 		removeErr = nil
 	}

@@ -28,6 +28,7 @@ import (
 	tracing "github.com/soulteary/tracing-kit/v2"
 
 	"github.com/soulteary/apt-proxy/internal/access"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 )
 
 // RetryableTransport wraps an http.RoundTripper with retry logic and tracing support
@@ -67,7 +68,7 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	// Set span attributes
 	tracing.SetSpanAttributesFromMap(span, map[string]interface{}{
 		"http.method":     req.Method,
-		"http.url":        req.URL.String(),
+		"http.url":        logsafe.URL(req.URL.String()),
 		"http.scheme":     req.URL.Scheme,
 		"http.host":       req.URL.Host,
 		"http.target":     req.URL.Path,
@@ -124,11 +125,11 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		if err != nil {
 			lastErr = err
 			if errors.Is(err, access.ErrUpstreamDenied) || !canRetry || !rt.retryOpts.IsRetryableError(err, 0) {
-				tracing.RecordError(span, err)
+				tracing.RecordError(span, logsafe.Error(err))
 				return nil, fmt.Errorf("failed to execute request: %w", err)
 			}
 			if attempt >= rt.retryOpts.MaxRetries {
-				tracing.RecordError(span, fmt.Errorf("failed after %d retries: %w", rt.retryOpts.MaxRetries, lastErr))
+				tracing.RecordError(span, logsafe.Error(fmt.Errorf("failed after %d retries: %w", rt.retryOpts.MaxRetries, lastErr)))
 				return nil, fmt.Errorf("failed to execute request after retries: %w", lastErr)
 			}
 			continue

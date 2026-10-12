@@ -26,6 +26,7 @@ import (
 
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
 	logger "github.com/soulteary/logger-kit/v3"
 	"golang.org/x/sync/singleflight"
@@ -379,7 +380,7 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 func (e *Engine) GetTheFastestMirrorWithCache(distType int, mirrors []string, testURL string) (string, error) {
 	if cached, ok := e.cache.GetCachedResult(distType); ok {
 		log := logger.Default()
-		log.Debug().Int("dist_type", distType).Str("mirror", cached).Msg("using cached benchmark result")
+		log.Debug().Int("dist_type", distType).Str("mirror", logsafe.URL(cached)).Msg("using cached benchmark result")
 		return cached, nil
 	}
 
@@ -428,7 +429,7 @@ func (e *Engine) GetTheFastestMirrorAsync(distType int, mirrors []string, testUR
 
 	go func() {
 		if cached, ok := e.cache.GetCachedResult(distType); ok {
-			log.Debug().Int("dist_type", distType).Str("mirror", cached).Msg("async: using cached benchmark result")
+			log.Debug().Int("dist_type", distType).Str("mirror", logsafe.URL(cached)).Msg("async: using cached benchmark result")
 			callback(AsyncBenchmarkResult{
 				DistType:      distType,
 				FastestMirror: cached,
@@ -454,7 +455,7 @@ func (e *Engine) GetTheFastestMirrorAsync(distType int, mirrors []string, testUR
 			return fastest, nil
 		})
 		if err != nil {
-			log.Error().Err(err).Int("dist_type", distType).Bool("shared", shared).Msg("async: benchmark failed")
+			log.Error().Err(logsafe.Error(err)).Int("dist_type", distType).Bool("shared", shared).Msg("async: benchmark failed")
 			callback(AsyncBenchmarkResult{
 				DistType:      distType,
 				FastestMirror: "",
@@ -464,7 +465,7 @@ func (e *Engine) GetTheFastestMirrorAsync(distType int, mirrors []string, testUR
 		}
 
 		fastest, _ := v.(string)
-		log.Info().Int("dist_type", distType).Str("mirror", fastest).Bool("shared", shared).Msg("async: benchmark completed")
+		log.Info().Int("dist_type", distType).Str("mirror", logsafe.URL(fastest)).Bool("shared", shared).Msg("async: benchmark completed")
 
 		callback(AsyncBenchmarkResult{
 			DistType:      distType,

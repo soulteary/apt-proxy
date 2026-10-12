@@ -46,6 +46,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
@@ -452,6 +453,9 @@ func (s *Server) createFiberApp() *fiber.App {
 	logCfg := logger.DefaultMiddlewareConfig()
 	logCfg.Logger = s.log
 	logCfg.SkipPaths = []string{"/healthz", "/livez", "/readyz"} // skip health noise
+	// Repository authentication can use custom query names. Add a uniformly
+	// redacted query field below instead of the logger's fixed secret-name list.
+	logCfg.IncludeQuery = false
 	if s.config.Debug {
 		logCfg.IncludeHeaders = true
 		logCfg.IncludeBody = true
@@ -465,10 +469,14 @@ func (s *Server) createFiberApp() *fiber.App {
 			if size <= 0 {
 				size = len(c.Response().Body())
 			}
-			return map[string]interface{}{
+			fields := map[string]interface{}{
 				"cache": cacheLabelFromHeader(string(c.Response().Header.Peek("X-Cache"))),
 				"size":  size,
 			}
+			if query := string(c.Request().URI().QueryString()); query != "" {
+				fields["query"] = logsafe.Query(query)
+			}
+			return fields
 		},
 	}))
 

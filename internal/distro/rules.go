@@ -28,7 +28,7 @@ var debStyleCachePatterns = []struct {
 	{regexp.MustCompile(`udeb$`), `max-age=100000`},
 	// Common installer files are mutable, including those under current/.
 	{regexp.MustCompile(`(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$`), `max-age=3600`},
-	{regexp.MustCompile(`(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|netboot\.tar\.gz|mini\.iso|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$`), `max-age=3600`},
+	{regexp.MustCompile(`(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|(gtk/)?(netboot\.tar\.gz|mini\.iso)|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$`), `max-age=3600`},
 	// PXE/UEFI resources remain confined to installer netboot trees.
 	{regexp.MustCompile(`(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/netboot/(pxelinux\.cfg/default|(gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9][A-Za-z0-9_-]*/(pxelinux\.0|pxelinux\.cfg/default|(bootnet|grub)(x64|ia32|aa64)\.efi|boot-screens/([A-Za-z0-9][A-Za-z0-9_-]*\.(cfg|c32)|f([1-9]|10)\.txt|splash\.png)|grub/(grub\.cfg|font\.pf2|[A-Za-z0-9][A-Za-z0-9_-]*-efi/[A-Za-z0-9][A-Za-z0-9_-]*\.(mod|lst))))$`), `max-age=3600`},
 	// Versioned source artifacts in Debian-style pool layouts, including legacy security pools.
@@ -43,6 +43,8 @@ var debStyleCachePatterns = []struct {
 	{regexp.MustCompile(`(^|/)Translation-[A-Za-z][A-Za-z0-9_-]*(\.(gz|bz2|bzip2|lzma|xz|zst))?$`), `max-age=3600`},
 	{regexp.MustCompile(`(^|/)Contents-[A-Za-z0-9_-]+(\.(gz|bz2|lzma|xz|zst))?$`), `max-age=3600`},
 	{regexp.MustCompile(`(^|/)(Packages|Sources|Contents-[A-Za-z0-9_-]+|Translation-[A-Za-z][A-Za-z0-9_-]*)\.diff/(Index|[A-Za-z0-9_.-]+\.(gz|xz))$`), `max-age=3600`},
+	// Direct DEP-11 indexes and icon archives, including non-by-hash fallback paths.
+	{regexp.MustCompile(`(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/dep11/(Components-[A-Za-z0-9][A-Za-z0-9_-]*\.yml\.(gz|xz)|CID-Index-[A-Za-z0-9][A-Za-z0-9_-]*\.json\.gz|icons-(48x48|64x64|128x128)(@2)?\.tar\.gz)$`), `max-age=3600`},
 	{regexp.MustCompile(`\/by-hash\/`), `max-age=3600`},
 }
 
