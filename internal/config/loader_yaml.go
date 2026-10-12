@@ -26,12 +26,14 @@ import (
 
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
+	"github.com/soulteary/apt-proxy/internal/sharedcache"
 	"gopkg.in/yaml.v3"
 )
 
 // YAMLConfig represents the YAML configuration file structure.
 // It uses a more user-friendly structure that maps to the internal Config.
 type YAMLConfig struct {
+	SharedCache    *sharedcache.Config    `yaml:"shared_cache"`
 	Resources      ResourceConfig         `yaml:"resources"`
 	MirrorHealth   *mirrorhealth.Config   `yaml:"mirror_health"`
 	UpstreamAccess *access.UpstreamConfig `yaml:"upstream_access"`
@@ -173,6 +175,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 	}
 
 	cfg := &Config{
+		SharedCache:  yamlCfg.SharedCache,
 		MirrorHealth: yamlCfg.MirrorHealth,
 		Debug:        yamlCfg.Server.Debug,
 		CacheDir:     yamlCfg.Cache.Dir,
