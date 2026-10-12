@@ -859,7 +859,12 @@ same mirror, second request   -> upstream contacted once   (cache hit)
 after switching the mirror    -> refetched from the new mirror
 ```
 
-Mirror election runs at startup and on an explicit refresh. Benchmark results
+Mirror election runs at startup and on an explicit refresh. Opt-in
+[runtime mirror health](docs/runtime-mirror-health.md) additionally supports
+snapshot-checked failover between explicitly equivalent public APT archives,
+with bounded probes, cooldown and `GET /api/mirrors/status` observability.
+Unknown/divergent snapshots and private requests cannot switch automatically.
+Benchmark results
 are not persisted, so **a restart re-elects**, and so do `SIGHUP` and `POST
 /api/mirrors/refresh`. A mirror timing out during benchmarking is dropped from
 that run's candidates. If an election fails during refresh, the complete previous
@@ -1081,6 +1086,7 @@ APT Proxy provides REST API endpoints for monitoring and management:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/mirrors/refresh` | POST | Reload distributions/mirrors config (distributions.yaml) and refresh mirrors |
+| `/api/mirrors/status` | GET | Inspect process-local runtime mirror health and selection decisions |
 
 ### API Authentication
 

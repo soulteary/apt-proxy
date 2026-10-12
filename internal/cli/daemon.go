@@ -256,6 +256,7 @@ func (s *Server) initialize() error {
 	s.logPassthrough(allowlist)
 
 	ps, err := proxy.NewPackageStruct(proxy.Options{
+		MirrorHealth:       s.config.MirrorHealth,
 		UpstreamAccess:     s.config.UpstreamAccess,
 		State:              s.state,
 		Registry:           s.registry,
@@ -524,6 +525,17 @@ func (s *Server) createFiberApp() *fiber.App {
 	app.All("/api/cache/purge", adaptor.HTTPHandler(mutatingAPIHandler(s.cacheHandler.HandleCachePurge)))
 	app.All("/api/cache/cleanup", adaptor.HTTPHandler(mutatingAPIHandler(s.cacheHandler.HandleCacheCleanup)))
 	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(mutatingAPIHandler(s.mirrorsHandler.HandleMirrorsRefresh)))
+	app.All("/api/mirrors/status", adaptor.HTTPHandler(apiHandler(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			api.WriteAppError(w, apperrors.New(apperrors.ErrMethodNotAllowed, "Method not allowed"))
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		if err := api.WriteJSON(w, http.StatusOK, s.proxy.MirrorHealthStatus()); err != nil {
+			s.log.Error().Err(err).Msg("failed to write mirror health status")
+		}
+	})))
 
 	// Ping (/_/ping and /_/ping/ and /_/ping/...)
 	pingHandler := func(c fiber.Ctx) error {
