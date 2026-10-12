@@ -105,7 +105,10 @@ func RunRepository(ctx context.Context, args []string, output io.Writer) error {
 		if !info.Mode().IsRegular() {
 			return errors.New("archive must be a regular file")
 		}
-		f, err := os.Open(filename)
+		// The operator explicitly chooses this local archive with --file; it is
+		// not derived from repository metadata. Lstat and SameFile reject
+		// non-regular archives and replacements before consuming the archive.
+		f, err := os.Open(filename) // #nosec G304 -- Explicit CLI archive path with regular-file and identity checks.
 		if err != nil {
 			return err
 		}

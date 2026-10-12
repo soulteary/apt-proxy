@@ -3,6 +3,7 @@
 package resource
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -14,7 +15,7 @@ func availableBytes(path string) (int64, error) {
 		var stat unix.Statfs_t
 		err := unix.Statfs(path, &stat)
 		if err == nil {
-			return saturatingFree(stat.Bavail, uint64(stat.Bsize)), nil
+			return statfsFreeBytes(stat)
 		}
 		if !os.IsNotExist(err) {
 			return 0, err
@@ -25,4 +26,11 @@ func availableBytes(path string) (int64, error) {
 		}
 		path = parent
 	}
+}
+
+func statfsFreeBytes(stat unix.Statfs_t) (int64, error) {
+	if stat.Bsize <= 0 {
+		return 0, errors.New("filesystem block size must be positive")
+	}
+	return saturatingFree(stat.Bavail, uint64(stat.Bsize)), nil
 }
