@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -187,8 +188,8 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			KeyFile:  yamlCfg.TLS.KeyFile,
 		},
 		Security: SecurityConfig{
-			DownloadAllowCIDRs:    append([]string(nil), yamlCfg.Security.DownloadAllowCIDRs...),
-			DownloadDenyCIDRs:     append([]string(nil), yamlCfg.Security.DownloadDenyCIDRs...),
+			DownloadAllowCIDRs:    slices.Clone(yamlCfg.Security.DownloadAllowCIDRs),
+			DownloadDenyCIDRs:     slices.Clone(yamlCfg.Security.DownloadDenyCIDRs),
 			APIKey:                yamlCfg.Security.APIKey,
 			EnableAPIAuth:         enableAPIAuth,
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,

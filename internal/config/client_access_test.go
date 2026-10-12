@@ -46,3 +46,42 @@ func TestDownloadAccessYAMLAndMerge(t *testing.T) {
 		}
 	}
 }
+
+func TestDownloadAccessYAMLEmptyOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name, yaml            string
+		clearAllow, clearDeny bool
+	}{
+		{"omitted", "security: {}\n", false, false},
+		{"clear allow", "security:\n  download_allow_cidrs: []\n", true, false},
+		{"clear deny", "security:\n  download_deny_cidrs: []\n", false, true},
+		{"clear both", "security:\n  download_allow_cidrs: []\n  download_deny_cidrs: []\n", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "override.yaml")
+			if err := os.WriteFile(path, []byte(tc.yaml), 0600); err != nil {
+				t.Fatal(err)
+			}
+			override, err := LoadConfigFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (override.Security.DownloadAllowCIDRs != nil) != tc.clearAllow || (override.Security.DownloadDenyCIDRs != nil) != tc.clearDeny {
+				t.Fatalf("YAML presence lost: %+v", override.Security)
+			}
+			base := &Config{Security: SecurityConfig{DownloadAllowCIDRs: []string{"192.0.2.0/24"}, DownloadDenyCIDRs: []string{"192.0.2.42/32"}}}
+			merged := MergeConfigs(base, override)
+			if (len(merged.Security.DownloadAllowCIDRs) == 0) != tc.clearAllow || (len(merged.Security.DownloadDenyCIDRs) == 0) != tc.clearDeny {
+				t.Fatalf("incorrect policy merge: %+v", merged.Security)
+			}
+			// A merged override must retain explicit emptiness in a subsequent merge.
+			chained := MergeConfigs(base, merged)
+			if !reflect.DeepEqual(chained.Security, merged.Security) {
+				t.Fatalf("chained merge restored old policy: %+v", chained.Security)
+			}
+			if merged.Security.DownloadAllowCIDRs == nil || merged.Security.DownloadDenyCIDRs == nil {
+				t.Fatal("merge collapsed explicit empty list")
+			}
+		})
+	}
+}
