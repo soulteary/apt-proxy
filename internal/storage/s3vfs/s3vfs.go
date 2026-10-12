@@ -34,6 +34,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	httpcache "github.com/soulteary/httpcache-kit/v4"
 	vfs "github.com/soulteary/vfs-kit"
 )
 
@@ -41,6 +42,10 @@ import (
 // config.S3Config; New() takes a Config rather than the apt-proxy struct so
 // this package stays import-cycle-clean and individually unit-testable.
 type Config struct {
+	StagingBudget httpcache.StagingBudget
+	// UploadTimeout bounds PUT operations while temporary copies are retained.
+	// Zero selects 20 minutes.
+	UploadTimeout time.Duration
 	// Endpoint is the host[:port] of the S3-compatible service, e.g.
 	// "s3.amazonaws.com", "s3.us-west-2.amazonaws.com",
 	// "minio.local:9000", "s3.cn-north-1.qiniucs.com".
@@ -97,12 +102,14 @@ type metaEntry struct {
 
 // S3VFS implements the vfs.VFS interface against an S3-compatible bucket.
 type S3VFS struct {
-	ctx       context.Context
-	client    *minio.Client
-	bucket    string
-	prefix    string
-	tmpDir    string
-	inlineMax int64
+	budget        httpcache.StagingBudget
+	uploadTimeout time.Duration
+	ctx           context.Context
+	client        *minio.Client
+	bucket        string
+	prefix        string
+	tmpDir        string
+	inlineMax     int64
 
 	metaCache    *lru.Cache[string, metaEntry]
 	metaCacheTTL time.Duration
@@ -170,14 +177,16 @@ func New(ctx context.Context, cfg Config) (*S3VFS, error) {
 	}
 
 	s := &S3VFS{
-		ctx:          ctx,
-		client:       client,
-		bucket:       cfg.Bucket,
-		prefix:       normalizePrefix(cfg.Prefix),
-		tmpDir:       tmpDir,
-		inlineMax:    inlineMax,
-		metaCache:    metaCache,
-		metaCacheTTL: cfg.MetaCacheTTL,
+		budget:        cfg.StagingBudget,
+		uploadTimeout: cfg.UploadTimeout,
+		ctx:           ctx,
+		client:        client,
+		bucket:        cfg.Bucket,
+		prefix:        normalizePrefix(cfg.Prefix),
+		tmpDir:        tmpDir,
+		inlineMax:     inlineMax,
+		metaCache:     metaCache,
+		metaCacheTTL:  cfg.MetaCacheTTL,
 	}
 	return s, nil
 }
@@ -254,14 +263,16 @@ func (s *S3VFS) OpenFile(p string, flag int, _ os.FileMode) (vfs.WFile, error) {
 	}
 
 	w := &s3WFile{
-		ctx:       s.ctx,
-		client:    s.client,
-		bucket:    s.bucket,
-		key:       key,
-		logical:   p,
-		tmpDir:    s.tmpDir,
-		inlineMax: s.inlineMax,
-		onClose:   s.invalidateMeta,
+		budget:        s.budget,
+		uploadTimeout: s.uploadTimeout,
+		ctx:           s.ctx,
+		client:        s.client,
+		bucket:        s.bucket,
+		key:           key,
+		logical:       p,
+		tmpDir:        s.tmpDir,
+		inlineMax:     s.inlineMax,
+		onClose:       s.invalidateMeta,
 	}
 	return w, nil
 }

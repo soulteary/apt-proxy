@@ -20,6 +20,8 @@ import (
 	"io"
 	"sync"
 	"time"
+
+	httpcache "github.com/soulteary/httpcache-kit/v4"
 )
 
 const (
@@ -47,6 +49,7 @@ func (b *spoolBudget) release(n int64) { b.mu.Lock(); defer b.mu.Unlock(); b.use
 type budgetWriter struct {
 	writer    io.Writer
 	budget    *spoolBudget
+	lease     httpcache.StagingLease
 	max, used int64
 	once      sync.Once
 }
@@ -59,12 +62,28 @@ func (w *budgetWriter) Write(p []byte) (int, error) {
 	if !w.budget.reserve(size) {
 		return 0, fmt.Errorf("unknown-length downloads exceed shared spool budget")
 	}
+	if w.lease != nil {
+		if err := w.lease.Reserve(size); err != nil {
+			w.budget.release(size)
+			return 0, err
+		}
+	}
 	n, err := w.writer.Write(p)
 	w.used += int64(n)
 	w.budget.release(size - int64(n))
+	if w.lease != nil {
+		w.lease.Release(size - int64(n))
+	}
 	return n, err
 }
-func (w *budgetWriter) release() { w.once.Do(func() { w.budget.release(w.used) }) }
+func (w *budgetWriter) release() {
+	w.once.Do(func() {
+		w.budget.release(w.used)
+		if w.lease != nil {
+			w.lease.Close()
+		}
+	})
+}
 
 type timeoutBody struct {
 	io.ReadCloser
@@ -85,12 +104,18 @@ type timeoutUpgradeBody struct {
 	io.ReadWriteCloser
 	cancel   context.CancelFunc
 	stop     func() bool
+	release  func()
 	once     sync.Once
 	closeErr error
 }
 
 func (b *timeoutUpgradeBody) closeBody() error {
-	b.once.Do(func() { b.closeErr = b.ReadWriteCloser.Close() })
+	b.once.Do(func() {
+		b.closeErr = b.ReadWriteCloser.Close()
+		if b.release != nil {
+			b.release()
+		}
+	})
 	return b.closeErr
 }
 func (b *timeoutUpgradeBody) Close() error {

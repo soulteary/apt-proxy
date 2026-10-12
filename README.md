@@ -1541,11 +1541,14 @@ now use the mirror and cache, including clients that fall back from by-hash URLs
 Rules stay confined to `dists/<suite>/<component>/dep11/`; this does not allow
 arbitrary YAML/JSON files or tarballs. See [AppStream coverage](docs/apt-appstream.md).
 
-## Persistent cache integrity
+## Temporary resources and cache integrity
 
-Persistent cache SHA256 verification is enabled by default. See
-[cache integrity](docs/cache-integrity.md) for legacy-cache migration, storage
-I/O cost and the explicit `cache.integrity: none` opt-out.
+Repository downloads now share nonblocking temporary-storage and active-download
+admission, including declared-length responses and overlapping cache/S3 copies.
+See [resource limits](docs/resource-limits.md) for YAML defaults and overload
+behavior. Persistent cache SHA256 verification is enabled by default; see
+[cache integrity](docs/cache-integrity.md) for legacy-cache migration, storage I/O
+cost and the explicit `cache.integrity: none` opt-out.
 
 ### Complete repository snapshots and offline access
 

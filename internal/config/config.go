@@ -30,6 +30,7 @@ const (
 // Config holds all application configuration
 type Config struct {
 	UpstreamAccess          *access.UpstreamConfig `yaml:"upstream_access"`
+	Resources               ResourceConfig         `yaml:"resources"`
 	Download                DownloadConfig         `yaml:"download"`
 	Debug                   bool                   `yaml:"debug"`
 	CacheDir                string                 `yaml:"cache_dir"`
