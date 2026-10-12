@@ -32,7 +32,7 @@ import (
 
 func TestProductionInstallerFilesRewriteAndCache(t *testing.T) {
 	const debianRoot = "dists/trixie/main/installer-amd64/current/images/"
-	artifacts := []string{"SHA256SUMS", "MANIFEST.udebs", "netboot/debian-installer/amd64/linux", "netboot/debian-installer/amd64/initrd.gz", "netboot/ubuntu-installer/amd64/linux", "netboot/ubuntu-installer/amd64/initrd.gz", "netboot/netboot.tar.gz", "netboot/mini.iso", "hd-media/boot.img.gz"}
+	artifacts := []string{"netboot/pxelinux.cfg/default", "netboot/debian-installer/amd64/pxelinux.0", "netboot/debian-installer/amd64/pxelinux.cfg/default", "netboot/debian-installer/amd64/bootnetx64.efi", "netboot/debian-installer/amd64/grubx64.efi", "netboot/ubuntu-installer/arm64/bootnetaa64.efi", "netboot/gtk/debian-installer/amd64/grub/grub.cfg", "netboot/debian-installer/amd64/grub/font.pf2", "netboot/debian-installer/amd64/grub/x86_64-efi/normal.mod", "netboot/debian-installer/amd64/grub/x86_64-efi/command.lst", "netboot/debian-installer/amd64/boot-screens/vesamenu.c32", "netboot/debian-installer/amd64/boot-screens/menu.cfg", "netboot/debian-installer/amd64/boot-screens/f10.txt", "netboot/debian-installer/amd64/boot-screens/splash.png", "SHA256SUMS", "MANIFEST.udebs", "netboot/debian-installer/amd64/linux", "netboot/debian-installer/amd64/initrd.gz", "netboot/ubuntu-installer/amd64/linux", "netboot/ubuntu-installer/amd64/initrd.gz", "netboot/netboot.tar.gz", "netboot/mini.iso", "hd-media/boot.img.gz"}
 	for _, distribution := range []struct {
 		name, prefix string
 		mode         int
@@ -55,7 +55,7 @@ func TestProductionInstallerFilesRewriteAndCache(t *testing.T) {
 					}
 					w.Header().Set("Content-Type", "application/octet-stream")
 					w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
-					if r.URL.Path == distribution.prefix+installerRoot+"cdrom/initrd.gz" {
+					if r.URL.Path == distribution.prefix+installerRoot+"netboot/debian-installer/amd64/boot-screens/prompt.cfg" {
 						w.Header().Set("Cache-Control", "no-store")
 					}
 					_, _ = w.Write(payload)
@@ -126,14 +126,14 @@ func TestProductionInstallerFilesRewriteAndCache(t *testing.T) {
 					}
 				}
 				before := hits.Load()
-				for _, path := range []string{"SHA256SUMS", installerRoot + "random.iso", installerRoot + "netboot/mini.iso.exe"} {
+				for _, path := range []string{"netboot/pxelinux.cfg/default", "netboot/debian-installer/amd64/pxelinux.0", "netboot/debian-installer/amd64/pxelinux.cfg/default", "netboot/debian-installer/amd64/bootnetx64.efi", "netboot/debian-installer/amd64/grubx64.efi", "netboot/ubuntu-installer/arm64/bootnetaa64.efi", "netboot/gtk/debian-installer/amd64/grub/grub.cfg", "netboot/debian-installer/amd64/grub/font.pf2", "netboot/debian-installer/amd64/grub/x86_64-efi/normal.mod", "netboot/debian-installer/amd64/grub/x86_64-efi/command.lst", "netboot/debian-installer/amd64/boot-screens/vesamenu.c32", "netboot/debian-installer/amd64/boot-screens/menu.cfg", "netboot/debian-installer/amd64/boot-screens/f10.txt", "netboot/debian-installer/amd64/boot-screens/splash.png", "SHA256SUMS", installerRoot + "random.iso", installerRoot + "netboot/mini.iso.exe"} {
 					request(path, 404, "")
 				}
 				if hits.Load() != before {
 					t.Fatal("unsupported archive reached upstream")
 				}
-				request(installerRoot+"cdrom/initrd.gz", 200, "")
-				request(installerRoot+"cdrom/initrd.gz", 200, "")
+				request(installerRoot+"netboot/debian-installer/amd64/boot-screens/prompt.cfg", 200, "")
+				request(installerRoot+"netboot/debian-installer/amd64/boot-screens/prompt.cfg", 200, "")
 				if hits.Load() != before+2 {
 					t.Fatal("upstream no-store installer response reused")
 				}
