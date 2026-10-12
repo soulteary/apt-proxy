@@ -102,6 +102,8 @@ github.com/soulteary/httpcache-kit/v4 v4.0.2-0.20261012191753-7b9c80834ef0 h1:43
 github.com/soulteary/httpcache-kit/v4 v4.0.2-0.20261012191753-7b9c80834ef0/go.mod h1:RNNH6ZA96OFVv/UD2gGlnXUnyCaqblwfeseoWV282uk=
 github.com/soulteary/httpcache-kit/v4 v4.0.3-0.20261012194216-7b75271a3c95 h1:e725m7sNpgDM4PAkM5Iv6BIAw7YMGm1veWNEVvmLZyM=
 github.com/soulteary/httpcache-kit/v4 v4.0.3-0.20261012194216-7b75271a3c95/go.mod h1:zGas+lfDTbKfy1tdlpiPA+7yEOR4Fgpt4NN8LWtAh/4=
+github.com/soulteary/httpcache-kit/v4 v4.0.3-0.20261012220915-608c0927a049 h1:Ho02ONUkEvj3u8mWhTeBPboyctBH5JRukcbD0FFdTZ4=
+github.com/soulteary/httpcache-kit/v4 v4.0.3-0.20261012220915-608c0927a049/go.mod h1:nzId3+yQlOtkuOT7DLwFy+2ALCOVMBJAhcC0GG7ZpZ4=
 github.com/soulteary/logger-kit/v3 v3.0.1 h1:o9/Nhq6RbIx70zjKMhAuvxO3+E9yqYhtWS+7wDXvCSk=
 github.com/soulteary/logger-kit/v3 v3.0.1/go.mod h1:w4IYfsZIWb/XzXkguMMqbzUc7n2Am0S5BwHw23/8FxE=
 github.com/soulteary/logger-kit/v3 v3.0.2 h1:HB8RoKNT+5PovgNeuSJYAGUA0TOj0eATSqey3UXI+wo=
@@ -120,6 +122,8 @@ github.com/soulteary/vfs-kit v1.4.3 h1:Bf52CvH7yO8YO3s88BAQV1reshaG/FIw99/JcFSp2
 github.com/soulteary/vfs-kit v1.4.3/go.mod h1:fuTQLNKppXGMTycLyCvBuHG/UDJ65MxZRzQYquAwnM8=
 github.com/soulteary/vfs-kit v1.4.4 h1:UYN6f1VR9uxVbCKDQ2/RCwjNuZ3XLXRIsxFHJeqCyvI=
 github.com/soulteary/vfs-kit v1.4.4/go.mod h1:fuTQLNKppXGMTycLyCvBuHG/UDJ65MxZRzQYquAwnM8=
+github.com/soulteary/vfs-kit v1.4.5-0.20261012210923-af6413b52e5b h1:j2PiZsZ9bQlKN/LzUDuhxm15wytvWT3KQMc0zpBs5Gc=
+github.com/soulteary/vfs-kit v1.4.5-0.20261012210923-af6413b52e5b/go.mod h1:fuTQLNKppXGMTycLyCvBuHG/UDJ65MxZRzQYquAwnM8=
 github.com/spf13/pflag v1.0.10 h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk=
 github.com/spf13/pflag v1.0.10/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
