@@ -33,3 +33,31 @@ func TestValidateDownloadLimits(t *testing.T) {
 		t.Fatalf("zero/default limits rejected: %v", err)
 	}
 }
+
+func TestDownloadLegacyMerge(t *testing.T) {
+	base := &Config{Download: DownloadConfig{MaxSpoolMB: 32, TotalSpoolMB: 64, TimeoutSeconds: 15}}
+	cases := []struct {
+		name     string
+		override DownloadConfig
+		want     DownloadConfig
+	}{
+		{"zero preserves base", DownloadConfig{}, base.Download},
+		{"max spool", DownloadConfig{MaxSpoolMB: 8}, DownloadConfig{MaxSpoolMB: 8, TotalSpoolMB: 64, TimeoutSeconds: 15}},
+		{"total spool", DownloadConfig{TotalSpoolMB: 128}, DownloadConfig{MaxSpoolMB: 32, TotalSpoolMB: 128, TimeoutSeconds: 15}},
+		{"timeout", DownloadConfig{TimeoutSeconds: 30}, DownloadConfig{MaxSpoolMB: 32, TotalSpoolMB: 64, TimeoutSeconds: 30}},
+		{"invalid values remain visible", DownloadConfig{MaxSpoolMB: -1, TotalSpoolMB: -2, TimeoutSeconds: -3}, DownloadConfig{MaxSpoolMB: -1, TotalSpoolMB: -2, TimeoutSeconds: -3}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			override := &Config{Download: tc.override}
+			for _, got := range []*Config{MergeConfigs(base, override), MergeConfigsWithExplicit(base, override, nil)} {
+				if got.Download != tc.want {
+					t.Fatalf("merged download=%+v, want %+v", got.Download, tc.want)
+				}
+			}
+			if base.Download != cases[0].want || override.Download != tc.override {
+				t.Fatal("merge mutated an input")
+			}
+		})
+	}
+}
