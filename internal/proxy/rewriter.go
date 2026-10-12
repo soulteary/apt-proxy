@@ -562,6 +562,8 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 
 	r.URL.Scheme = target.Scheme
 	r.URL.Host = target.Host
+	// Carry the selected mirror's credentials into normalization before cache lookup.
+	r.URL.User = target.User
 	r.URL.Path = target.Path + suffixPath
 	rawPath := target.EscapedPath() + suffixRaw
 	if rawPath != r.URL.Path {

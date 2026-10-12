@@ -12,7 +12,10 @@ replace the damaged entry using the existing backend publication mechanism.
 There is no destructive cache-wide purge. If replacement fails, the damaged
 entry continues to be rejected on subsequent requests.
 
-The wrapper retains persisted invalidation marker and snapshot support. HEAD
+The wrapper retains persisted invalidation marker and snapshot support.
+[Private repository isolation](private-repositories.md) adds a consistent key
+namespace and rejection of session responses; pre-upgrade entries are no longer
+served after migration. HEAD
 entries are excluded because their Content-Length describes a GET body that
 is absent from the HEAD response. GET entries without Content-Length remain
 usable and cannot be verified by this check. Unknown-length bodies, same-length

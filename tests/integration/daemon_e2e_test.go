@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -145,6 +146,11 @@ func TestDaemonE2E(t *testing.T) {
 // created and that healthz responds before any client request hits an
 // upstream — useful as a smoke test in CI before SIGTERM.
 func TestDaemonE2EHealthCheckPersists(t *testing.T) {
+	// Health readiness must not depend on public mirror election or network access.
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mirror.Close()
 	host, port := freeListenPort(t)
 	cacheDir := filepath.Join(t.TempDir(), "cache")
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
@@ -155,6 +161,11 @@ func TestDaemonE2EHealthCheckPersists(t *testing.T) {
 		Listen:   net.JoinHostPort(host, port),
 		Mode:     distro.TypeAllDistros,
 		CacheDir: cacheDir,
+		Mirrors: config.MirrorConfig{
+			Ubuntu: mirror.URL + "/ubuntu/", UbuntuPorts: mirror.URL + "/ubuntu-ports/",
+			Debian: mirror.URL + "/debian/", DebianSecurity: mirror.URL + "/debian-security/",
+			CentOS: mirror.URL + "/centos/", Alpine: mirror.URL + "/alpine/",
+		},
 		Cache: config.CacheConfig{
 			MaxSizeGB:          1,
 			TTLHours:           1,

@@ -291,6 +291,7 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 			Rewrite:   func(*httputil.ProxyRequest) {},
 			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}},
 			ModifyResponse: func(resp *http.Response) error {
+				protectPrivateRepositoryResponse(resp)
 				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)
 				applyRepositoryCachePolicy(resp.Header, resp.StatusCode, rule)
 				return nil
@@ -432,7 +433,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	tracing.SetSpanAttributesFromMap(span, map[string]interface{}{
 		"http.method":      r.Method,
-		"http.url":         r.URL.String(),
+		"http.url":         r.URL.Redacted(),
 		"http.path":        r.URL.Path,
 		"http.scheme":      r.URL.Scheme,
 		"http.host":        r.Host,
@@ -445,6 +446,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	// part of its key. Clone here so background cache work never references
 	// memory that the adapter can reuse for the next request.
 	r = detachRequest(spanCtx, r)
+	normalizeRepositoryCredentials(r)
 
 	// apt-cacher-ng's HTTPS/// marker names a third-party origin inside the
 	// path. Handle it here rather than letting it reach pattern matching,
@@ -459,7 +461,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
 			return
 		}
-		ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r.WithContext(context.WithValue(r.Context(), cacheRuleKey{}, rule)))
+		ap.serveMatchedRepository(rw, r, rule)
 		return
 	}
 
@@ -472,7 +474,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		if ap.Handler != nil {
-			ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r.WithContext(context.WithValue(r.Context(), cacheRuleKey{}, rule)))
+			ap.serveMatchedRepository(rw, r, rule)
 		} else {
 			tracing.RecordError(span, http.ErrAbortHandler)
 			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
@@ -601,14 +603,14 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *dist
 		ap.log.Error().Msg("request URL is nil, cannot rewrite")
 		return
 	}
-	before := r.URL.String()
+	before := r.URL.Redacted()
 	RewriteRequestByMode(r, rt.rewriters, rule.OS)
 
 	if r.URL != nil {
 		r.Host = r.URL.Host
 		ap.log.Debug().
 			Str("from", before).
-			Str("to", r.URL.String()).
+			Str("to", r.URL.Redacted()).
 			Msg("rewrote request URL")
 	}
 }

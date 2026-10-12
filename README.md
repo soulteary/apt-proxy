@@ -1449,3 +1449,7 @@ Made with ❤️ by the APT Proxy community
 ### Download resource limits
 
 Unknown-length downloads default to a 1 GiB per-response spool limit and a 4 GiB shared spool budget per instance. Upstream fetches default to a 20-minute total timeout. Configure `download.max_spool_mb`, `download.total_spool_mb`, and `download.timeout_seconds` in YAML; zero selects the defaults. See [download limits](docs/download-limits.md) for scope and failure behavior.
+
+### Private repository requests
+
+Requests with `Authorization` or `Cookie` bypass shared caching; `Set-Cookie` responses are not stored. Authenticated cache-only requests return 504 without upstream access. This version uses a new cache-key namespace to exclude pre-upgrade private responses, causing a one-time cold cache without deleting legacy files. See [private repository isolation](docs/private-repositories.md) for migration and scope.
