@@ -26,6 +26,8 @@ var debStyleCachePatterns = []struct {
 }{
 	{regexp.MustCompile(`deb$`), `max-age=100000`},
 	{regexp.MustCompile(`udeb$`), `max-age=100000`},
+	// Versioned source artifacts in Debian-style pool layouts, including legacy security pools.
+	{regexp.MustCompile(`(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$`), `max-age=100000`},
 	{regexp.MustCompile(`InRelease$`), `max-age=3600`},
 	{regexp.MustCompile(`DiffIndex$`), `max-age=3600`},
 	{regexp.MustCompile(`PackagesIndex$`), `max-age=3600`},

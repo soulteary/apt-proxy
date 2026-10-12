@@ -1475,3 +1475,13 @@ HEAD-to-GET fallback remain guarded. Startup and mirror refresh use the same
 per-instance policy. Restart to change policy.
 See [upstream access](docs/upstream-access.md) for examples and the separate
 background-client boundary.
+
+### Debian-family source packages
+
+Ubuntu, Ubuntu Ports and Debian source pool files now use the configured
+mirror and shared cache: `.dsc`, upstream/component/native archives, Debian
+packaging archives, legacy `.diff.gz` and original-archive `.asc` signatures.
+Rules are limited to versioned source filenames in Debian-style pools and
+preserve upstream cache directives. Existing custom distribution YAML must
+adopt the new rule explicitly. See [source package coverage](docs/apt-source-packages.md)
+for supported formats and client-side verification responsibilities.

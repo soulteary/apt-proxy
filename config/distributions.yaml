@@ -91,6 +91,10 @@ distributions:
       - pattern: "udeb$"
         cache_control: "max-age=100000"
         rewrite: true
+      # Versioned source artifacts; this does not enable arbitrary archive caching.
+      - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
+        cache_control: "max-age=100000"
+        rewrite: true
       - pattern: "InRelease$"
         cache_control: "max-age=3600"
         rewrite: true
@@ -155,6 +159,10 @@ distributions:
       - pattern: "udeb$"
         cache_control: "max-age=100000"
         rewrite: true
+      # Versioned source artifacts; this does not enable arbitrary archive caching.
+      - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
+        cache_control: "max-age=100000"
+        rewrite: true
       - pattern: "InRelease$"
         cache_control: "max-age=3600"
         rewrite: true
@@ -211,6 +219,10 @@ distributions:
         cache_control: "max-age=100000"
         rewrite: true
       - pattern: "udeb$"
+        cache_control: "max-age=100000"
+        rewrite: true
+      # Versioned source artifacts; this does not enable arbitrary archive caching.
+      - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
         cache_control: "max-age=100000"
         rewrite: true
       - pattern: "InRelease$"

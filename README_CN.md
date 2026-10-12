@@ -1389,3 +1389,11 @@ http_proxy=http://192.168.33.1:3142 \
 测速和发现请求的重定向及 HEAD→GET 回退同样受保护；启动和镜像刷新沿用实例策略。
 修改后需要重启。配置示例及镜像测速等后台请求的适用边界见
 [上游访问说明](docs/upstream-access.md)。
+
+### Debian 系源码包覆盖
+
+Ubuntu、Ubuntu Ports 和 Debian 的源码池文件现可经配置的镜像代理并缓存，
+包括 `.dsc`、原始/附加/原生源码归档、Debian 补丁归档、旧式 `.diff.gz`
+及原始归档的 `.asc` 签名。规则仅匹配 Debian 风格源码池中的带版本文件，
+保留上游缓存指令。已有自定义发行版 YAML 需要明确加入新规则。
+支持范围和客户端验证职责见 [源码包覆盖说明](docs/apt-source-packages.md)。
