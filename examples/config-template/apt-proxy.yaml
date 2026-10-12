@@ -164,6 +164,25 @@ upstream_access:
   allowed_ports: []      # empty means 80/443 when enabled
   allow_cidrs: []        # trusted private/special unicast exceptions
 
+# Optional runtime failover for explicitly equivalent public APT archive roots.
+# Requires a successfully observed InRelease/Release fingerprint before switching.
+# Restart to change this section; successful mirror refresh resets learned health.
+# See docs/runtime-mirror-health.md for privacy, snapshot and resource boundaries.
+mirror_health:
+  enabled: false
+  failure_threshold: 2
+  cooldown_seconds: 30
+  probe_timeout_seconds: 5       # one total deadline for each candidate selection
+  max_manifest_bytes: 2097152
+  snapshot_max_age_seconds: 3600
+  repositories: []
+  # repositories:
+  #   - id: ubuntu
+  #     mirrors:
+  #       - https://primary.example/ubuntu/
+  #       - https://secondary.example/archive/
+  #     public_query_keys: []    # credential-like names are forbidden
+
 # Upstream transport
 # HTTP keep-alive to upstream mirrors. Disable only if a proxy / firewall
 # in front mishandles persistent connections.

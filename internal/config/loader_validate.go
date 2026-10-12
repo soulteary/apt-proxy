@@ -62,6 +62,9 @@ func ValidateConfig(config *Config) error {
 	if config == nil {
 		return fmt.Errorf("configuration cannot be nil")
 	}
+	if err := config.MirrorHealth.Validate(); err != nil {
+		return err
+	}
 
 	if _, err := access.NewClients(config.Security.DownloadAllowCIDRs, config.Security.DownloadDenyCIDRs); err != nil {
 		return err

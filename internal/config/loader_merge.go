@@ -36,6 +36,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	if override.Cache.Integrity != "" {
 		result.Cache.Integrity = override.Cache.Integrity
 	}
+	if override.MirrorHealth != nil {
+		result.MirrorHealth = override.MirrorHealth
+	}
 	if override.UpstreamAccess != nil {
 		result.UpstreamAccess = override.UpstreamAccess
 	}
@@ -174,6 +177,9 @@ func MergeConfigs(base, override *Config) *Config {
 	mergeResourceConfig(&result.Resources, override.Resources)
 	if override.Cache.Integrity != "" {
 		result.Cache.Integrity = override.Cache.Integrity
+	}
+	if override.MirrorHealth != nil {
+		result.MirrorHealth = override.MirrorHealth
 	}
 	if override.UpstreamAccess != nil {
 		result.UpstreamAccess = override.UpstreamAccess
