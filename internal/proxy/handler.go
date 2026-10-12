@@ -233,6 +233,7 @@ type Options struct {
 	State             *state.AppState
 	Registry          *distro.Registry
 	CacheDir          string
+	DownloadTempDir   string // directory for unknown-length download spools; empty uses os.TempDir()
 	Logger            *logger.Logger
 	Mode              int
 	EnableKeepAlive   bool
@@ -276,15 +277,15 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		passthrough: opts.Passthrough,
 		bench:       bench,
 		transport:   transport,
-		Handler: &httputil.ReverseProxy{
+		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
-			Transport: transport,
+			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir},
 			ModifyResponse: func(resp *http.Response) error {
 				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)
 				applyRepositoryCachePolicy(resp.Header, resp.StatusCode, rule)
 				return nil
 			},
-		},
+		}},
 	}
 	ps.routing.Store(&routing{
 		patterns:  hostPatternsFromRegistry(opts.Registry),

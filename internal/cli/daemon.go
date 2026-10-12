@@ -245,6 +245,7 @@ func (s *Server) initialize() error {
 		State:           s.state,
 		Registry:        s.registry,
 		CacheDir:        s.config.CacheDir,
+		DownloadTempDir: s.downloadTempDir(),
 		Logger:          s.log,
 		Mode:            s.state.GetProxyMode(),
 		EnableKeepAlive: s.config.UpstreamKeepAlive,
@@ -792,4 +793,12 @@ var errNilConfig = apperrors.New(apperrors.ErrConfigInvalid, "configuration cann
 // them keeps callers honest about which error class they're emitting.
 func wrapErr(code apperrors.Code, msg string, err error) error {
 	return apperrors.Wrap(code, msg, err)
+}
+
+// downloadTempDir follows the selected backend's writable staging location.
+func (s *Server) downloadTempDir() string {
+	if s.config.Storage.Backend == config.StorageBackendS3 {
+		return s.config.Storage.S3.TempDir
+	}
+	return s.config.CacheDir
 }
