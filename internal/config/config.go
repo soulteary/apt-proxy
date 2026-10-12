@@ -25,6 +25,7 @@ const (
 
 // Config holds all application configuration
 type Config struct {
+	Download                DownloadConfig `yaml:"download"`
 	Debug                   bool           `yaml:"debug"`
 	CacheDir                string         `yaml:"cache_dir"`
 	Mode                    int            `yaml:"mode"`
@@ -151,4 +152,12 @@ type CacheConfig struct {
 	// Not read from the top-level Config YAML; YAMLConfig.Cache.CleanupIntervalMin
 	// is the user-facing knob.
 	CleanupIntervalMin int `yaml:"-"`
+}
+
+// DownloadConfig limits upstream fetch time and unknown-length temporary bodies.
+// Zero fields select bounded defaults; these settings are configured via YAML.
+type DownloadConfig struct {
+	MaxSpoolMB     int64 `yaml:"max_spool_mb"`
+	TotalSpoolMB   int64 `yaml:"total_spool_mb"`
+	TimeoutSeconds int64 `yaml:"timeout_seconds"`
 }
