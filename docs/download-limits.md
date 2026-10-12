@@ -24,7 +24,10 @@ that exceeds its per-response size limit or the available shared budget fails
 rather than waiting indefinitely for space. The guard keeps completed temporary
 files charged until the downstream response body closes. Failed downloads remove
 the temporary file and release their reservation. Released budget can be used by
-later requests. Limit failures before forwarding headers return the reverse
+later requests. If file deletion fails, its reservation remains charged; another
+body close retries removal. A failed download with no returned body remains
+conservatively charged for that process lifetime when its cleanup fails.
+Limit failures before forwarding headers return the reverse
 proxy's upstream-error response (502) and do not cache a partial object.
 
 The timeout starts before the upstream request, including its retries and header
