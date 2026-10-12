@@ -1366,3 +1366,7 @@ http_proxy=http://192.168.33.1:3142 \
 ### 下载资源限制
 
 未知长度下载默认限制单个暂存文件为 1 GiB，每个实例共享暂存预算为 4 GiB；上游获取总超时默认为 20 分钟。可在 YAML 中配置 `download.max_spool_mb`、`download.total_spool_mb` 和 `download.timeout_seconds`，零值使用默认限制。预算不包含正式缓存及其他缓存临时副本；详见[下载限制说明](docs/download-limits.md)。
+
+### 私有仓库请求
+
+携带 `Authorization` 或 `Cookie` 的请求绕过共享缓存，带 `Set-Cookie` 的响应不会存储。认证请求指定仅使用缓存时返回 504，不访问上游。本版本启用新的缓存键命名空间，以隔离升级前可能包含私有内容的条目；升级后会有一次冷缓存，旧文件不会直接删除。详见[私有仓库隔离说明](docs/private-repositories.md)。
