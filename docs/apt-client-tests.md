@@ -17,6 +17,11 @@ performs signed offline update, installation and source downloads. No signature 
 
 Logs and assertion evidence are written to `apt-client-evidence/` (override
 with `APT_CLIENT_EVIDENCE_DIR`). Private signing keys and TLS private keys stay
-inside the disposable container. CI runs all four clients independently and
+inside the disposable container. Relative evidence roots are resolved from the
+caller's working directory before compilation. Client references whose derived
+evidence identifiers collide are rejected before any evidence is cleared.
+The gzip phase records origin requests and requires both binary and source
+indexes to use `.gz`, so an xz/plain fallback cannot pass as gzip coverage.
+CI runs all four clients independently and
 uploads evidence even on failure. These are local archive compatibility tests;
 they do not assert every public mirror or installer is compatible.

@@ -133,7 +133,21 @@ import json
 assert any('/by-hash/SHA256/' in p for p in json.load(open('/evidence/by-hash.json'))['paths'])
 PY
 rm -rf /var/lib/apt/lists/*
+curl -fsS http://127.0.0.1:8080/__control/status > /evidence/gzip-before.json
 apt-get -o Acquire::By-Hash=false -o Acquire::CompressionTypes::Order::=gz update
+curl -fsS http://127.0.0.1:8080/__control/status > /evidence/gzip.json
+python3 - <<'PY'
+import json
+before = json.load(open('/evidence/gzip-before.json'))['paths']
+after = json.load(open('/evidence/gzip.json'))['paths']
+assert after[:len(before)] == before, 'Fixture request history changed'
+indexes = [p for p in after[len(before):]
+           if '/main/binary-' in p and '/Packages' in p
+           or '/main/source/Sources' in p]
+assert any(p.endswith('/Packages.gz') for p in indexes), indexes
+assert any(p.endswith('/Sources.gz') for p in indexes), indexes
+assert all(p.endswith('.gz') for p in indexes), indexes
+PY
 apt-get install -y --no-install-recommends apt-proxy-fixture
 cmp /usr/share/apt-proxy-fixture/payload /fixture/binary/usr/share/apt-proxy-fixture/payload
 mkdir -p /fixture/source-download
