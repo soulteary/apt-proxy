@@ -14,14 +14,15 @@ import (
 // before repository work can retain it during asynchronous cache publication.
 // Fiber's user context preserves middleware values, deadlines and cancellation
 // without referring back to a RequestCtx that is reset after handler return.
-// Without middleware context, Fiber supplies a stable context.Background.
-func repositoryHTTPHandler(handler http.Handler) fiber.Handler {
+// The app-owned lifecycle also cancels retained work before server shutdown.
+func repositoryHTTPHandler(lifecycle context.Context, handler http.Handler) fiber.Handler {
+	contexts := newRepositoryContextOwner(lifecycle)
 	return adaptor.HTTPHandlerWithContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, _ := adaptor.LocalContextFromHTTPRequest(r)
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		handler.ServeHTTP(w, detachedRepositoryRequest(ctx, r))
+		handler.ServeHTTP(w, detachedRepositoryRequest(contexts.forRequest(ctx), r))
 	}))
 }
 
