@@ -43,15 +43,22 @@ are at most 64 manifest paths per repository. Exceeding that limit disables
 switching until explicit refresh. Suite names use letters/digits, dots,
 underscores and hyphens and are limited to 128 characters.
 
-After the configured number of failed request series (a transport error or
-5xx after ordinary retries), candidates are checked in configured order. Every
-known manifest must match the observed SHA256 exactly, including all observed
+After the configured number of failed request series (a transport error,
+incomplete response body or 5xx after ordinary retries), candidates are checked
+in configured order. Successful headers do not reset failures: only a complete
+body EOF with the declared length establishes recovery. A truncated body already
+being delivered cannot be replayed in place; its failure can authorize a verified
+switch for the next request. Client cancellation does not count as mirror failure.
+Every known manifest must match the observed SHA256 exactly, including all observed
 suites. Missing, divergent, oversized, incomplete, private or redirected
 candidate manifests are refused. A `dists/<suite>/...` request additionally
 requires that suite to be known. A `pool/...` artifact has no suite in its path,
 so every observed suite must be known and current. An unknown or expired
 snapshot prevents switching. Each selection has one total probe deadline,
-shared across all candidate/manifest probes, and each body read is bounded.
+shared across selection waiting, all candidate/manifest probes and artifact
+replay through response headers, and each manifest body read is bounded. After
+replay headers arrive, the artifact body retains the original download timeout
+rather than the shorter probe deadline; closing it releases its child context.
 Probes use the same upstream connection policy as downloads and never follow
 redirects. Only empty-body GET/HEAD are replayed; Range and conditional headers, escaped
 paths and explicitly public query parameters are preserved.

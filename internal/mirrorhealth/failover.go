@@ -11,9 +11,16 @@ import (
 )
 
 func (c *Controller) failover(r *http.Request, repo *repository, source, selected int, relative string, epoch uint64, failedResponse *http.Response, failedError error) (*http.Response, error) {
-	if !acquire(r.Context(), repo.selecting) {
-		closeResponse(failedResponse)
-		return nil, r.Context().Err()
+	// Bound waiting, all manifest probes, and candidate replay through headers
+	// under one selection deadline. Body transfer keeps the download context.
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(c.cfg.ProbeTimeoutSeconds)*time.Second)
+	defer cancel()
+	if !acquire(ctx, repo.selecting) {
+		if r.Context().Err() != nil {
+			closeResponse(failedResponse)
+			return nil, r.Context().Err()
+		}
+		return failedResponse, failedError
 	}
 	defer func() { <-repo.selecting }()
 	repo.mu.Lock()
@@ -25,7 +32,7 @@ func (c *Controller) failover(r *http.Request, repo *repository, source, selecte
 	if repo.active >= 0 && repo.active != selected && c.verifiedFor(repo, relative) {
 		next := repo.active
 		repo.mu.Unlock()
-		res, err := c.attempt(r, repo, next, relative, epoch)
+		res, err := c.replay(ctx, r, repo, next, relative, epoch)
 		if successfulReplay(res, err) {
 			closeResponse(failedResponse)
 			return res, nil
@@ -47,10 +54,6 @@ func (c *Controller) failover(r *http.Request, repo *repository, source, selecte
 	repo.nextProbe = time.Now().Add(time.Duration(c.cfg.CooldownSeconds) * time.Second)
 	repo.reason = "probing"
 	repo.mu.Unlock()
-	// One total deadline bounds the whole selection, including all manifests
-	// across all candidates. A candidate cannot multiply the time budget.
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(c.cfg.ProbeTimeoutSeconds)*time.Second)
-	defer cancel()
 	for next := range repo.bases {
 		if next == selected {
 			continue
@@ -63,7 +66,7 @@ func (c *Controller) failover(r *http.Request, repo *repository, source, selecte
 		if epoch != c.Epoch() || r.Context().Err() != nil {
 			break
 		}
-		res, err := c.attempt(r, repo, next, relative, epoch)
+		res, err := c.replay(ctx, r, repo, next, relative, epoch)
 		if !successfulReplay(res, err) {
 			closeResponse(res)
 			c.decision(repo, epoch, "candidate-response-rejected")
@@ -95,6 +98,42 @@ func (c *Controller) failover(r *http.Request, repo *repository, source, selecte
 		return nil, r.Context().Err()
 	}
 	return failedResponse, failedError
+}
+
+// replay drops the selection cancellation hook only after headers arrive. The
+// request context remains a child of the original download context, and the
+// returned body owns its cancellation until Close. Canceling selection on
+// return must not truncate a successful package that outlives the probe budget.
+func (c *Controller) replay(selection context.Context, r *http.Request, repo *repository, next int, relative string, epoch uint64) (*http.Response, error) {
+	ctx, cancel := context.WithCancel(r.Context())
+	stop := context.AfterFunc(selection, cancel)
+	res, err := c.attempt(r.WithContext(ctx), repo, next, relative, epoch)
+	if !stop() || selection.Err() != nil {
+		cancel()
+		closeResponse(res)
+		return nil, selection.Err()
+	}
+	if err != nil || res == nil {
+		cancel()
+		return res, err
+	}
+	res.Request = r
+	if res.Body == nil || res.Body == http.NoBody {
+		cancel()
+	} else {
+		res.Body = &replayBody{ReadCloser: res.Body, cancel: cancel}
+	}
+	return res, nil
+}
+
+type replayBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *replayBody) Close() error {
+	defer b.cancel()
+	return b.ReadCloser.Close()
 }
 
 func successfulReplay(res *http.Response, err error) bool {

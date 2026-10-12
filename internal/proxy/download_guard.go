@@ -23,6 +23,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/soulteary/apt-proxy/internal/resource"
 )
 
 // abortSafeHandler contains ReverseProxy's intentional copy-error panic in the
@@ -46,11 +48,12 @@ func (h *abortSafeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // signal observable before any partial object can be cached.
 type completeUnknownBodyTransport struct {
 	http.RoundTripper
-	tempDir  string
-	maxBytes int64
-	timeout  time.Duration
-	budget   *spoolBudget
-	initOnce sync.Once
+	tempDir   string
+	maxBytes  int64
+	timeout   time.Duration
+	budget    *spoolBudget
+	resources *resource.Manager
+	initOnce  sync.Once
 }
 
 func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -65,15 +68,27 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 			t.budget = &spoolBudget{limit: DefaultTotalSpoolBytes}
 		}
 	})
+	var admission *resource.DownloadLease
+	if t.resources != nil {
+		var err error
+		admission, err = t.resources.AcquireDownload(r.Context())
+		if err != nil {
+			return nil, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), t.timeout)
+	if admission != nil {
+		context.AfterFunc(ctx, admission.Close)
+	}
 	res, err := t.RoundTripper.RoundTrip(r.WithContext(ctx))
 	if err != nil {
 		cancel()
+		admission.Close()
 		return nil, err
 	}
 	if res.StatusCode == http.StatusSwitchingProtocols {
 		if body, ok := res.Body.(io.ReadWriteCloser); ok {
-			upgrade := &timeoutUpgradeBody{ReadWriteCloser: body, cancel: cancel}
+			upgrade := &timeoutUpgradeBody{ReadWriteCloser: body, cancel: cancel, release: admission.Close}
 			// The HTTP transport transfers connection ownership after 101 and no
 			// longer interrupts reads when the request context expires.
 			upgrade.stop = context.AfterFunc(ctx, func() { _ = upgrade.closeBody() })
@@ -84,14 +99,23 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 			}
 		} else {
 			cancel()
+			admission.Close()
 		}
 		return res, nil
 	}
 	if r.Method == http.MethodHead || res.StatusCode < 200 || res.StatusCode == 204 || res.StatusCode == 304 || res.Body == nil || res.Body == http.NoBody {
 		cancel()
+		admission.Close()
 		return res, nil
 	}
 	res.Body = &timeoutBody{ReadCloser: res.Body, ctx: ctx, cancel: cancel}
+	if t.resources != nil {
+		res.Body = &admittedDownloadBody{ReadCloser: res.Body, lease: admission, max: t.resources.MaxObjectBytes()}
+		if err := t.resources.CheckObjectSize(res.ContentLength); err != nil {
+			_ = res.Body.Close()
+			return nil, err
+		}
+	}
 	if res.ContentLength >= 0 {
 		return res, nil
 	}
@@ -112,6 +136,14 @@ func (t *completeUnknownBodyTransport) RoundTrip(r *http.Request) (*http.Respons
 		return nil, fmt.Errorf("unlink unknown-length download: %w", err)
 	}
 	writer := &budgetWriter{writer: file, budget: t.budget, max: t.maxBytes}
+	if t.resources != nil {
+		writer.lease, err = t.resources.NewLease(ctx, resource.StageUnknownSpool)
+		if err != nil {
+			_ = file.Close()
+			_ = res.Body.Close()
+			return nil, err
+		}
+	}
 	size, copyErr := io.Copy(writer, res.Body)
 	closeErr := res.Body.Close()
 	if copyErr == nil {

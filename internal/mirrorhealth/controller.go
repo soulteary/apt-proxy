@@ -28,6 +28,7 @@ type repository struct {
 	selecting      chan struct{}
 	source, active int
 	failures       []int
+	bodyFailures   []bool
 	nextProbe      time.Time
 	reason         string
 	snapshots      map[string]snapshot
@@ -70,6 +71,7 @@ func New(cfg *Config, base, probe http.RoundTripper, log *logger.Logger) (*Contr
 			repo.bases = append(repo.bases, u)
 		}
 		repo.failures = make([]int, len(repo.bases))
+		repo.bodyFailures = make([]bool, len(repo.bases))
 		for _, key := range entry.PublicQueryKeys {
 			repo.queries[key] = true
 		}
@@ -99,6 +101,7 @@ func (c *Controller) Reset() uint64 {
 		repo.snapshots, repo.verified = map[string]snapshot{}, map[string]string{}
 		repo.observations, repo.limited = map[string]uint64{}, false
 		clear(repo.failures)
+		clear(repo.bodyFailures)
 		repo.reason, repo.nextProbe = "", time.Time{}
 		repo.mu.Unlock()
 	}
@@ -142,13 +145,24 @@ func (c *Controller) RoundTrip(r *http.Request, id string, epoch uint64) (*http.
 	if repo.active >= 0 && c.verifiedFor(repo, relative) {
 		selected = repo.active
 	}
+	// A failed body can only be detected after the response has been returned.
+	// The next request may switch before exposing another incomplete response.
+	ready := repo.bodyFailures[selected] && repo.failures[selected] >= c.cfg.FailureThreshold
 	repo.mu.Unlock()
+	if ready {
+		res, err := c.failover(r, repo, source, selected, relative, epoch, nil, errors.New("mirror response body incomplete"))
+		if res != nil || r.Context().Err() != nil {
+			return res, err
+		}
+		// Unknown/divergent snapshots cannot authorize a switch. Keep using the
+		// configured route so a complete response can establish recovery.
+	}
 	res, err := c.attempt(r, repo, selected, relative, epoch)
 	if !failed(res, err) || r.Context().Err() != nil || errors.Is(err, access.ErrUpstreamDenied) {
 		return res, err
 	}
 	repo.mu.Lock()
-	ready := false
+	ready = false
 	if epoch == c.Epoch() {
 		repo.failures[selected]++
 		ready = repo.failures[selected] >= c.cfg.FailureThreshold
@@ -183,12 +197,8 @@ func (c *Controller) attempt(r *http.Request, repo *repository, selected int, re
 		res.Request = r
 	}
 	if !failed(res, err) && res != nil {
-		repo.mu.Lock()
-		if epoch == c.Epoch() {
-			repo.failures[selected] = 0
-		}
-		repo.mu.Unlock()
 		c.observe(r, res, repo, selected, relative, epoch)
+		c.observeHealth(r, res, repo, selected, epoch)
 	}
 	return res, err
 }

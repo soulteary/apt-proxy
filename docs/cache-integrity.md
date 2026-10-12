@@ -1,34 +1,44 @@
-# Cached object length verification
+# Persistent cache integrity
 
-The daemon checks a retrieved GET object's seekable body size against its stored
-Content-Length before serving it from the disk or S3/VFS cache. The check seeks
-to the end and restores the body position; it does not scan the entire package
-or allocate a package-sized buffer.
+The daemon requires private SHA256 cache records by default:
 
-A malformed length or a size mismatch is treated as a cache miss, with the
-retrieved body closed. A normal request fetches a replacement from upstream; an
-only-if-cached request returns 504 without downloading. Successful cache writes
-replace the damaged entry using the existing backend publication mechanism.
-There is no destructive cache-wide purge. If replacement fails, the damaged
-entry continues to be rejected on subsequent requests.
-
-The wrapper retains persisted invalidation marker and snapshot support.
-[Private repository isolation](private-repositories.md) adds a consistent key
-namespace and rejection of session responses; pre-upgrade entries are no longer
-served after migration. HEAD
-entries are excluded because their Content-Length describes a GET body that
-is absent from the HEAD response. GET entries without Content-Length remain
-usable and cannot be verified by this check. The separate
-[interrupted-download guard](interrupted-downloads.md) spools unknown-length
-bodies before publication and handles upstream connection drops; its
-[size/time budgets](download-limits.md) bound that work. Same-length bit
-corruption, repository checksum validation and signature verification remain
-unsupported. A complete transfer and matching length do not prove authenticity.
-
-Regression tests mutate real cached body files by truncating or appending bytes,
-verify replacement, exercise cache-only rejection and normal re-download, and
-check invalidation marker forwarding and metadata exceptions.
-
-```sh
-go test -race ./internal/storage ./internal/proxy -run 'Test(VerifiedCache|DamagedPackage)' -count=10
+```yaml
+cache:
+  integrity: sha256
 ```
+
+A record binds the complete cached body, its byte size, request key, HTTP status,
+response headers and the full-precision private generation timestamp. Cache
+retrieval verifies the record and body before serving a hit. This catches
+same-length body changes, header or status damage, truncation, appended bytes,
+and mixed body/header generations left by interrupted publication. Only the
+observed damaged key generation is discarded, then the normal handler refetches
+it; a concurrently published newer replacement is preserved. Neighboring
+objects are unaffected. HTTP Freshen keeps the original body checksum and
+updates the private header generation. These checks work through the disk and
+S3 cache backends and continue after restart.
+
+Private digests live in a `HTTPCACHE/2` storage preamble, not response headers.
+They never appear as client-visible HTTP fields. An upstream `Digest` header
+cannot substitute for this record. This detects accidental storage corruption;
+it does not establish package authenticity against an attacker who can rewrite
+the cache and recompute digests. APT signature/package validation and by-hash
+upstream validation remain separate checks.
+
+Existing entries without private digest metadata are treated as misses and
+refetched lazily. No bulk purge is required. This creates an expected temporary
+increase in upstream traffic after upgrading a previously populated cache.
+Verification reads the complete cached body before a hit, including HEAD hits,
+and therefore increases local/S3 read I/O and first-byte latency. On S3 it can
+require a full object transfer before responding. Operators accepting the
+legacy performance tradeoff can explicitly opt out of required digests:
+
+```yaml
+cache:
+  integrity: none
+```
+
+In that mode new cache writes use the legacy record format; existing verified
+records remain verified when read. Unknown modes are rejected at startup.
+The historical Content-Length/session isolation checks remain active. The
+private cache namespace and real upstream request credentials are unaffected.

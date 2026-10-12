@@ -50,6 +50,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/proxy"
+	"github.com/soulteary/apt-proxy/internal/resource"
 	"github.com/soulteary/apt-proxy/internal/state"
 	"github.com/soulteary/apt-proxy/internal/storage"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
@@ -63,6 +64,7 @@ import (
 type Server struct {
 	// mirrorRefreshMu serializes registry/state updates with routing publication.
 	mirrorRefreshMu     sync.Mutex
+	resources           *resource.Manager
 	downloadClients     *access.Clients
 	config              *config.Config           // Application configuration
 	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
@@ -95,6 +97,12 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, err
 	}
 	if _, err := access.NewUpstream(cfg.UpstreamAccess); err != nil {
+		return nil, err
+	}
+	if err := config.ValidateResourceBackend(cfg.Resources, cfg.Storage.Backend); err != nil {
+		return nil, err
+	}
+	if err := config.ValidateCacheIntegrity(cfg.Cache.Integrity); err != nil {
 		return nil, err
 	}
 	s := &Server{
@@ -200,7 +208,13 @@ func (s *Server) initialize() error {
 	// Initialize cache with configuration. Storage backend is selected by
 	// config.Storage.Backend; "disk" (default) keeps the historical
 	// behaviour, "s3" plugs an S3-compatible bucket in via the s3vfs VFS.
+	resources, err := s.buildResourceManager()
+	if err != nil {
+		return err
+	}
+	s.resources = resources
 	cacheConfig := s.buildCacheConfig()
+	cacheConfig.StagingBudget = s.resources
 	cache, err := s.initCache(cacheConfig)
 	if err != nil {
 		return wrapErr(apperrors.ErrCacheInit, "failed to initialize cache", err)
@@ -256,6 +270,7 @@ func (s *Server) initialize() error {
 	s.logPassthrough(allowlist)
 
 	ps, err := proxy.NewPackageStruct(proxy.Options{
+		Resources:          s.resources,
 		MirrorHealth:       s.config.MirrorHealth,
 		UpstreamAccess:     s.config.UpstreamAccess,
 		State:              s.state,
@@ -277,7 +292,7 @@ func (s *Server) initialize() error {
 	s.proxy = ps
 
 	// Wrap proxy with cache (request logging is done by logger-kit FiberMiddleware)
-	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, &httpcache.HandlerOptions{Logger: s.log})
+	cachedHandler := httpcache.NewHandlerWithOptions(s.cache, s.proxy.Handler, &httpcache.HandlerOptions{Logger: s.log, StagingBudget: s.resources, TempDir: s.downloadTempDir()})
 	// apt-proxy serves multiple clients and is therefore a shared cache. This
 	// activates RFC shared-cache protections for Authorization/private data.
 	cachedHandler.Shared = true
@@ -377,6 +392,8 @@ func (s *Server) initCache(cacheConfig *httpcache.CacheConfig) (httpcache.Extend
 			UsePathStyle:   s3cfg.UsePathStyle,
 			InlineMaxBytes: inlineMaxBytes,
 			TempDir:        s3cfg.TempDir,
+			StagingBudget:  s.resources,
+			UploadTimeout:  time.Duration(s.config.Download.TimeoutSeconds) * time.Second,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("s3 backend: %w", err)
@@ -396,6 +413,7 @@ func (s *Server) initCache(cacheConfig *httpcache.CacheConfig) (httpcache.Extend
 // buildCacheConfig creates a cache configuration from the application config
 func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
 	cacheConfig := httpcache.DefaultCacheConfig()
+	applyCacheIntegrity(cacheConfig, s.config.Cache.Integrity)
 
 	// Apply custom settings if provided
 	if s.config.Cache.MaxSize > 0 {

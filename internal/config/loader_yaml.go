@@ -32,6 +32,7 @@ import (
 // YAMLConfig represents the YAML configuration file structure.
 // It uses a more user-friendly structure that maps to the internal Config.
 type YAMLConfig struct {
+	Resources      ResourceConfig         `yaml:"resources"`
 	MirrorHealth   *mirrorhealth.Config   `yaml:"mirror_health"`
 	UpstreamAccess *access.UpstreamConfig `yaml:"upstream_access"`
 	Server         struct {
@@ -41,6 +42,7 @@ type YAMLConfig struct {
 	} `yaml:"server"`
 
 	Cache struct {
+		Integrity          string `yaml:"integrity"`
 		Dir                string `yaml:"dir"`
 		MaxSizeGB          int64  `yaml:"max_size_gb"`
 		TTLHours           int    `yaml:"ttl_hours"`
@@ -183,6 +185,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			Alpine:         yamlCfg.Mirrors.Alpine,
 		},
 		Cache: CacheConfig{
+			Integrity:          yamlCfg.Cache.Integrity,
 			MaxSizeGB:          yamlCfg.Cache.MaxSizeGB,
 			TTLHours:           yamlCfg.Cache.TTLHours,
 			CleanupIntervalMin: yamlCfg.Cache.CleanupIntervalMin,
@@ -200,6 +203,7 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
 		},
+		Resources:      yamlCfg.Resources,
 		Download:       yamlCfg.Download,
 		UpstreamAccess: yamlCfg.UpstreamAccess,
 		Storage: StorageConfig{

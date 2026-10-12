@@ -1438,3 +1438,11 @@ DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可
 包括从 by-hash 回退到直接 URL 的客户端。规则限定在
 `dists/<suite>/<component>/dep11/`，不开放任意 YAML、JSON 或归档下载。
 支持范围见[AppStream 元数据](docs/apt-appstream.md)。
+
+### 完整仓库快照和离线访问
+
+`apt-proxy repository` 可预取指定 suite、component、架构的 Packages 索引、
+可选 Sources 索引及其全部引用对象，校验大小和 SHA256 后发布完整快照。
+提供 verify、repair、export、import，以及无上游回退的离线 HTTP serve 命令。
+原始签名由 APT 验证；选定的 xz 索引需要系统 xz，另有包含 xz 的可选容器镜像。
+命令、支持范围和限制见[仓库快照说明](docs/repository-offline.md)。
