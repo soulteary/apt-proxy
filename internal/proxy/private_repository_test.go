@@ -5,11 +5,56 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestConfiguredMirrorCredentialsBypassSharedCache(t *testing.T) {
+	var hits atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		io.WriteString(w, r.Header.Get("Authorization"))
+	}))
+	defer upstream.Close()
+	mirror, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror.User = url.UserPassword("alice", "secret")
+	server, cache := downloadTestServer(t, mirror.String())
+	for _, explicit := range []string{"", "", "Bearer explicit"} {
+		req, err := http.NewRequest("GET", server.URL+"/ubuntu/pool/private.deb", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if explicit != "" {
+			req.Header.Set("Authorization", explicit)
+		}
+		res, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, readErr := io.ReadAll(res.Body)
+		res.Body.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		want := "Basic YWxpY2U6c2VjcmV0"
+		if explicit != "" {
+			want = explicit
+		}
+		if res.StatusCode != 200 || string(body) != want {
+			t.Fatalf("mirror authentication: status=%d body=%q want=%q", res.StatusCode, body, want)
+		}
+	}
+	if hits.Load() != 3 || cache.Stats().ItemCount != 0 {
+		t.Fatalf("credential-bearing mirror reused cache: hits=%d items=%d", hits.Load(), cache.Stats().ItemCount)
+	}
+}
 
 func TestPrivateRepositoryRequestsBypassSharedCache(t *testing.T) {
 	for _, header := range []string{"Authorization", "Cookie"} {
