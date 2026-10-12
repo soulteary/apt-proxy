@@ -83,7 +83,26 @@ func (b *timeoutBody) Close() error { b.cancel(); return b.ReadCloser.Close() }
 // Keep the bidirectional interface required by ReverseProxy's upgrade path.
 type timeoutUpgradeBody struct {
 	io.ReadWriteCloser
-	cancel context.CancelFunc
+	cancel   context.CancelFunc
+	stop     func() bool
+	once     sync.Once
+	closeErr error
 }
 
-func (b *timeoutUpgradeBody) Close() error { b.cancel(); return b.ReadWriteCloser.Close() }
+func (b *timeoutUpgradeBody) closeBody() error {
+	b.once.Do(func() { b.closeErr = b.ReadWriteCloser.Close() })
+	return b.closeErr
+}
+func (b *timeoutUpgradeBody) Close() error {
+	b.stop()
+	b.cancel()
+	return b.closeBody()
+}
+
+// Advertise half-close only when the wrapped upgrade body supports it.
+type timeoutUpgradeHalfCloser struct {
+	*timeoutUpgradeBody
+	closeWriter interface{ CloseWrite() error }
+}
+
+func (b *timeoutUpgradeHalfCloser) CloseWrite() error { return b.closeWriter.CloseWrite() }
