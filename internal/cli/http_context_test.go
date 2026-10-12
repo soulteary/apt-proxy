@@ -23,6 +23,8 @@ func TestRepositoryHTTPContextPreservesUserContextAfterRequestReuse(t *testing.T
 	deadline := time.Now().Add(time.Hour)
 	parent, cancel := context.WithDeadline(context.WithValue(context.Background(), repositoryTraceKey{}, "original-trace"), deadline)
 	defer cancel()
+	lifecycle, shutdown := context.WithCancel(context.Background())
+	defer shutdown()
 	var request fasthttp.RequestCtx
 	request.Request.SetRequestURI("http://proxy.example/ubuntu/pool/package.deb")
 	request.Request.Header.SetMethod(http.MethodGet)
@@ -30,7 +32,7 @@ func TestRepositoryHTTPContextPreservesUserContextAfterRequestReuse(t *testing.T
 	c := app.AcquireCtx(&request)
 	c.SetContext(parent)
 	var retained context.Context
-	handler := repositoryHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := repositoryHTTPHandler(lifecycle, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		retained = r.Context()
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -56,7 +58,7 @@ func TestRepositoryHTTPContextPreservesUserContextAfterRequestReuse(t *testing.T
 		if retained.Err() != context.Canceled {
 			t.Fatalf("cancellation error = %v", retained.Err())
 		}
-	default:
+	case <-time.After(5 * time.Second):
 		t.Fatal("middleware cancellation was lost")
 	}
 }
@@ -67,7 +69,7 @@ func TestRepositoryHTTPContextUsesStableDefault(t *testing.T) {
 	app := fiber.New()
 	c := app.AcquireCtx(&request)
 	var retained context.Context
-	handler := repositoryHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := repositoryHTTPHandler(context.Background(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		retained = r.Context()
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -92,7 +94,7 @@ func TestRepositoryHTTPRequestMetadataSurvivesRequestReuse(t *testing.T) {
 	app := fiber.New()
 	c := app.AcquireCtx(&request)
 	var retained *http.Request
-	handler := repositoryHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := repositoryHTTPHandler(context.Background(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		retained = r
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -112,6 +114,8 @@ func TestRepositoryHTTPRequestMetadataSurvivesRequestReuse(t *testing.T) {
 }
 
 func TestRepositoryAsyncVarySelectionSurvivesRequestReuse(t *testing.T) {
+	lifecycle, shutdown := context.WithCancel(context.Background())
+	defer shutdown()
 	oldClock := httpcache.Clock
 	entered, release := make(chan struct{}, 1), make(chan struct{})
 	httpcache.Clock = func() time.Time {
@@ -159,7 +163,7 @@ func TestRepositoryAsyncVarySelectionSurvivesRequestReuse(t *testing.T) {
 	request.Request.Header.Set("Accept-Language", "en")
 	app := fiber.New()
 	c := app.AcquireCtx(&request)
-	if err := repositoryHTTPHandler(handler)(c); err != nil {
+	if err := repositoryHTTPHandler(lifecycle, handler)(c); err != nil {
 		t.Fatal(err)
 	}
 	app.ReleaseCtx(c)
@@ -175,6 +179,13 @@ func TestRepositoryAsyncVarySelectionSurvivesRequestReuse(t *testing.T) {
 	request.Request.Header.Set("Accept-Language", "fr")
 	releaseStore()
 	httpcache.Writes.Wait()
+	warm := httptest.NewRequest("GET", "http://proxy.example/ubuntu/pool/a.deb", nil)
+	warm.Header.Set("Accept-Language", "en")
+	warmResponse := httptest.NewRecorder()
+	handler.ServeHTTP(warmResponse, warm)
+	if warmResponse.Header().Get("X-Cache") != "HIT" || warmResponse.Body.String() != "language=en" || calls != 1 {
+		t.Fatalf("handler return canceled asynchronous publication: label=%s body=%s calls=%d", warmResponse.Header().Get("X-Cache"), warmResponse.Body, calls)
+	}
 	next := httptest.NewRequest("GET", "http://proxy.example/ubuntu/pool/a.deb", nil)
 	next.Header.Set("Accept-Language", "fr")
 	w := httptest.NewRecorder()

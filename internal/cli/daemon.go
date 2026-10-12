@@ -498,6 +498,13 @@ func (s *Server) createFiberApp() *fiber.App {
 		IdleTimeout:    defaultIdleTimeout,
 		ReadBufferSize: defaultReadBufSize,
 	})
+	// Repository work may outlive its Fiber handler while publishing a cache
+	// object. Cancel its stable context before draining active connections.
+	repositoryLifecycle, cancelRepositories := context.WithCancel(context.Background())
+	app.Hooks().OnPreShutdown(func() error {
+		cancelRepositories()
+		return nil
+	})
 
 	// Version headers for all responses
 	app.Use(versionfiber.Middleware(s.versionInfo, "X-"))
@@ -611,7 +618,7 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Route through PackageStruct rather than its cached upstream directly:
 	// ServeHTTP performs distro matching and mirror URL rewriting before it
 	// delegates to the cache/reverse-proxy chain.
-	app.All("/*", repositoryHTTPHandler(s.downloadClients.Wrap(s.proxy)))
+	app.All("/*", repositoryHTTPHandler(repositoryLifecycle, s.downloadClients.Wrap(s.proxy)))
 
 	return app
 }
