@@ -1,6 +1,9 @@
 # APT Proxy / 轻量 APT 加速工具
 
-[![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![goreportcard](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/soulteary/apt-proxy) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
+[![Go Test Coverage](./.github/coverage.svg)](./.github/go-test-report.md) [![Go Report Card](./.github/goreportcard.svg)](./.github/goreportcard-report.md) [![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
+
+覆盖率与代码质量徽章展示最近一次发布的报告快照，并非每个提交的实时结果。
+参见[报告范围](.github/GO-REPORTS.md)，部署时应查看对应版本的 CI 运行记录。
 
 <p style="text-align: center;">
   <a href="README.md" target="_blank">ENGLISH</a> | <a href="README_CN.md">中文文档</a>
@@ -244,7 +247,7 @@ distributions:
 - `host_pattern` — 可选，用于匹配请求 `Host` 头的正则。适用于仓库直接放在域名根目录、路径里没有前缀可供 `url_pattern` 匹配的情况（例如 `deb http://security.debian.org <suite>-security main`，或 `apt.armbian.com`）。仅在 `url_pattern` 未命中时才会尝试；命中后会把整个请求路径拼到上游镜像后。请使用 `^...$` 锚定，避免相似域名冒充你的发行版。匹配前会把 host 转为小写，因此模式请写成小写。省略该字段时会继承该发行版类型的内置匹配器（Debian 保留 `security.debian.org`），与省略 `mirrors` 时沿用内置镜像列表的行为一致；显式设置则覆盖内置值。只有内置的 Debian security 域名会路由到专用的 Debian Security 镜像 —— 你为 type `3` 自行配置的 `host_pattern` 会解析到该条目自己的镜像。
 - `benchmark_url` — 镜像测速用的相对路径。
 - `geo_mirror_api` — 可选，返回地理镜像列表（Ubuntu 风格的 `mirrors.txt`）。
-- `cache_rules[]` — 按规则注入 `Cache-Control`（仅对 `200`/`404` 响应生效），以及是否对该模式做 URL 重写。
+- `cache_rules[]` — 上游没有提供 `Cache-Control` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式提供的较短有效期、`private` 和 `no-store` 等指令会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。
 - `mirrors.official` / `mirrors.custom` — 镜像主机列表。基于主机末段会自动生成 `cn:<name>` 形式的别名（如 `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`）。
 - `aliases` — 显式别名映射，可覆盖/补充自动生成的别名。
 
@@ -490,6 +493,10 @@ HTTPS_PROXY=socks5h://127.0.0.1:1080 ./apt-proxy
 条链路。它们只影响 apt-proxy 自身到镜像站的连接；客户端仍然直连 apt-proxy，所以
 不要把 apt-proxy 自己的地址写进 `HTTP_PROXY`。在 Docker 中用 `-e` 传入即可。
 
+启用 `upstream_access.enabled: true` 后，仓库下载、镜像测速与 Ubuntu 镜像发现
+会直接连接目标并忽略上述代理变量；需要前置代理时应关闭该策略。
+具体检查范围与配置见[上游访问策略](docs/upstream-access.md)。
+
 ## Docker 集成
 
 ### 在 Docker 中运行 APT Proxy
@@ -698,6 +705,12 @@ cache:
   ttl_hours: 168
   cleanup_interval_min: 60
 
+# 仅支持 YAML；0 选择以下默认值，不表示无限制。
+download:
+  max_spool_mb: 1024        # 每个未知长度响应的落盘上限，MiB
+  total_spool_mb: 4096      # 实例共享的未知长度落盘预算，MiB
+  timeout_seconds: 1200     # 上游下载总时限
+
 # 可选：将缓存改为 S3 兼容对象存储；backend 为 "disk" 时下面的 s3 字段被忽略
 storage:
   backend: disk        # "disk"（默认）或 "s3"
@@ -727,6 +740,8 @@ tls:
   key_file: /etc/ssl/private/apt-proxy.key
 
 security:
+  download_allow_cidrs: []             # 连接对端 CIDR，仅支持 YAML
+  download_deny_cidrs: []              # 拒绝优先；两项为空时允许所有客户端
   api_key: ${APT_PROXY_API_KEY}        # 支持 ${VAR} 与 ${VAR:-default} 展开
   enable_api_auth: true
   api_rate_limit_per_minute: 60        # 0 禁用；默认 60
@@ -735,6 +750,14 @@ security:
     - 192.168.0.0/16
 
 mode: all
+
+# 可选仓库连接策略：仅支持 YAML，变更后重启。
+# 关闭时限制列表必须为空；启用后忽略前置代理环境变量。
+upstream_access:
+  enabled: false
+  allowed_hosts: []
+  allowed_ports: []       # 启用时为空表示允许 80/443
+  allow_cidrs: []         # 显式允许受信任私网范围
 
 # 上游传输
 upstream_keep_alive: true
@@ -1362,3 +1385,56 @@ http_proxy=http://192.168.33.1:3142 \
 ---
 
 由 APT Proxy 社区用 ❤️ 打造
+
+### 下载资源限制
+
+未知长度下载默认限制单个暂存文件为 1 GiB，每个实例共享暂存预算为 4 GiB；上游获取总超时默认为 20 分钟。可在 YAML 中配置 `download.max_spool_mb`、`download.total_spool_mb` 和 `download.timeout_seconds`，零值使用默认限制。预算不包含正式缓存及其他缓存临时副本；详见[下载限制说明](docs/download-limits.md)。
+
+### 私有仓库请求
+
+携带 `Authorization` 或 `Cookie` 的请求绕过共享缓存，带 `Set-Cookie` 的响应不会存储。认证请求指定仅使用缓存时返回 504，不访问上游。本版本启用新的缓存键命名空间，以隔离升级前可能包含私有内容的条目；升级后会有一次冷缓存，旧文件不会直接删除。详见[私有仓库隔离说明](docs/private-repositories.md)。
+
+### 软件包下载客户端访问控制
+
+可在 YAML 中设置 `security.download_allow_cidrs` 和
+`security.download_deny_cidrs`，按直接连接来源的 IPv4/IPv6 网段限制下载。
+拒绝规则优先，检查在缓存读取和上游请求之前执行；默认两个列表均为空。
+转发头不能授予下载权限。部署在反向代理之后时，需要在反向代理限制最终客户端。
+运维和管理 API 路由沿用原有策略；修改下载规则后需要重启。
+配置示例和适用范围见 [下载访问控制说明](docs/download-access.md)。
+
+### 下载上游连接防护
+
+可在 YAML 中启用 `upstream_access.enabled: true`，限制软件下载、镜像测速和 Ubuntu
+地理镜像发现的上游主机、
+端口和解析地址。新连接检查全部 DNS 结果后直接连接已允许的 IP，保留 TLS 主机名
+验证。私有仓库需要明确的 CIDR 例外；启用后的仓库连接不使用环境变量中的转发代理。
+测速和发现请求的重定向及 HEAD→GET 回退同样受保护；启动和镜像刷新沿用实例策略。
+修改后需要重启。配置示例及镜像测速等后台请求的适用边界见
+[上游访问说明](docs/upstream-access.md)。
+
+### Debian 系源码包覆盖
+
+Ubuntu、Ubuntu Ports 和 Debian 的源码池文件现可经配置的镜像代理并缓存，
+包括 `.dsc`、原始/附加/原生源码归档、Debian 补丁归档、旧式 `.diff.gz`
+及原始归档的 `.asc` 签名。规则仅匹配 Debian 风格源码池中的带版本文件，
+保留上游缓存指令。已有自定义发行版 YAML 需要明确加入新规则。
+支持范围和客户端验证职责见 [源码包覆盖说明](docs/apt-source-packages.md)。
+
+### Debian 系安装器文件
+
+常用 netboot、hd-media、cdrom 启动文件及安装器校验清单现可经配置的镜像
+代理并缓存。规则限定到 Debian 风格安装器 `images/` 或 `legacy-images/` 目录中的具体文件名，默认缓存
+3600 秒；自定义 YAML 需显式补充新规则。支持范围及客户端校验职责见
+[安装器文件覆盖说明](docs/apt-installer-files.md)。
+
+安装器目录中的常用 PXE/UEFI 资源也可代理并缓存：EFI 加载器、默认 PXELINUX
+配置、启动菜单及 GRUB 模块。范围限定在安装器 netboot 目录内，不提供
+DHCP/TFTP 服务或启动配置内容改写。
+
+### Debian 系 AppStream 元数据
+
+DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可使用镜像和缓存，
+包括从 by-hash 回退到直接 URL 的客户端。规则限定在
+`dists/<suite>/<component>/dep11/`，不开放任意 YAML、JSON 或归档下载。
+支持范围见[AppStream 元数据](docs/apt-appstream.md)。

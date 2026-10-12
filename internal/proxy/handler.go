@@ -31,8 +31,10 @@ import (
 	logger "github.com/soulteary/logger-kit/v3"
 	tracing "github.com/soulteary/tracing-kit/v2"
 
+	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
@@ -230,15 +232,20 @@ type PackageStruct struct {
 
 // Options configures NewPackageStruct.
 type Options struct {
-	State             *state.AppState
-	Registry          *distro.Registry
-	CacheDir          string
-	Logger            *logger.Logger
-	Mode              int
-	EnableKeepAlive   bool
-	Async             bool              // when true, use async (non-blocking) benchmarks during construction
-	TransportOverride http.RoundTripper // optional: caller-supplied transport (mainly for tests)
-	Passthrough       *passthrough.List // optional: allowlisted third-party origins
+	UpstreamAccess     *access.UpstreamConfig
+	State              *state.AppState
+	Registry           *distro.Registry
+	CacheDir           string
+	DownloadMaxBytes   int64
+	DownloadTotalBytes int64
+	DownloadTimeout    time.Duration
+	DownloadTempDir    string // directory for unknown-length download spools; empty uses os.TempDir()
+	Logger             *logger.Logger
+	Mode               int
+	EnableKeepAlive    bool
+	Async              bool              // when true, use async (non-blocking) benchmarks during construction
+	TransportOverride  http.RoundTripper // optional: caller-supplied transport (mainly for tests)
+	Passthrough        *passthrough.List // optional: allowlisted third-party origins
 }
 
 // NewPackageStruct constructs a fully wired PackageStruct using the
@@ -257,13 +264,32 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		log = logger.Default()
 	}
 
+	policy, err := access.NewUpstream(opts.UpstreamAccess)
+	if err != nil {
+		return nil, err
+	}
+	if policy != nil && opts.TransportOverride != nil {
+		return nil, errors.New("proxy: upstream policy cannot use an overridden transport")
+	}
 	transport := opts.TransportOverride
 	if transport == nil {
-		transport = NewRetryableTransport(NewUpstreamTransport(opts.EnableKeepAlive))
+		base := NewUpstreamTransport(opts.EnableKeepAlive)
+		var upstream http.RoundTripper = base
+		if policy != nil {
+			upstream = policy.Transport(base)
+		}
+		transport = NewRetryableTransport(upstream)
 	}
 
+	if opts.DownloadMaxBytes < 0 || opts.DownloadTotalBytes < 0 || opts.DownloadTimeout < 0 {
+		return nil, errors.New("proxy: download limits cannot be negative")
+	}
+	totalBytes := opts.DownloadTotalBytes
+	if totalBytes == 0 {
+		totalBytes = DefaultTotalSpoolBytes
+	}
 	mode := opts.Mode
-	bench := benchmarks.NewEngine()
+	bench := benchmarks.NewEngineWithPolicy(policy)
 	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async, bench)
 
 	ps := &PackageStruct{
@@ -276,10 +302,20 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		passthrough: opts.Passthrough,
 		bench:       bench,
 		transport:   transport,
-		Handler: &httputil.ReverseProxy{
+		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
-			Transport: transport,
-		},
+			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}},
+			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+				log.Error().Err(logsafe.Error(err)).Msg("upstream request failed")
+				w.WriteHeader(http.StatusBadGateway)
+			},
+			ModifyResponse: func(resp *http.Response) error {
+				protectPrivateRepositoryResponse(resp)
+				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)
+				applyRepositoryCachePolicy(resp.Header, resp.StatusCode, rule)
+				return nil
+			},
+		}},
 	}
 	ps.routing.Store(&routing{
 		patterns:  hostPatternsFromRegistry(opts.Registry),
@@ -416,7 +452,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	tracing.SetSpanAttributesFromMap(span, map[string]interface{}{
 		"http.method":      r.Method,
-		"http.url":         r.URL.String(),
+		"http.url":         logsafe.URL(r.URL.String()),
 		"http.path":        r.URL.Path,
 		"http.scheme":      r.URL.Scheme,
 		"http.host":        r.Host,
@@ -429,6 +465,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	// part of its key. Clone here so background cache work never references
 	// memory that the adapter can reuse for the next request.
 	r = detachRequest(spanCtx, r)
+	normalizeRepositoryCredentials(r)
 
 	// apt-cacher-ng's HTTPS/// marker names a third-party origin inside the
 	// path. Handle it here rather than letting it reach pattern matching,
@@ -443,7 +480,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
 			return
 		}
-		ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
+		ap.serveMatchedRepository(rw, r, rule)
 		return
 	}
 
@@ -456,7 +493,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		if ap.Handler != nil {
-			ap.Handler.ServeHTTP(&responseWriter{rw, rule}, r)
+			ap.serveMatchedRepository(rw, r, rule)
 		} else {
 			tracing.RecordError(span, http.ErrAbortHandler)
 			http.Error(rw, "Internal Server Error: handler not initialized", http.StatusInternalServerError)
@@ -563,7 +600,7 @@ func requestHost(r *http.Request) string {
 }
 
 // processMatchingRule processes a request that matches a distribution pattern.
-// It finds the specific caching rule, removes client cache control headers,
+// It finds the specific caching rule, preserves client cache directives,
 // and rewrites the URL if necessary.
 func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, rules []distro.Rule) *distro.Rule {
 	rule, match := MatchingRule(r.URL.Path, rules)
@@ -571,7 +608,6 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, rules
 		return nil
 	}
 
-	r.Header.Del("Cache-Control")
 	if rule.Rewrite {
 		ap.rewriteRequest(r, rt, rule)
 	}
@@ -586,14 +622,14 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *dist
 		ap.log.Error().Msg("request URL is nil, cannot rewrite")
 		return
 	}
-	before := r.URL.String()
+	before := logsafe.URL(r.URL.String())
 	RewriteRequestByMode(r, rt.rewriters, rule.OS)
 
 	if r.URL != nil {
 		r.Host = r.URL.Host
 		ap.log.Debug().
 			Str("from", before).
-			Str("to", r.URL.String()).
+			Str("to", logsafe.URL(r.URL.String())).
 			Msg("rewrote request URL")
 	}
 }
@@ -641,21 +677,26 @@ func (ap *PackageStruct) BenchmarkEngine() *benchmarks.Engine {
 // WriteHeader implements http.ResponseWriter interface. It injects cache control
 // headers based on the matched rule before writing the status code.
 func (rw *responseWriter) WriteHeader(status int) {
-	if status == http.StatusNotFound && rw.rule != nil {
-		// Mirror publication is not atomic: a package or index can briefly be
-		// absent while the mirror synchronizes. Keep negative caching short and
-		// independent from immutable package TTLs.
-		rw.Header().Set("Cache-Control", "public, max-age=30")
-	} else if rw.shouldSetCacheControl(status) {
-		rw.Header().Set("Cache-Control", rw.rule.CacheControl)
-	}
+	applyRepositoryCachePolicy(rw.Header(), status, rw.rule)
 	rw.ResponseWriter.WriteHeader(status)
 }
 
-// shouldSetCacheControl determines whether cache control headers should be set
-// for the given HTTP status code. Only certain status codes are cacheable.
-func (rw *responseWriter) shouldSetCacheControl(status int) bool {
-	return rw.rule != nil &&
-		rw.rule.CacheControl != "" &&
-		status == http.StatusOK
+// cacheRuleKey carries the matched rule into the reverse proxy, inside the cache.
+type cacheRuleKey struct{}
+
+// Explicit upstream freshness and privacy directives take precedence over local
+// defaults. Applying defaults in ModifyResponse lets the cache store the same
+// policy that the client receives, including the short negative-cache lifetime.
+func applyRepositoryCachePolicy(header http.Header, status int, rule *distro.Rule) {
+	if rule == nil || rule == passthroughRule || len(header.Values("Cache-Control")) != 0 {
+		return
+	}
+	switch status {
+	case http.StatusOK:
+		if rule.CacheControl != "" {
+			header.Set("Cache-Control", rule.CacheControl)
+		}
+	case http.StatusNotFound:
+		header.Set("Cache-Control", "public, max-age=30")
+	}
 }

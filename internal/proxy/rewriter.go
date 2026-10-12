@@ -28,6 +28,7 @@ import (
 
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/mirrors"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
@@ -327,21 +328,21 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 	mirror := d.getMirror(st)
 
 	if mirror != nil {
-		log.Info().Str("distro", name).Str("mirror", mirror.String()).Msg("using specified mirror")
+		log.Info().Str("distro", name).Str("mirror", logsafe.URL(mirror.String())).Msg("using specified mirror")
 		rewriter.mirror = mirror
 		return attachDebianSecurityMirror(mode, st, rewriter)
 	}
 
-	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(reg, mode)
+	mirrorURLs := benchEngine(bench).MirrorCandidates(reg, mode)
 	// Use cache-aware benchmark to avoid repeated testing
 	fastest, err := benchEngine(bench).GetTheFastestMirrorWithCache(mode, mirrorURLs, benchmarkURL)
 	if err != nil {
-		log.Error().Err(err).Str("distro", name).Msg("error finding fastest mirror")
+		log.Error().Err(logsafe.Error(err)).Str("distro", name).Msg("error finding fastest mirror")
 		return rewriter
 	}
 
 	if mirror, err := url.Parse(fastest); err == nil {
-		log.Info().Str("distro", name).Str("mirror", fastest).Msg("using fastest mirror")
+		log.Info().Str("distro", name).Str("mirror", logsafe.URL(fastest)).Msg("using fastest mirror")
 		rewriter.mirror = mirror
 	}
 
@@ -364,17 +365,17 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 	mirror := d.getMirror(st)
 
 	if mirror != nil {
-		log.Info().Str("distro", name).Str("mirror", mirror.String()).Msg("using specified mirror")
+		log.Info().Str("distro", name).Str("mirror", logsafe.URL(mirror.String())).Msg("using specified mirror")
 		rewriter.mirror = mirror
 		return attachDebianSecurityMirror(mode, st, rewriter)
 	}
 
-	mirrorURLs := mirrors.GetGeoMirrorUrlsByMode(reg, mode)
+	mirrorURLs := benchEngine(bench).MirrorCandidates(reg, mode)
 
 	// Check if we have a cached result
 	if cached, ok := engine.Cache().GetCachedResult(mode); ok {
 		if parsedMirror, err := url.Parse(cached); err == nil {
-			log.Info().Str("distro", name).Str("mirror", cached).Msg("using cached mirror")
+			log.Info().Str("distro", name).Str("mirror", logsafe.URL(cached)).Msg("using cached mirror")
 			rewriter.mirror = parsedMirror
 			return attachDebianSecurityMirror(mode, st, rewriter)
 		}
@@ -382,7 +383,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 
 	defaultMirror := benchmarks.GetDefaultMirror(mirrorURLs)
 	if parsedMirror, err := url.Parse(defaultMirror); err == nil {
-		log.Info().Str("distro", name).Str("mirror", defaultMirror).Msg("using default mirror (async benchmark pending)")
+		log.Info().Str("distro", name).Str("mirror", logsafe.URL(defaultMirror)).Msg("using default mirror (async benchmark pending)")
 		rewriter.mirror = parsedMirror
 	}
 	attachDebianSecurityMirror(mode, st, rewriter)
@@ -397,13 +398,13 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 	// pointer under rewriters.Mu.Lock keeps published structs immutable.
 	engine.GetTheFastestMirrorAsync(mode, mirrorURLs, benchmarkURL, func(result benchmarks.AsyncBenchmarkResult) {
 		if result.Error != nil {
-			log.Error().Err(result.Error).Str("distro", name).Msg("async benchmark failed")
+			log.Error().Err(logsafe.Error(result.Error)).Str("distro", name).Msg("async benchmark failed")
 			return
 		}
 
 		parsedMirror, err := url.Parse(result.FastestMirror)
 		if err != nil {
-			log.Error().Err(err).Str("distro", name).Msg("failed to parse fastest mirror URL")
+			log.Error().Err(logsafe.Error(err)).Str("distro", name).Msg("failed to parse fastest mirror URL")
 			return
 		}
 
@@ -432,7 +433,7 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		})
 		rewriters.Mu.Unlock()
 
-		log.Info().Str("distro", name).Str("mirror", result.FastestMirror).Msg("async benchmark completed, mirror updated")
+		log.Info().Str("distro", name).Str("mirror", logsafe.URL(result.FastestMirror)).Msg("async benchmark completed, mirror updated")
 	})
 
 	return rewriter
@@ -562,6 +563,8 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 
 	r.URL.Scheme = target.Scheme
 	r.URL.Host = target.Host
+	// Carry the selected mirror's credentials into normalization before cache lookup.
+	r.URL.User = target.User
 	r.URL.Path = target.Path + suffixPath
 	rawPath := target.EscapedPath() + suffixRaw
 	if rawPath != r.URL.Path {

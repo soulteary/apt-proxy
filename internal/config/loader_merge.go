@@ -15,6 +15,8 @@
 // Package config configuration merging logic between file/CLI/ENV sources.
 package config
 
+import "slices"
+
 // MergeConfigsWithExplicit is like MergeConfigs but uses the explicit mask to
 // decide whether a zero/empty value in `override` should overwrite `base`.
 // Pass nil to fall back to MergeConfigs' permissive zero-value handling.
@@ -30,6 +32,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	}
 
 	result := *base
+	if override.UpstreamAccess != nil {
+		result.UpstreamAccess = override.UpstreamAccess
+	}
 
 	if ex.Debug {
 		result.Debug = override.Debug
@@ -162,6 +167,9 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 
 	result := *base
+	if override.UpstreamAccess != nil {
+		result.UpstreamAccess = override.UpstreamAccess
+	}
 
 	// Override non-zero values
 	if override.Debug {
@@ -208,6 +216,17 @@ func MergeConfigs(base, override *Config) *Config {
 		result.Cache.CleanupInterval = override.Cache.CleanupInterval
 	}
 
+	// Preserve zero fields from the base; retain nonzero values for validation.
+	if override.Download.MaxSpoolMB != 0 {
+		result.Download.MaxSpoolMB = override.Download.MaxSpoolMB
+	}
+	if override.Download.TotalSpoolMB != 0 {
+		result.Download.TotalSpoolMB = override.Download.TotalSpoolMB
+	}
+	if override.Download.TimeoutSeconds != 0 {
+		result.Download.TimeoutSeconds = override.Download.TimeoutSeconds
+	}
+
 	// Merge TLSConfig
 	if override.TLS.Enabled {
 		result.TLS.Enabled = override.TLS.Enabled
@@ -219,6 +238,12 @@ func MergeConfigs(base, override *Config) *Config {
 		result.TLS.KeyFile = override.TLS.KeyFile
 	}
 
+	if override.Security.DownloadAllowCIDRs != nil {
+		result.Security.DownloadAllowCIDRs = slices.Clone(override.Security.DownloadAllowCIDRs)
+	}
+	if override.Security.DownloadDenyCIDRs != nil {
+		result.Security.DownloadDenyCIDRs = slices.Clone(override.Security.DownloadDenyCIDRs)
+	}
 	// Merge SecurityConfig
 	if override.Security.APIKey != "" {
 		result.Security.APIKey = override.Security.APIKey

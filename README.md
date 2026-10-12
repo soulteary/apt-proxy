@@ -1,6 +1,10 @@
 # APT Proxy
 
-[![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![goreportcard](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/soulteary/apt-proxy) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
+[![Go Test Coverage](./.github/coverage.svg)](./.github/go-test-report.md) [![Go Report Card](./.github/goreportcard.svg)](./.github/goreportcard-report.md) [![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
+
+Coverage and quality badges are the last published report snapshots, not results
+for every commit. See [report scope](.github/GO-REPORTS.md) and the CI run for the
+version you deploy.
 
 <p style="text-align: center;">
   <a href="README.md">ENGLISH</a> | <a href="README_CN.md"  target="_blank">中文文档</a>
@@ -250,7 +254,7 @@ After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to
 - `host_pattern` — optional regex matched against the request's `Host` header. Use it for archives served from the host root, where no path prefix exists for `url_pattern` to match (for example `deb http://security.debian.org <suite>-security main`, or `apt.armbian.com`). It is tried only after `url_pattern` fails, and when it matches the whole request path is appended to the upstream mirror. Anchor it (`^...$`) so a lookalike host cannot claim your distribution. The host is lower-cased before matching, so write the pattern in lower case. Omitting the field inherits the built-in matcher for that distro type (Debian keeps `security.debian.org`), the same way omitting `mirrors` keeps the built-in mirror list; setting it replaces the built-in. Only the built-in Debian security host routes to the dedicated Debian Security mirror — a `host_pattern` you configure for type `3` resolves to that entry's own mirror.
 - `benchmark_url` — relative path probed during mirror benchmarking.
 - `geo_mirror_api` — optional URL returning a list of geo-located mirrors (Ubuntu-style `mirrors.txt`).
-- `cache_rules[]` — per-pattern cache directives. `cache_control` overrides response `Cache-Control` for matched paths (only applied to `200`/`404` responses); `rewrite: true` enables URL rewriting for that pattern.
+- `cache_rules[]` — per-pattern cache directives. `cache_control` supplies a default response `Cache-Control` for matched paths when the upstream omits that header (`200` uses the configured value; `404` uses `public, max-age=30`). Explicit upstream directives, including shorter freshness lifetimes, `private`, and `no-store`, are preserved. Defaults are applied before cache storage; `rewrite: true` enables URL rewriting for that pattern.
 - `mirrors.official` / `mirrors.custom` — mirror host lists. Aliases of the form `cn:<name>` are auto-generated from each mirror's host (e.g. `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`).
 - `aliases` — explicit name-to-mirror mapping that overrides/augments the auto-generated aliases.
 
@@ -509,6 +513,11 @@ actually take. They apply only to apt-proxy's own connections to mirror sites;
 clients still reach apt-proxy directly, so do not put apt-proxy's own address in
 `HTTP_PROXY`. In Docker, pass them with `-e`.
 
+When `upstream_access.enabled: true`, repository downloads, mirror probes and
+Ubuntu geo discovery connect directly and ignore these proxy variables. Disable
+that policy to retain forward-proxy routing. See [upstream access](docs/upstream-access.md)
+for its enforcement boundary and configuration.
+
 ## Docker Integration
 
 ### Running APT Proxy in Docker
@@ -716,6 +725,12 @@ cache:
   ttl_hours: 168
   cleanup_interval_min: 60
 
+# YAML-only download bounds; zero selects these defaults, not unlimited values.
+download:
+  max_spool_mb: 1024        # per unknown-length response, MiB
+  total_spool_mb: 4096      # shared unknown-length spool budget, MiB
+  timeout_seconds: 1200     # total upstream fetch time
+
 # Optional: switch the cache to an S3-compatible object store.
 # When backend is "disk" (the default) only the cache.dir field above matters.
 storage:
@@ -746,6 +761,8 @@ tls:
   key_file: /etc/ssl/private/apt-proxy.key
 
 security:
+  download_allow_cidrs: []             # connection-peer ACL, YAML-only
+  download_deny_cidrs: []              # deny takes precedence; empty lists allow all
   api_key: ${APT_PROXY_API_KEY}        # supports ${VAR} and ${VAR:-default} expansion
   enable_api_auth: true
   api_rate_limit_per_minute: 60        # 0 disables; default 60
@@ -754,6 +771,14 @@ security:
     - 192.168.0.0/16
 
 mode: all
+
+# Optional repository connection policy (YAML-only; restart after changes).
+# Lists must be empty while disabled. Enabling this ignores environment proxies.
+upstream_access:
+  enabled: false
+  allowed_hosts: []
+  allowed_ports: []       # empty means 80/443 when enabled
+  allow_cidrs: []         # explicit trusted private-network exceptions
 
 # Upstream transport
 upstream_keep_alive: true
@@ -1445,3 +1470,62 @@ This project builds upon the excellent work of:
 ---
 
 Made with ❤️ by the APT Proxy community
+
+### Download resource limits
+
+Unknown-length downloads default to a 1 GiB per-response spool limit and a 4 GiB shared spool budget per instance. Upstream fetches default to a 20-minute total timeout. Configure `download.max_spool_mb`, `download.total_spool_mb`, and `download.timeout_seconds` in YAML; zero selects the defaults. See [download limits](docs/download-limits.md) for scope and failure behavior.
+
+### Private repository requests
+
+Requests with `Authorization` or `Cookie` bypass shared caching; `Set-Cookie` responses are not stored. Authenticated cache-only requests return 504 without upstream access. This version uses a new cache-key namespace to exclude pre-upgrade private responses, causing a one-time cold cache without deleting legacy files. See [private repository isolation](docs/private-repositories.md) for migration and scope.
+
+### Package download client access
+
+Use `security.download_allow_cidrs` and `security.download_deny_cidrs` in YAML
+to restrict package downloads by connection-peer IPv4/IPv6 networks. Deny
+rules take precedence and checks run before cache lookup and upstream fetching.
+Both lists are empty by default. Forwarded headers do not grant access;
+behind a reverse proxy, restrict end clients at the proxy. Operational/API
+routes retain their existing controls. Restart to apply policy changes.
+See [download access control](docs/download-access.md) for configuration and scope.
+
+### Guarded download upstreams
+
+Optional YAML `upstream_access.enabled: true` restricts package downloads, mirror
+probes and Ubuntu geo discovery by target hosts, ports and resolved IPs. New connections validate all DNS answers and
+connect directly to approved IPs, preserving TLS hostname verification.
+Private repositories require explicit CIDR exceptions. Enabled repository
+transports ignore environment forward proxies; probe/discovery redirects and
+HEAD-to-GET fallback remain guarded. Startup and mirror refresh use the same
+per-instance policy. Restart to change policy.
+See [upstream access](docs/upstream-access.md) for examples and the separate
+background-client boundary.
+
+### Debian-family source packages
+
+Ubuntu, Ubuntu Ports and Debian source pool files now use the configured
+mirror and shared cache: `.dsc`, upstream/component/native archives, Debian
+packaging archives, legacy `.diff.gz` and original-archive `.asc` signatures.
+Rules are limited to versioned source filenames in Debian-style pools and
+preserve upstream cache directives. Existing custom distribution YAML must
+adopt the new rule explicitly. See [source package coverage](docs/apt-source-packages.md)
+for supported formats and client-side verification responsibilities.
+
+### Debian-family installer files
+
+Common netboot, hd-media and cdrom boot files and installer checksum manifests
+can now use configured mirrors and the cache. Rules require exact filenames in
+Debian-style `images/` or `legacy-images/` installer directories, with fallback `max-age=3600`. Custom YAML
+must adopt the new rules explicitly. See [installer file coverage](docs/apt-installer-files.md)
+for the supported subset and client verification responsibilities.
+
+Common installer PXE/UEFI resources are also covered: EFI loaders, the default
+PXELINUX configuration, boot menus and GRUB modules. Paths stay confined to
+installer netboot trees; this does not add DHCP/TFTP or boot configuration rewriting.
+
+### Debian-family AppStream metadata
+
+Direct DEP-11 component indexes, content-ID indexes and known icon archives
+now use the mirror and cache, including clients that fall back from by-hash URLs.
+Rules stay confined to `dists/<suite>/<component>/dep11/`; this does not allow
+arbitrary YAML/JSON files or tarballs. See [AppStream coverage](docs/apt-appstream.md).

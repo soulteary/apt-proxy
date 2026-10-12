@@ -41,13 +41,16 @@ import (
 	version "github.com/soulteary/version-kit/v4"
 	versionfiber "github.com/soulteary/version-kit/v4/fiberadapter"
 
+	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/state"
+	"github.com/soulteary/apt-proxy/internal/storage"
 	"github.com/soulteary/apt-proxy/internal/storage/s3vfs"
 	httpcache "github.com/soulteary/httpcache-kit/v4"
 	prometheusmetrics "github.com/soulteary/httpcache-kit/v4/prometheusmetrics"
@@ -57,6 +60,7 @@ import (
 // Server represents the main application server that handles HTTP requests,
 // manages caching, and coordinates all server components.
 type Server struct {
+	downloadClients     *access.Clients
 	config              *config.Config           // Application configuration
 	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
 	cacheProxy          *httpcache.Handler       // Shared HTTP cache wrapper; drained before backend close
@@ -83,8 +87,16 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, errNilConfig
 	}
 
+	downloadClients, err := access.NewClients(cfg.Security.DownloadAllowCIDRs, cfg.Security.DownloadDenyCIDRs)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := access.NewUpstream(cfg.UpstreamAccess); err != nil {
+		return nil, err
+	}
 	s := &Server{
-		config: cfg,
+		downloadClients: downloadClients,
+		config:          cfg,
 	}
 
 	// Initialize structured logger first
@@ -190,7 +202,7 @@ func (s *Server) initialize() error {
 	if err != nil {
 		return wrapErr(apperrors.ErrCacheInit, "failed to initialize cache", err)
 	}
-	s.cache = cache
+	s.cache = &storage.VerifiedCache{ExtendedCache: cache}
 
 	// Initialize metrics registry
 	s.metricsRegistry = metrics.NewRegistry("apt_proxy")
@@ -241,14 +253,19 @@ func (s *Server) initialize() error {
 	s.logPassthrough(allowlist)
 
 	ps, err := proxy.NewPackageStruct(proxy.Options{
-		State:           s.state,
-		Registry:        s.registry,
-		CacheDir:        s.config.CacheDir,
-		Logger:          s.log,
-		Mode:            s.state.GetProxyMode(),
-		EnableKeepAlive: s.config.UpstreamKeepAlive,
-		Async:           true,
-		Passthrough:     allowlist,
+		UpstreamAccess:     s.config.UpstreamAccess,
+		State:              s.state,
+		Registry:           s.registry,
+		CacheDir:           s.config.CacheDir,
+		DownloadTempDir:    s.downloadTempDir(),
+		DownloadMaxBytes:   s.config.Download.MaxSpoolMB * (1 << 20),
+		DownloadTotalBytes: s.config.Download.TotalSpoolMB * (1 << 20),
+		DownloadTimeout:    time.Duration(s.config.Download.TimeoutSeconds) * time.Second,
+		Logger:             s.log,
+		Mode:               s.state.GetProxyMode(),
+		EnableKeepAlive:    s.config.UpstreamKeepAlive,
+		Async:              true,
+		Passthrough:        allowlist,
 	})
 	if err != nil {
 		return wrapErr(apperrors.ErrServerInit, "failed to initialize proxy", err)
@@ -436,6 +453,9 @@ func (s *Server) createFiberApp() *fiber.App {
 	logCfg := logger.DefaultMiddlewareConfig()
 	logCfg.Logger = s.log
 	logCfg.SkipPaths = []string{"/healthz", "/livez", "/readyz"} // skip health noise
+	// Repository authentication can use custom query names. Add a uniformly
+	// redacted query field below instead of the logger's fixed secret-name list.
+	logCfg.IncludeQuery = false
 	if s.config.Debug {
 		logCfg.IncludeHeaders = true
 		logCfg.IncludeBody = true
@@ -449,10 +469,14 @@ func (s *Server) createFiberApp() *fiber.App {
 			if size <= 0 {
 				size = len(c.Response().Body())
 			}
-			return map[string]interface{}{
+			fields := map[string]interface{}{
 				"cache": cacheLabelFromHeader(string(c.Response().Header.Peek("X-Cache"))),
 				"size":  size,
 			}
+			if query := string(c.Request().URI().QueryString()); query != "" {
+				fields["query"] = logsafe.Query(query)
+			}
+			return fields
 		},
 	}))
 
@@ -519,7 +543,7 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Route through PackageStruct rather than its cached upstream directly:
 	// ServeHTTP performs distro matching and mirror URL rewriting before it
 	// delegates to the cache/reverse-proxy chain.
-	app.All("/*", adaptor.HTTPHandler(s.proxy))
+	app.All("/*", adaptor.HTTPHandler(s.downloadClients.Wrap(s.proxy)))
 
 	return app
 }
@@ -791,4 +815,12 @@ var errNilConfig = apperrors.New(apperrors.ErrConfigInvalid, "configuration cann
 // them keeps callers honest about which error class they're emitting.
 func wrapErr(code apperrors.Code, msg string, err error) error {
 	return apperrors.Wrap(code, msg, err)
+}
+
+// downloadTempDir follows the selected backend's writable staging location.
+func (s *Server) downloadTempDir() string {
+	if s.config.Storage.Backend == config.StorageBackendS3 {
+		return s.config.Storage.S3.TempDir
+	}
+	return s.config.CacheDir
 }

@@ -35,8 +35,20 @@ So a flag (e.g. `--port=8000`) always wins over the same key in this YAML.
 - `cache:` — local cache directory, size cap, TTL, cleanup interval.
 - `storage:` — switch between local disk and S3-compatible object storage.
   See [`../s3-otterio/`](../s3-otterio/) for a runnable S3 example.
+- `download:` — upstream fetch deadline and unknown-length spool budgets;
+  zero selects bounded defaults, not unlimited downloads.
 - `mirrors:` — pin upstream mirrors per distro (full URL or shortcut like
   `cn:tsinghua`).
 - `tls:` — terminate HTTPS at apt-proxy itself.
-- `security:` — API key for protected `/api/*` endpoints.
+- `security:` — management API authentication/rate limiting and independent
+  connection-peer CIDR lists for package downloads.
+- `upstream_access:` — optional direct repository connection policy for
+  downloads, mirror probes and Ubuntu geo discovery. Enabled policies bypass
+  environment forward proxies; S3 and telemetry clients are outside its scope.
 - `mode:` — restrict to a single distro family or serve them all.
+
+Download limits, download CIDR lists and upstream access policy are YAML-only.
+Restart the daemon after changing them; mirror refresh does not reload these
+settings. See [download limits](../../docs/download-limits.md),
+[download access](../../docs/download-access.md) and
+[upstream access](../../docs/upstream-access.md) for their scope and examples.

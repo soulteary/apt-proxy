@@ -91,6 +91,21 @@ distributions:
       - pattern: "udeb$"
         cache_control: "max-age=100000"
         rewrite: true
+      # Common installer files, including mutable current/ paths.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|(gtk/)?(netboot\.tar\.gz|mini\.iso)|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      # PXE/UEFI resources within installer netboot trees.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/netboot/(pxelinux\.cfg/default|(gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9][A-Za-z0-9_-]*/(pxelinux\.0|pxelinux\.cfg/default|(bootnet|grub)(x64|ia32|aa64)\.efi|boot-screens/([A-Za-z0-9][A-Za-z0-9_-]*\.(cfg|c32)|f([1-9]|10)\.txt|splash\.png)|grub/(grub\.cfg|font\.pf2|[A-Za-z0-9][A-Za-z0-9_-]*-efi/[A-Za-z0-9][A-Za-z0-9_-]*\.(mod|lst))))$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Versioned source artifacts; this does not enable arbitrary archive caching.
+      - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
+        cache_control: "max-age=100000"
+        rewrite: true
       - pattern: "InRelease$"
         cache_control: "max-age=3600"
         rewrite: true
@@ -100,19 +115,29 @@ distributions:
       - pattern: "PackagesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Packages\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Packages(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "SourcesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Sources\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Sources(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "Release(\\.gpg)?$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+      - pattern: "(^|/)Translation-[A-Za-z][A-Za-z0-9_-]*(\\.(gz|bz2|bzip2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)Contents-[A-Za-z0-9_-]+(\\.(gz|bz2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)(Packages|Sources|Contents-[A-Za-z0-9_-]+|Translation-[A-Za-z][A-Za-z0-9_-]*)\\.diff/(Index|[A-Za-z0-9_.-]+\\.(gz|xz))$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Direct DEP-11 indexes and bounded icon archives.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/dep11/(Components-[A-Za-z0-9][A-Za-z0-9_-]*\.yml\.(gz|xz)|CID-Index-[A-Za-z0-9][A-Za-z0-9_-]*\.json\.gz|icons-(48x48|64x64|128x128)(@2)?\.tar\.gz)$'
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"
@@ -149,6 +174,21 @@ distributions:
       - pattern: "udeb$"
         cache_control: "max-age=100000"
         rewrite: true
+      # Common installer files, including mutable current/ paths.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|(gtk/)?(netboot\.tar\.gz|mini\.iso)|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      # PXE/UEFI resources within installer netboot trees.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/netboot/(pxelinux\.cfg/default|(gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9][A-Za-z0-9_-]*/(pxelinux\.0|pxelinux\.cfg/default|(bootnet|grub)(x64|ia32|aa64)\.efi|boot-screens/([A-Za-z0-9][A-Za-z0-9_-]*\.(cfg|c32)|f([1-9]|10)\.txt|splash\.png)|grub/(grub\.cfg|font\.pf2|[A-Za-z0-9][A-Za-z0-9_-]*-efi/[A-Za-z0-9][A-Za-z0-9_-]*\.(mod|lst))))$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Versioned source artifacts; this does not enable arbitrary archive caching.
+      - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
+        cache_control: "max-age=100000"
+        rewrite: true
       - pattern: "InRelease$"
         cache_control: "max-age=3600"
         rewrite: true
@@ -158,19 +198,29 @@ distributions:
       - pattern: "PackagesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Packages\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Packages(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "SourcesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Sources\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Sources(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "Release(\\.gpg)?$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+      - pattern: "(^|/)Translation-[A-Za-z][A-Za-z0-9_-]*(\\.(gz|bz2|bzip2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)Contents-[A-Za-z0-9_-]+(\\.(gz|bz2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)(Packages|Sources|Contents-[A-Za-z0-9_-]+|Translation-[A-Za-z][A-Za-z0-9_-]*)\\.diff/(Index|[A-Za-z0-9_.-]+\\.(gz|xz))$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Direct DEP-11 indexes and bounded icon archives.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/dep11/(Components-[A-Za-z0-9][A-Za-z0-9_-]*\.yml\.(gz|xz)|CID-Index-[A-Za-z0-9][A-Za-z0-9_-]*\.json\.gz|icons-(48x48|64x64|128x128)(@2)?\.tar\.gz)$'
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"
@@ -201,6 +251,21 @@ distributions:
       - pattern: "udeb$"
         cache_control: "max-age=100000"
         rewrite: true
+      # Common installer files, including mutable current/ paths.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(netboot/((gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9_-]+/(linux|initrd\.gz)|(gtk/)?(netboot\.tar\.gz|mini\.iso)|pxelinux\.0)|(hd-media|cdrom)/(gtk/)?(vmlinuz|initrd\.gz)|hd-media/boot\.img\.gz)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      # PXE/UEFI resources within installer netboot trees.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/netboot/(pxelinux\.cfg/default|(gtk/)?(debian|ubuntu)-installer/[A-Za-z0-9][A-Za-z0-9_-]*/(pxelinux\.0|pxelinux\.cfg/default|(bootnet|grub)(x64|ia32|aa64)\.efi|boot-screens/([A-Za-z0-9][A-Za-z0-9_-]*\.(cfg|c32)|f([1-9]|10)\.txt|splash\.png)|grub/(grub\.cfg|font\.pf2|[A-Za-z0-9][A-Za-z0-9_-]*-efi/[A-Za-z0-9][A-Za-z0-9_-]*\.(mod|lst))))$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Versioned source artifacts; this does not enable arbitrary archive caching.
+      - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
+        cache_control: "max-age=100000"
+        rewrite: true
       - pattern: "InRelease$"
         cache_control: "max-age=3600"
         rewrite: true
@@ -210,19 +275,29 @@ distributions:
       - pattern: "PackagesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Packages\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Packages(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "SourcesIndex$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Sources\\.(bz2|gz|lzma)$"
+      - pattern: "(^|/)Sources(\\.(bz2|gz|lzma|xz|zst))?$"
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "Release(\\.gpg)?$"
         cache_control: "max-age=3600"
         rewrite: true
-      - pattern: "Translation-(en|fr)\\.(gz|bz2|bzip2|lzma)$"
+      - pattern: "(^|/)Translation-[A-Za-z][A-Za-z0-9_-]*(\\.(gz|bz2|bzip2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)Contents-[A-Za-z0-9_-]+(\\.(gz|bz2|lzma|xz|zst))?$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      - pattern: "(^|/)(Packages|Sources|Contents-[A-Za-z0-9_-]+|Translation-[A-Za-z][A-Za-z0-9_-]*)\\.diff/(Index|[A-Za-z0-9_.-]+\\.(gz|xz))$"
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Direct DEP-11 indexes and bounded icon archives.
+      - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/dep11/(Components-[A-Za-z0-9][A-Za-z0-9_-]*\.yml\.(gz|xz)|CID-Index-[A-Za-z0-9][A-Za-z0-9_-]*\.json\.gz|icons-(48x48|64x64|128x128)(@2)?\.tar\.gz)$'
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"

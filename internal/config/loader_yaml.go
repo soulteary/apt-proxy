@@ -20,16 +20,19 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/soulteary/apt-proxy/internal/access"
 	"gopkg.in/yaml.v3"
 )
 
 // YAMLConfig represents the YAML configuration file structure.
 // It uses a more user-friendly structure that maps to the internal Config.
 type YAMLConfig struct {
-	Server struct {
+	UpstreamAccess *access.UpstreamConfig `yaml:"upstream_access"`
+	Server         struct {
 		Host  string `yaml:"host"`
 		Port  string `yaml:"port"`
 		Debug bool   `yaml:"debug"`
@@ -58,7 +61,9 @@ type YAMLConfig struct {
 	} `yaml:"tls"`
 
 	Security struct {
-		APIKey string `yaml:"api_key"`
+		DownloadAllowCIDRs []string `yaml:"download_allow_cidrs"`
+		DownloadDenyCIDRs  []string `yaml:"download_deny_cidrs"`
+		APIKey             string   `yaml:"api_key"`
 		// Pointer preserves the distinction between an omitted value (API key
 		// implies authentication) and an explicit false override.
 		EnableAPIAuth         *bool    `yaml:"enable_api_auth"`
@@ -90,7 +95,8 @@ type YAMLConfig struct {
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors.
 	// Pointer to distinguish "user did not set" (nil → leave to defaults
 	// or CLI/ENV) from "user explicitly set false" (disable keep-alive).
-	UpstreamKeepAlive *bool `yaml:"upstream_keep_alive"`
+	Download          DownloadConfig `yaml:"download"`
+	UpstreamKeepAlive *bool          `yaml:"upstream_keep_alive"`
 }
 
 // LoadConfigFile loads configuration from a YAML file.
@@ -184,11 +190,15 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			KeyFile:  yamlCfg.TLS.KeyFile,
 		},
 		Security: SecurityConfig{
+			DownloadAllowCIDRs:    slices.Clone(yamlCfg.Security.DownloadAllowCIDRs),
+			DownloadDenyCIDRs:     slices.Clone(yamlCfg.Security.DownloadDenyCIDRs),
 			APIKey:                yamlCfg.Security.APIKey,
 			EnableAPIAuth:         enableAPIAuth,
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
 		},
+		Download:       yamlCfg.Download,
+		UpstreamAccess: yamlCfg.UpstreamAccess,
 		Storage: StorageConfig{
 			Backend: yamlCfg.Storage.Backend,
 			S3: S3Config{

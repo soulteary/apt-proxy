@@ -24,6 +24,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/soulteary/apt-proxy/internal/access"
+	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
+	"github.com/soulteary/apt-proxy/internal/mirrors"
 	logger "github.com/soulteary/logger-kit/v3"
 	"golang.org/x/sync/singleflight"
 )
@@ -141,17 +145,35 @@ func newBenchmarkClient() *http.Client {
 // thin wrappers around a process-wide Default() Engine, kept for backward
 // compatibility with existing tests and any single-Server callers.
 type Engine struct {
-	cache  *BenchmarkCache
-	group  singleflight.Group
-	client *http.Client
+	cache   *BenchmarkCache
+	group   singleflight.Group
+	client  *http.Client
+	guarded bool
 }
 
 // NewEngine returns a fresh, independent Engine. Use one per Server.
-func NewEngine() *Engine {
-	return &Engine{
-		cache:  NewBenchmarkCache(),
-		client: newBenchmarkClient(),
+func NewEngine() *Engine { return NewEngineWithPolicy(nil) }
+
+// NewEngineWithPolicy applies the daemon's immutable upstream policy to mirror
+// probes and geo discovery, including every redirect and HEAD-to-GET fallback.
+func NewEngineWithPolicy(policy *access.Upstream) *Engine {
+	client := newBenchmarkClient()
+	if policy != nil {
+		client.Transport = policy.Transport(client.Transport.(*http.Transport))
 	}
+	return &Engine{cache: NewBenchmarkCache(), client: client, guarded: policy != nil}
+}
+
+// MirrorCandidates discovers mirrors through this engine's policy. Legacy
+// engines preserve the existing lookup path; guarded engines never fall back
+// to an unguarded discovery client.
+func (e *Engine) MirrorCandidates(reg *distro.Registry, mode int) []string {
+	if !e.guarded {
+		return mirrors.GetGeoMirrorUrlsByMode(reg, mode)
+	}
+	return mirrors.GetGeoMirrorUrlsByModeWithLookup(reg, mode, func() ([]string, error) {
+		return mirrors.GetUbuntuMirrorUrlsByGeoWithClient(context.Background(), e.client)
+	})
 }
 
 // Cache exposes the engine's result cache for advanced callers / tests.
@@ -358,7 +380,7 @@ func GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 func (e *Engine) GetTheFastestMirrorWithCache(distType int, mirrors []string, testURL string) (string, error) {
 	if cached, ok := e.cache.GetCachedResult(distType); ok {
 		log := logger.Default()
-		log.Debug().Int("dist_type", distType).Str("mirror", cached).Msg("using cached benchmark result")
+		log.Debug().Int("dist_type", distType).Str("mirror", logsafe.URL(cached)).Msg("using cached benchmark result")
 		return cached, nil
 	}
 
@@ -407,7 +429,7 @@ func (e *Engine) GetTheFastestMirrorAsync(distType int, mirrors []string, testUR
 
 	go func() {
 		if cached, ok := e.cache.GetCachedResult(distType); ok {
-			log.Debug().Int("dist_type", distType).Str("mirror", cached).Msg("async: using cached benchmark result")
+			log.Debug().Int("dist_type", distType).Str("mirror", logsafe.URL(cached)).Msg("async: using cached benchmark result")
 			callback(AsyncBenchmarkResult{
 				DistType:      distType,
 				FastestMirror: cached,
@@ -433,7 +455,7 @@ func (e *Engine) GetTheFastestMirrorAsync(distType int, mirrors []string, testUR
 			return fastest, nil
 		})
 		if err != nil {
-			log.Error().Err(err).Int("dist_type", distType).Bool("shared", shared).Msg("async: benchmark failed")
+			log.Error().Err(logsafe.Error(err)).Int("dist_type", distType).Bool("shared", shared).Msg("async: benchmark failed")
 			callback(AsyncBenchmarkResult{
 				DistType:      distType,
 				FastestMirror: "",
@@ -443,7 +465,7 @@ func (e *Engine) GetTheFastestMirrorAsync(distType int, mirrors []string, testUR
 		}
 
 		fastest, _ := v.(string)
-		log.Info().Int("dist_type", distType).Str("mirror", fastest).Bool("shared", shared).Msg("async: benchmark completed")
+		log.Info().Int("dist_type", distType).Str("mirror", logsafe.URL(fastest)).Bool("shared", shared).Msg("async: benchmark completed")
 
 		callback(AsyncBenchmarkResult{
 			DistType:      distType,

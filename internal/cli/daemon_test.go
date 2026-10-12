@@ -105,6 +105,20 @@ func TestNewServer(t *testing.T) {
 	}
 }
 
+// waitForCacheStore waits for the asynchronous cache write without issuing
+// another proxy request, so the upstream-hit assertions remain meaningful.
+func waitForCacheStore(t *testing.T, srv *Server) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if srv.cache.Stats().ItemCount >= 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("cache write did not complete; stats=%+v", srv.cache.Stats())
+}
+
 func TestProductionProxyRouteRewritesAndCaches(t *testing.T) {
 	var upstreamHits atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +169,8 @@ func TestProductionProxyRouteRewritesAndCaches(t *testing.T) {
 	if got := first.Header.Get("X-Cache"); got != "MISS" {
 		t.Fatalf("first X-Cache = %q, want MISS", got)
 	}
+
+	waitForCacheStore(t, srv)
 
 	second := request()
 	secondBody, err := io.ReadAll(second.Body)
@@ -230,6 +246,8 @@ func TestProductionProxyRouteRewritesAndCachesAlpineIndex(t *testing.T) {
 	if got := first.Header.Get("X-Cache"); got != "MISS" {
 		t.Fatalf("first X-Cache = %q, want MISS", got)
 	}
+
+	waitForCacheStore(t, srv)
 
 	second := request()
 	secondBody, err := io.ReadAll(second.Body)
@@ -307,6 +325,9 @@ func TestProductionProxyRouteSupportsHostPrefixedDebianPaths(t *testing.T) {
 			}
 
 			for index, wantCache := range []string{"MISS", "HIT"} {
+				if index > 0 {
+					waitForCacheStore(t, srv)
+				}
 				resp := request()
 				body, err := io.ReadAll(resp.Body)
 				_ = resp.Body.Close()

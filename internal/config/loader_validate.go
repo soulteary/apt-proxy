@@ -17,11 +17,14 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/state"
@@ -60,6 +63,18 @@ func ValidateConfig(config *Config) error {
 		return fmt.Errorf("configuration cannot be nil")
 	}
 
+	if _, err := access.NewClients(config.Security.DownloadAllowCIDRs, config.Security.DownloadDenyCIDRs); err != nil {
+		return err
+	}
+	if _, err := access.NewUpstream(config.UpstreamAccess); err != nil {
+		return err
+	}
+	if config.Download.MaxSpoolMB < 0 || config.Download.TotalSpoolMB < 0 || config.Download.TimeoutSeconds < 0 {
+		return fmt.Errorf("download limits cannot be negative")
+	}
+	if config.Download.MaxSpoolMB > math.MaxInt64/(1<<20) || config.Download.TotalSpoolMB > math.MaxInt64/(1<<20) || config.Download.TimeoutSeconds > math.MaxInt64/int64(time.Second) {
+		return fmt.Errorf("download limits overflow internal units")
+	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address must be specified")
 	}

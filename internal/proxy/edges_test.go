@@ -16,7 +16,7 @@ package proxy
 
 // edges_test.go fills the long tail of zero-coverage helpers in the
 // proxy package: tiny pure helpers (Transport/State/Registry getters,
-// shouldSetCacheControl, getErrorPage), the static asset handler, and
+// getErrorPage), the static asset handler, and
 // the async rewriter constructor.
 
 import (
@@ -64,9 +64,7 @@ func TestPackageStructAccessors(t *testing.T) {
 
 // TestResponseWriterCacheControl asserts that the responseWriter only
 // injects the rule Cache-Control header for 200 and a short independent TTL
-// for 404 responses.
-// and otherwise leaves the header alone. Together these cover both
-// branches of shouldSetCacheControl.
+// for 404 responses, and otherwise leaves the header alone.
 func TestResponseWriterCacheControl(t *testing.T) {
 	rule := &distro.Rule{CacheControl: "max-age=3600"}
 
@@ -78,6 +76,9 @@ func TestResponseWriterCacheControl(t *testing.T) {
 	}{
 		{"200 with rule injects header", rule, http.StatusOK, "max-age=3600"},
 		{"404 uses short negative TTL", rule, http.StatusNotFound, "public, max-age=30"},
+		{"404 with empty default retains negative TTL", &distro.Rule{}, http.StatusNotFound, "public, max-age=30"},
+		{"404 passthrough preserves origin policy", passthroughRule, http.StatusNotFound, ""},
+		{"200 passthrough preserves origin policy", passthroughRule, http.StatusOK, ""},
 		{"500 with rule does NOT inject header", rule, http.StatusInternalServerError, ""},
 		{"200 with nil rule does NOT inject header", nil, http.StatusOK, ""},
 		{"200 with rule but empty CacheControl does NOT inject header", &distro.Rule{}, http.StatusOK, ""},
@@ -215,5 +216,34 @@ func TestCreateNewRewritersAsyncReturnsImmediately(t *testing.T) {
 	RewriteRequestByMode(req, rewriters, distro.TypeUbuntu)
 	if req.URL.Host != "mirrors.example.com" {
 		t.Errorf("rewritten host = %q, want mirrors.example.com", req.URL.Host)
+	}
+}
+
+// Client cache directives must survive repository matching and URL rewriting.
+func TestRepositoryPreservesClientCacheControl(t *testing.T) {
+	for _, directive := range []string{"no-cache", "no-store", "max-age=0", "only-if-cached", "no-cache, max-age=0"} {
+		t.Run(directive, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("Cache-Control"); got != directive {
+					t.Errorf("upstream Cache-Control = %q, want %q", got, directive)
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer upstream.Close()
+			st := newTestState()
+			st.SetMirror(distro.TypeUbuntu, upstream.URL+"/ubuntu/")
+			st.SetProxyMode(distro.TypeAllDistros)
+			ps, err := NewPackageStruct(Options{State: st, Registry: newTestRegistry(), Mode: distro.TypeAllDistros, Logger: logger.Default()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodGet, "/ubuntu/dists/jammy/InRelease", nil)
+			req.Header.Set("Cache-Control", directive)
+			rec := httptest.NewRecorder()
+			ps.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d", rec.Code)
+			}
+		})
 	}
 }
