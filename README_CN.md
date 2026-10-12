@@ -1362,3 +1362,7 @@ http_proxy=http://192.168.33.1:3142 \
 ---
 
 由 APT Proxy 社区用 ❤️ 打造
+
+### 下载资源限制
+
+未知长度下载默认限制单个暂存文件为 1 GiB，每个实例共享暂存预算为 4 GiB；上游获取总超时默认为 20 分钟。可在 YAML 中配置 `download.max_spool_mb`、`download.total_spool_mb` 和 `download.timeout_seconds`，零值使用默认限制。预算不包含正式缓存及其他缓存临时副本；详见[下载限制说明](docs/download-limits.md)。
