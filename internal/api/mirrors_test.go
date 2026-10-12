@@ -16,6 +16,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,13 +24,13 @@ import (
 	logger "github.com/soulteary/logger-kit/v3"
 )
 
-func newTestMirrorsHandler(reload func()) *MirrorsHandler {
+func newTestMirrorsHandler(reload func() error) *MirrorsHandler {
 	return NewMirrorsHandler(logger.New(logger.Config{Format: logger.FormatJSON, Level: logger.ErrorLevel}), reload)
 }
 
 func TestMirrorsHandlerRefreshCallsReloadFunc(t *testing.T) {
 	called := 0
-	h := newTestMirrorsHandler(func() { called++ })
+	h := newTestMirrorsHandler(func() error { called++; return nil })
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/mirrors/refresh", nil)
@@ -48,6 +49,25 @@ func TestMirrorsHandlerRefreshCallsReloadFunc(t *testing.T) {
 	}
 	if !got.Success || got.Message == "" {
 		t.Errorf("unexpected response: %+v", got)
+	}
+}
+
+func TestMirrorsHandlerRefreshReportsReloadFailure(t *testing.T) {
+	h := newTestMirrorsHandler(func() error { return errors.New("private failure detail") })
+	rec := httptest.NewRecorder()
+	h.HandleMirrorsRefresh(rec, httptest.NewRequest(http.MethodPost, "/api/mirrors/refresh", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["code"] != "INTERNAL_ERROR" || body["success"] == true {
+		t.Fatalf("failure reported as success: %v", body)
+	}
+	if body["error"] != "Mirror refresh failed" {
+		t.Fatalf("unexpected error message: %v", body)
 	}
 }
 

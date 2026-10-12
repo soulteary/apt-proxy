@@ -160,8 +160,8 @@ func TestPassthroughOnlyReadMethods(t *testing.T) {
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch} {
 		rec := httptest.NewRecorder()
 		ps.ServeHTTP(rec, proxyModeRequest(method, origin, "/anything"))
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("%s: status = %d, want 404", method, rec.Code)
+		if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "GET, HEAD" {
+			t.Errorf("%s: status=%d Allow=%q, want 405 and GET, HEAD", method, rec.Code, rec.Header().Get("Allow"))
 		}
 	}
 	if seen.count != 0 {

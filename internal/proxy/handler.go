@@ -23,6 +23,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -140,7 +141,15 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 			seen[id] = struct{}{}
 		}
 	}
-	for id, d := range all {
+	// Custom distributions can overlap; their IDs provide an explicit, stable
+	// tie-breaker after the built-in order instead of Go's random map order.
+	ids := make([]string, 0, len(all))
+	for id := range all {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		d := all[id]
 		if _, ok := seen[id]; ok {
 			continue
 		}
@@ -445,6 +454,9 @@ func parseTLSRewriteMarker(r *http.Request) (origin, upstreamPath string, found 
 // matches them against caching rules, and routes them to the appropriate handler.
 // If a matching rule is found, the request is processed with cache control headers.
 func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	if rejectRepositoryMethod(rw, r) {
+		return
+	}
 	ctx := r.Context()
 
 	spanCtx, span := tracing.StartSpan(ctx, "proxy.request")
@@ -646,9 +658,9 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *dist
 // any other Server's mirror selection. (Historically the engine was a
 // package-level singleton; that coupling was removed in favour of the
 // per-Server engine field above.)
-func (ap *PackageStruct) RefreshMirrors() {
+func (ap *PackageStruct) RefreshMirrors() error {
 	if ap == nil {
-		return
+		return nil
 	}
 	ap.refreshMu.Lock()
 	defer ap.refreshMu.Unlock()
@@ -657,11 +669,16 @@ func (ap *PackageStruct) RefreshMirrors() {
 	// visible. buildRewriters is the slow part -- it re-elects mirrors --
 	// and for its whole duration requests keep serving the previous
 	// snapshot, matching and rewriting consistently with each other.
+	rewriters, err := buildRewriters(ap.mode, ap.state, ap.registry, ap.bench)
+	if err != nil {
+		return err // Keep the complete old routing, including its match patterns.
+	}
 	next := &routing{
 		patterns:  hostPatternsFromRegistry(ap.registry),
-		rewriters: buildRewriters(ap.mode, ap.state, ap.registry, ap.bench),
+		rewriters: rewriters,
 	}
 	ap.routing.Store(next)
+	return nil
 }
 
 // BenchmarkEngine exposes this PackageStruct's private benchmark engine.
@@ -688,7 +705,7 @@ type cacheRuleKey struct{}
 // defaults. Applying defaults in ModifyResponse lets the cache store the same
 // policy that the client receives, including the short negative-cache lifetime.
 func applyRepositoryCachePolicy(header http.Header, status int, rule *distro.Rule) {
-	if rule == nil || rule == passthroughRule || len(header.Values("Cache-Control")) != 0 {
+	if rule == nil || rule == passthroughRule || len(header.Values("Cache-Control")) != 0 || len(header.Values("Expires")) != 0 {
 		return
 	}
 	switch status {

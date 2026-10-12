@@ -55,8 +55,8 @@ func TestSmallWriteStaysInMemory(t *testing.T) {
 }
 
 // TestLargeWriteSpillsToTempFile verifies that crossing the inline threshold
-// spills to a temp file; the in-memory buffer is reset and the temp file
-// exists with the original prefix bytes plus the new write at the tail.
+// spills to an anonymous temp file; the in-memory buffer is reset and the
+// descriptor holds the original prefix bytes plus the new write at the tail.
 func TestLargeWriteSpillsToTempFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	w := &s3WFile{
@@ -82,6 +82,10 @@ func TestLargeWriteSpillsToTempFile(t *testing.T) {
 	if w.tmp == nil {
 		t.Fatal("expected non-nil temp file after spill")
 	}
+	defer w.tmp.Close()
+	if entries, err := os.ReadDir(tmpDir); err != nil || len(entries) != 0 {
+		t.Fatalf("spill retained a directory entry: entries=%v err=%v", entries, err)
+	}
 	if w.inlineBuf.Len() != 0 {
 		t.Errorf("inline buffer should be drained after spill; got %d bytes", w.inlineBuf.Len())
 	}
@@ -97,14 +101,6 @@ func TestLargeWriteSpillsToTempFile(t *testing.T) {
 	want := "hello-this-pushes-over-the-edge"
 	if string(got) != want {
 		t.Errorf("temp file = %q, want %q", got, want)
-	}
-
-	// Cleanup: closing should remove the temp file even if we can't talk to
-	// S3 (Close will hit a nil client, but the deferred temp cleanup runs).
-	// We instead clean up manually here.
-	_ = w.tmp.Close()
-	if err := os.Remove(w.tmp.Name()); err != nil && !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("os.Remove tmp: %v", err)
 	}
 }
 
