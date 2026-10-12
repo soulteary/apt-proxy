@@ -2,6 +2,9 @@
 
 [![Go Test Coverage](./.github/coverage.svg)](./.github/go-test-report.md) [![Go Report Card](./.github/goreportcard.svg)](./.github/goreportcard-report.md) [![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
 
+覆盖率与代码质量徽章展示最近一次发布的报告快照，并非每个提交的实时结果。
+参见[报告范围](.github/GO-REPORTS.md)，部署时应查看对应版本的 CI 运行记录。
+
 <p style="text-align: center;">
   <a href="README.md" target="_blank">ENGLISH</a> | <a href="README_CN.md">中文文档</a>
 </p>
@@ -490,6 +493,10 @@ HTTPS_PROXY=socks5h://127.0.0.1:1080 ./apt-proxy
 条链路。它们只影响 apt-proxy 自身到镜像站的连接；客户端仍然直连 apt-proxy，所以
 不要把 apt-proxy 自己的地址写进 `HTTP_PROXY`。在 Docker 中用 `-e` 传入即可。
 
+启用 `upstream_access.enabled: true` 后，仓库下载、镜像测速与 Ubuntu 镜像发现
+会直接连接目标并忽略上述代理变量；需要前置代理时应关闭该策略。
+具体检查范围与配置见[上游访问策略](docs/upstream-access.md)。
+
 ## Docker 集成
 
 ### 在 Docker 中运行 APT Proxy
@@ -698,6 +705,12 @@ cache:
   ttl_hours: 168
   cleanup_interval_min: 60
 
+# 仅支持 YAML；0 选择以下默认值，不表示无限制。
+download:
+  max_spool_mb: 1024        # 每个未知长度响应的落盘上限，MiB
+  total_spool_mb: 4096      # 实例共享的未知长度落盘预算，MiB
+  timeout_seconds: 1200     # 上游下载总时限
+
 # 可选：将缓存改为 S3 兼容对象存储；backend 为 "disk" 时下面的 s3 字段被忽略
 storage:
   backend: disk        # "disk"（默认）或 "s3"
@@ -727,6 +740,8 @@ tls:
   key_file: /etc/ssl/private/apt-proxy.key
 
 security:
+  download_allow_cidrs: []             # 连接对端 CIDR，仅支持 YAML
+  download_deny_cidrs: []              # 拒绝优先；两项为空时允许所有客户端
   api_key: ${APT_PROXY_API_KEY}        # 支持 ${VAR} 与 ${VAR:-default} 展开
   enable_api_auth: true
   api_rate_limit_per_minute: 60        # 0 禁用；默认 60
@@ -735,6 +750,14 @@ security:
     - 192.168.0.0/16
 
 mode: all
+
+# 可选仓库连接策略：仅支持 YAML，变更后重启。
+# 关闭时限制列表必须为空；启用后忽略前置代理环境变量。
+upstream_access:
+  enabled: false
+  allowed_hosts: []
+  allowed_ports: []       # 启用时为空表示允许 80/443
+  allow_cidrs: []         # 显式允许受信任私网范围
 
 # 上游传输
 upstream_keep_alive: true
@@ -1408,3 +1431,10 @@ Ubuntu、Ubuntu Ports 和 Debian 的源码池文件现可经配置的镜像代�
 安装器目录中的常用 PXE/UEFI 资源也可代理并缓存：EFI 加载器、默认 PXELINUX
 配置、启动菜单及 GRUB 模块。范围限定在安装器 netboot 目录内，不提供
 DHCP/TFTP 服务或启动配置内容改写。
+
+### Debian 系 AppStream 元数据
+
+DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可使用镜像和缓存，
+包括从 by-hash 回退到直接 URL 的客户端。规则限定在
+`dists/<suite>/<component>/dep11/`，不开放任意 YAML、JSON 或归档下载。
+支持范围见[AppStream 元数据](docs/apt-appstream.md)。

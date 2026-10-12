@@ -34,6 +34,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
@@ -304,6 +305,10 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
 			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}},
+			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+				log.Error().Err(logsafe.Error(err)).Msg("upstream request failed")
+				w.WriteHeader(http.StatusBadGateway)
+			},
 			ModifyResponse: func(resp *http.Response) error {
 				protectPrivateRepositoryResponse(resp)
 				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)
@@ -447,7 +452,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	tracing.SetSpanAttributesFromMap(span, map[string]interface{}{
 		"http.method":      r.Method,
-		"http.url":         r.URL.Redacted(),
+		"http.url":         logsafe.URL(r.URL.String()),
 		"http.path":        r.URL.Path,
 		"http.scheme":      r.URL.Scheme,
 		"http.host":        r.Host,
@@ -595,7 +600,7 @@ func requestHost(r *http.Request) string {
 }
 
 // processMatchingRule processes a request that matches a distribution pattern.
-// It finds the specific caching rule, removes client cache control headers,
+// It finds the specific caching rule, preserves client cache directives,
 // and rewrites the URL if necessary.
 func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, rules []distro.Rule) *distro.Rule {
 	rule, match := MatchingRule(r.URL.Path, rules)
@@ -617,14 +622,14 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *dist
 		ap.log.Error().Msg("request URL is nil, cannot rewrite")
 		return
 	}
-	before := r.URL.Redacted()
+	before := logsafe.URL(r.URL.String())
 	RewriteRequestByMode(r, rt.rewriters, rule.OS)
 
 	if r.URL != nil {
 		r.Host = r.URL.Host
 		ap.log.Debug().
 			Str("from", before).
-			Str("to", r.URL.Redacted()).
+			Str("to", logsafe.URL(r.URL.String())).
 			Msg("rewrote request URL")
 	}
 }

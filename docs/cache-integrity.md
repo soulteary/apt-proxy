@@ -18,10 +18,12 @@ namespace and rejection of session responses; pre-upgrade entries are no longer
 served after migration. HEAD
 entries are excluded because their Content-Length describes a GET body that
 is absent from the HEAD response. GET entries without Content-Length remain
-usable and cannot be verified by this check. Unknown-length bodies, same-length
-bit corruption, repository checksum validation and upstream connection-drop
-recovery require separate work. This check is not a cryptographic integrity
-verification or a signature verification mechanism.
+usable and cannot be verified by this check. The separate
+[interrupted-download guard](interrupted-downloads.md) spools unknown-length
+bodies before publication and handles upstream connection drops; its
+[size/time budgets](download-limits.md) bound that work. Same-length bit
+corruption, repository checksum validation and signature verification remain
+unsupported. A complete transfer and matching length do not prove authenticity.
 
 Regression tests mutate real cached body files by truncating or appending bytes,
 verify replacement, exercise cache-only rejection and normal re-download, and

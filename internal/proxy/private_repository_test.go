@@ -71,14 +71,16 @@ func TestPrivateRepositoryRequestsBypassSharedCache(t *testing.T) {
 			}))
 			defer upstream.Close()
 			server, cache := downloadTestServer(t, upstream.URL)
-			get := func(identity, directive string) (int, string) {
+			get := func(identity string, directives ...string) (int, string) {
 				t.Helper()
 				req, _ := http.NewRequest("GET", server.URL+"/ubuntu/pool/private.deb", nil)
 				if identity != "" {
 					req.Header.Set(header, identity)
 				}
-				if directive != "" {
-					req.Header.Set("Cache-Control", directive)
+				for _, directive := range directives {
+					if directive != "" {
+						req.Header.Add("Cache-Control", directive)
+					}
 				}
 				res, err := server.Client().Do(req)
 				if err != nil {
@@ -99,21 +101,36 @@ func TestPrivateRepositoryRequestsBypassSharedCache(t *testing.T) {
 			if cache.Stats().ItemCount == 0 {
 				t.Fatal("anonymous cache not warmed")
 			}
-			for _, identity := range []string{"alice", "bob"} {
-				status, body := get(identity, "")
-				if status != 200 || body != identity {
-					t.Fatalf("private cache isolation: %d %q, want %q", status, body, identity)
+			var privateRequests int64
+			for _, directives := range [][]string{
+				nil,
+				{"max-age=3600"},
+				{"max-age=3600", "no-store"},
+				{"max-age=3600", "NO-STORE"},
+			} {
+				for _, identity := range []string{"alice", "bob"} {
+					status, body := get(identity, directives...)
+					privateRequests++
+					if status != 200 || body != identity {
+						t.Fatalf("private cache isolation with %v: %d %q, want %q", directives, status, body, identity)
+					}
 				}
 			}
-			if hits.Load() != 3 {
+			if hits.Load() != privateRequests+1 {
 				t.Fatalf("private requests did not bypass upstream: hits=%d", hits.Load())
 			}
 			before := hits.Load()
-			status, _ := get("alice", "only-if-cached")
-			if status != 504 || hits.Load() != before {
-				t.Fatalf("private cache-only read: %d hits=%d", status, hits.Load())
+			for _, directives := range [][]string{
+				{"only-if-cached"},
+				{"max-age=3600", "only-if-cached"},
+				{"max-age=3600", "ONLY-IF-CACHED"},
+			} {
+				status, _ := get("alice", directives...)
+				if status != 504 || hits.Load() != before {
+					t.Fatalf("private cache-only read with %v: %d hits=%d", directives, status, hits.Load())
+				}
 			}
-			status, body := get("", "")
+			status, body := get("", "only-if-cached")
 			if status != 200 || body != "anonymous" || hits.Load() != before {
 				t.Fatal("private request replaced anonymous cache")
 			}

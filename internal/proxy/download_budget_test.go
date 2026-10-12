@@ -240,12 +240,19 @@ func TestSpoolDeletionFailureKeepsBudget(t *testing.T) {
 	dir := t.TempDir()
 	transport := budgetTestTransport(dir, 8, 8)
 	req := httptest.NewRequest("GET", "http://mirror.example/package.deb", nil)
-	//nolint:bodyclose // The concrete spool is closed below to exercise failed cleanup and retry.
-	res, err := transport.RoundTrip(req)
+	// Named-file cleanup remains defensive support for a partially constructed
+	// spool. Normal downloads are unlinked before any bytes are written.
+	file, err := os.CreateTemp(dir, "apt-proxy-download-*.tmp")
 	if err != nil {
 		t.Fatal(err)
 	}
-	spool := res.Body.(*downloadFile)
+	if _, err := file.WriteString("12345678"); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	transport.budget.reserve(8)
+	var released sync.Once
+	spool := &downloadFile{File: file, path: file.Name(), release: func() { released.Do(func() { transport.budget.release(8) }) }}
 	backup := spool.path + ".backup"
 	if err := os.Rename(spool.path, backup); err != nil {
 		t.Fatal(err)

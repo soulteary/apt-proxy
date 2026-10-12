@@ -28,6 +28,7 @@ import (
 	logger "github.com/soulteary/logger-kit/v3"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 	mirrors "github.com/soulteary/apt-proxy/internal/mirrors"
 )
 
@@ -80,9 +81,9 @@ func (m *MirrorState) SetWithRegistry(input string, reg *distro.Registry) {
 	parsed, err := url.Parse(mirror)
 	if err != nil {
 		logger.Default().Warn().
-			Err(err).
+			Err(logsafe.Error(err)).
 			Int("dist_type", m.distType).
-			Str("input", input).
+			Str("input", logsafe.URL(input)).
 			Msg("invalid mirror URL, clearing state")
 		m.value.Store(nil)
 		return

@@ -13,6 +13,13 @@ head. Older release tags and non-default manual refs retain downloadable reports
 without overwriting the current branch. PRs never enter that write job. Protected
 branches can reject writeback; no PAT, bypass, or force-push is used.
 
+The checked-in badges and reports are snapshots from the last successful
+publication, not continuously regenerated results for every branch commit.
+Their source is the report workflow's recorded `source_sha`; newer changes
+must be evaluated with their own CI run and artifacts. The report files do not
+currently embed that source SHA or a generation date, so a badge alone is not
+evidence that the current checkout passed or has the same coverage.
+
 Test directory: `.`. Packages: `./...`.
 Race detector: `true`. Additional args: `-short -count=1`.
 Coverage floor: `80%` (zero records a baseline).

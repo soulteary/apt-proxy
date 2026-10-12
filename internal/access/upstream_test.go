@@ -332,6 +332,12 @@ func TestUpstreamLateLosingConnectionIsClosed(t *testing.T) {
 	p := racingPolicy(t, "2606:4700::1111", "93.184.216.34")
 	loser, loserPeer := net.Pipe()
 	defer loserPeer.Close()
+	// Arm the bound before the dial race can close the losing connection.
+	// net.Pipe rejects deadline changes once either endpoint has closed, which
+	// is the successful outcome this test is about to observe through EOF.
+	if err := loserPeer.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	winner, winnerPeer := net.Pipe()
 	defer winnerPeer.Close()
 	p.dial = func(ctx context.Context, _, address string) (net.Conn, error) {
@@ -346,9 +352,6 @@ func TestUpstreamLateLosingConnectionIsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	if err := loserPeer.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	var one [1]byte
 	if _, err := loserPeer.Read(one[:]); !errors.Is(err, io.EOF) {
 		t.Fatalf("losing connection was not closed: %v", err)

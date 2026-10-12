@@ -17,6 +17,7 @@ package proxy
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 	httpcache "github.com/soulteary/httpcache-kit/v4"
@@ -42,11 +43,24 @@ func normalizeRepositoryCredentials(r *http.Request) {
 	r.URL.User = nil
 }
 func addNoStore(h http.Header) {
-	cc, err := httpcache.ParseCacheControlHeaders(h)
-	if err == nil && cc.Has("no-store") {
-		return
+	// Keep the bypass directive in the first field value. Some cache consumers
+	// read Header.Get instead of combining repeated Cache-Control fields.
+	directives := strings.Join(h.Values("Cache-Control"), ", ")
+	if directives == "" {
+		directives = "no-store"
+	} else {
+		directives = "no-store, " + directives
 	}
-	h.Add("Cache-Control", "no-store")
+	h.Set("Cache-Control", directives)
+}
+
+func hasCacheDirective(cc httpcache.CacheControl, name string) bool {
+	for directive := range cc {
+		if strings.EqualFold(directive, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func protectPrivateRepositoryResponse(res *http.Response) {
@@ -66,7 +80,7 @@ func (ap *PackageStruct) serveMatchedRepository(w http.ResponseWriter, r *http.R
 			http.Error(w, "invalid Cache-Control", http.StatusBadRequest)
 			return
 		}
-		if cc.Has("only-if-cached") {
+		if hasCacheDirective(cc, "only-if-cached") {
 			w.Header().Set("Cache-Control", "no-store")
 			http.Error(w, "authenticated or cookie-bearing requests cannot use the shared cache", http.StatusGatewayTimeout)
 			return
