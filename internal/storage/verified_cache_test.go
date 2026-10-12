@@ -86,7 +86,7 @@ func TestVerifiedCachePreservesInvalidationMarkers(t *testing.T) {
 	}
 	defer backend.Close()
 	cache := &VerifiedCache{ExtendedCache: backend}
-	backend.Invalidate("GET:http://mirror.example/package.deb")
+	cache.Invalidate("GET:http://mirror.example/package.deb")
 	at, marked := cache.StaleAt("GET:http://mirror.example/package.deb")
 	if !marked || at.IsZero() {
 		t.Fatal("lost invalidation marker")
@@ -118,5 +118,62 @@ func TestVerifiedCacheAllowsHeadAndUnknownLength(t *testing.T) {
 			t.Fatalf("valid metadata rejected: %s %v", tc.key, err)
 		}
 		got.Close()
+	}
+}
+
+func TestVerifiedCacheRejectsLegacySessionResponse(t *testing.T) {
+	resource := httpcache.NewResourceBytes(200, []byte("session"), http.Header{"Set-Cookie": []string{"session=legacy"}, "Cache-Control": []string{"public, max-age=3600"}})
+	cache := &VerifiedCache{ExtendedCache: &fixtureCache{resource: resource}}
+	if got, err := cache.Retrieve("GET:http://mirror.example/package.deb"); err != httpcache.ErrNotFoundInCache {
+		if got != nil {
+			got.Close()
+		}
+		t.Fatalf("legacy session response accepted: %v", err)
+	}
+}
+
+func TestPrivateCacheNamespaceExcludesLegacyObjects(t *testing.T) {
+	backend, err := httpcache.NewDiskCacheWithConfig(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	const key = "GET:http://mirror.example/package.deb"
+	header := http.Header{"Cache-Control": []string{"public, max-age=3600"}}
+	if err := backend.Store(httpcache.NewResourceBytes(200, []byte("legacy-authenticated-body"), header.Clone()), key); err != nil {
+		t.Fatal(err)
+	}
+	cache := &VerifiedCache{ExtendedCache: backend}
+	if res, err := cache.Retrieve(key); err != httpcache.ErrNotFoundInCache {
+		if res != nil {
+			res.Close()
+		}
+		t.Fatalf("legacy body reachable: %v", err)
+	}
+	if err := cache.Store(httpcache.NewResourceBytes(200, []byte("new-anonymous-body"), header.Clone()), key); err != nil {
+		t.Fatal(err)
+	}
+	res, err := cache.Retrieve(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(res)
+	res.Close()
+	if err != nil || string(body) != "new-anonymous-body" {
+		t.Fatal("new namespace did not serve new content")
+	}
+	legacy, err := backend.Retrieve(key)
+	if err != nil {
+		t.Fatal("migration destructively removed legacy body")
+	}
+	legacy.Close()
+	cache.Invalidate(key)
+	res, err = cache.Retrieve(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Close()
+	if !res.IsStale() {
+		t.Fatal("namespace lost invalidation ordering")
 	}
 }
