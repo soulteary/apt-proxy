@@ -88,8 +88,8 @@ github.com/soulteary/health-kit/v4 v4.0.1 h1:kFqcthggB3Txba86s64bUltHHxWfcf2hmNt
 github.com/soulteary/health-kit/v4 v4.0.1/go.mod h1:Ytgjvl917jTXtdFBDm6es6FkEYbqK32nuiu4+v4iYL8=
 github.com/soulteary/http-kit/v2 v2.0.1 h1:R1GnmQ9VvF19QMJzL80RZNaU1DXfRtjI0CY3ClmKc8o=
 github.com/soulteary/http-kit/v2 v2.0.1/go.mod h1:55lJNLvIdicemu0qdJDQ8DYS53ELpk6KB76RrW7hDWc=
-github.com/soulteary/httpcache-kit/v4 v4.0.2-0.20261012152620-e272c303a770 h1:OkBcysIr/hvIVAJHwc3upjhbQH6oUmjhnN5y2BEjBnU=
-github.com/soulteary/httpcache-kit/v4 v4.0.2-0.20261012152620-e272c303a770/go.mod h1:RNNH6ZA96OFVv/UD2gGlnXUnyCaqblwfeseoWV282uk=
+github.com/soulteary/httpcache-kit/v4 v4.0.2-0.20261012154017-d121f611df60 h1:mElJs2Fe7xOCKUSNQSH8IszEIf0MA0G17pr9xub3FRo=
+github.com/soulteary/httpcache-kit/v4 v4.0.2-0.20261012154017-d121f611df60/go.mod h1:RNNH6ZA96OFVv/UD2gGlnXUnyCaqblwfeseoWV282uk=
 github.com/soulteary/logger-kit/v3 v3.0.1 h1:o9/Nhq6RbIx70zjKMhAuvxO3+E9yqYhtWS+7wDXvCSk=
 github.com/soulteary/logger-kit/v3 v3.0.1/go.mod h1:w4IYfsZIWb/XzXkguMMqbzUc7n2Am0S5BwHw23/8FxE=
 github.com/soulteary/metrics-kit/v3 v3.0.1 h1:Neu0DJX9SFLlgZSyVzrjX+nG470kqtV31E1axhqWhJ4=
