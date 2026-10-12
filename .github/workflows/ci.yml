@@ -132,6 +132,10 @@ jobs:
     name: Integration (e2e)
     runs-on: ubuntu-latest
     needs: [test]
+    env:
+      # Shared test-only credentials; OtterIO rejects its default password.
+      OTTERIO_ROOT_USER: apt-proxy-ci
+      OTTERIO_ROOT_PASSWORD: apt-proxy-ci-password
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -152,8 +156,8 @@ jobs:
         run: |
           docker run -d --name otterio \
             -p 9000:9000 \
-            -e OTTERIO_ROOT_USER=otterioadmin \
-            -e OTTERIO_ROOT_PASSWORD=otterioadmin \
+            -e OTTERIO_ROOT_USER \
+            -e OTTERIO_ROOT_PASSWORD \
             soulteary/otterio:latest \
             server /data
 
@@ -178,8 +182,8 @@ jobs:
           # The integration tests create the bucket themselves (MakeBucket) so
           # we don't need an init step.
           APT_PROXY_TEST_S3_ENDPOINT: 127.0.0.1:9000
-          APT_PROXY_TEST_S3_ACCESS_KEY: otterioadmin
-          APT_PROXY_TEST_S3_SECRET_KEY: otterioadmin
+          APT_PROXY_TEST_S3_ACCESS_KEY: ${{ env.OTTERIO_ROOT_USER }}
+          APT_PROXY_TEST_S3_SECRET_KEY: ${{ env.OTTERIO_ROOT_PASSWORD }}
           APT_PROXY_TEST_S3_BUCKET: apt-proxy-itest
           APT_PROXY_TEST_S3_USE_SSL: "false"
           APT_PROXY_TEST_S3_USE_PATH_STYLE: "true"
