@@ -15,6 +15,8 @@
 // Package config configuration merging logic between file/CLI/ENV sources.
 package config
 
+import "slices"
+
 // MergeConfigsWithExplicit is like MergeConfigs but uses the explicit mask to
 // decide whether a zero/empty value in `override` should overwrite `base`.
 // Pass nil to fall back to MergeConfigs' permissive zero-value handling.
@@ -230,6 +232,12 @@ func MergeConfigs(base, override *Config) *Config {
 		result.TLS.KeyFile = override.TLS.KeyFile
 	}
 
+	if override.Security.DownloadAllowCIDRs != nil {
+		result.Security.DownloadAllowCIDRs = slices.Clone(override.Security.DownloadAllowCIDRs)
+	}
+	if override.Security.DownloadDenyCIDRs != nil {
+		result.Security.DownloadDenyCIDRs = slices.Clone(override.Security.DownloadDenyCIDRs)
+	}
 	// Merge SecurityConfig
 	if override.Security.APIKey != "" {
 		result.Security.APIKey = override.Security.APIKey

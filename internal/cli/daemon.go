@@ -41,6 +41,7 @@ import (
 	version "github.com/soulteary/version-kit/v4"
 	versionfiber "github.com/soulteary/version-kit/v4/fiberadapter"
 
+	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
@@ -58,6 +59,7 @@ import (
 // Server represents the main application server that handles HTTP requests,
 // manages caching, and coordinates all server components.
 type Server struct {
+	downloadClients     *access.Clients
 	config              *config.Config           // Application configuration
 	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
 	cacheProxy          *httpcache.Handler       // Shared HTTP cache wrapper; drained before backend close
@@ -84,8 +86,13 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, errNilConfig
 	}
 
+	downloadClients, err := access.NewClients(cfg.Security.DownloadAllowCIDRs, cfg.Security.DownloadDenyCIDRs)
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
-		config: cfg,
+		downloadClients: downloadClients,
+		config:          cfg,
 	}
 
 	// Initialize structured logger first
@@ -524,7 +531,7 @@ func (s *Server) createFiberApp() *fiber.App {
 	// Route through PackageStruct rather than its cached upstream directly:
 	// ServeHTTP performs distro matching and mirror URL rewriting before it
 	// delegates to the cache/reverse-proxy chain.
-	app.All("/*", adaptor.HTTPHandler(s.proxy))
+	app.All("/*", adaptor.HTTPHandler(s.downloadClients.Wrap(s.proxy)))
 
 	return app
 }

@@ -1453,3 +1453,13 @@ Unknown-length downloads default to a 1 GiB per-response spool limit and a 4 GiB
 ### Private repository requests
 
 Requests with `Authorization` or `Cookie` bypass shared caching; `Set-Cookie` responses are not stored. Authenticated cache-only requests return 504 without upstream access. This version uses a new cache-key namespace to exclude pre-upgrade private responses, causing a one-time cold cache without deleting legacy files. See [private repository isolation](docs/private-repositories.md) for migration and scope.
+
+### Package download client access
+
+Use `security.download_allow_cidrs` and `security.download_deny_cidrs` in YAML
+to restrict package downloads by connection-peer IPv4/IPv6 networks. Deny
+rules take precedence and checks run before cache lookup and upstream fetching.
+Both lists are empty by default. Forwarded headers do not grant access;
+behind a reverse proxy, restrict end clients at the proxy. Operational/API
+routes retain their existing controls. Restart to apply policy changes.
+See [download access control](docs/download-access.md) for configuration and scope.
