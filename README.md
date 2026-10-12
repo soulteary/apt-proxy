@@ -1463,3 +1463,13 @@ Both lists are empty by default. Forwarded headers do not grant access;
 behind a reverse proxy, restrict end clients at the proxy. Operational/API
 routes retain their existing controls. Restart to apply policy changes.
 See [download access control](docs/download-access.md) for configuration and scope.
+
+### Guarded download upstreams
+
+Optional YAML `upstream_access.enabled: true` restricts package-download target
+hosts, ports and resolved IPs. New connections validate all DNS answers and
+connect directly to approved IPs, preserving TLS hostname verification.
+Private repositories require explicit CIDR exceptions. Enabled download
+transports ignore environment forward proxies. Restart to change policy.
+See [upstream access](docs/upstream-access.md) for examples and the separate
+background-client boundary.

@@ -15,7 +15,11 @@
 // Package config provides configuration management for apt-proxy.
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/soulteary/apt-proxy/internal/access"
+)
 
 // Storage backend identifiers used by StorageConfig.Backend.
 const (
@@ -25,17 +29,18 @@ const (
 
 // Config holds all application configuration
 type Config struct {
-	Download                DownloadConfig `yaml:"download"`
-	Debug                   bool           `yaml:"debug"`
-	CacheDir                string         `yaml:"cache_dir"`
-	Mode                    int            `yaml:"mode"`
-	Listen                  string         `yaml:"listen"`
-	Mirrors                 MirrorConfig   `yaml:"mirrors"`
-	Cache                   CacheConfig    `yaml:"cache"`
-	Storage                 StorageConfig  `yaml:"storage"`
-	TLS                     TLSConfig      `yaml:"tls"`
-	Security                SecurityConfig `yaml:"security"`
-	DistributionsConfigPath string         `yaml:"distributions_config"`
+	UpstreamAccess          *access.UpstreamConfig `yaml:"upstream_access"`
+	Download                DownloadConfig         `yaml:"download"`
+	Debug                   bool                   `yaml:"debug"`
+	CacheDir                string                 `yaml:"cache_dir"`
+	Mode                    int                    `yaml:"mode"`
+	Listen                  string                 `yaml:"listen"`
+	Mirrors                 MirrorConfig           `yaml:"mirrors"`
+	Cache                   CacheConfig            `yaml:"cache"`
+	Storage                 StorageConfig          `yaml:"storage"`
+	TLS                     TLSConfig              `yaml:"tls"`
+	Security                SecurityConfig         `yaml:"security"`
+	DistributionsConfigPath string                 `yaml:"distributions_config"`
 	// Passthrough lists third-party origins apt-proxy may fetch and cache
 	// unrewritten, e.g. "ppa.launchpad.net" or "https://download.docker.com".
 	// Empty (the default) means apt-proxy serves only the distributions it is

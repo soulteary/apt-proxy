@@ -24,13 +24,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/soulteary/apt-proxy/internal/access"
 	"gopkg.in/yaml.v3"
 )
 
 // YAMLConfig represents the YAML configuration file structure.
 // It uses a more user-friendly structure that maps to the internal Config.
 type YAMLConfig struct {
-	Server struct {
+	UpstreamAccess *access.UpstreamConfig `yaml:"upstream_access"`
+	Server         struct {
 		Host  string `yaml:"host"`
 		Port  string `yaml:"port"`
 		Debug bool   `yaml:"debug"`
@@ -195,7 +197,8 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			APIRateLimitPerMinute: yamlCfg.Security.APIRateLimitPerMinute,
 			TrustedProxies:        append([]string(nil), yamlCfg.Security.TrustedProxies...),
 		},
-		Download: yamlCfg.Download,
+		Download:       yamlCfg.Download,
+		UpstreamAccess: yamlCfg.UpstreamAccess,
 		Storage: StorageConfig{
 			Backend: yamlCfg.Storage.Backend,
 			S3: S3Config{
