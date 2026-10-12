@@ -245,6 +245,14 @@ distributions:
 
 After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to hot-reload without restart.
 
+Reload is published only after the configuration loads and all required mirror
+elections succeed. A failed reload keeps the previous routing and cache rules;
+the API returns a structured error (`500` for configuration loading failures,
+`503` for failed mirror election), and SIGHUP logs the failure. Repair the file
+or mirror connectivity and retry. Built-in distributions retain their established
+matching order; overlapping custom distributions are tried in ascending `id`
+order. Within a distribution, the first matching `cache_rules[]` entry wins.
+
 **Field reference:**
 
 - `id` — unique identifier used in URL paths (`/<id>/...`).
@@ -254,7 +262,7 @@ After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to
 - `host_pattern` — optional regex matched against the request's `Host` header. Use it for archives served from the host root, where no path prefix exists for `url_pattern` to match (for example `deb http://security.debian.org <suite>-security main`, or `apt.armbian.com`). It is tried only after `url_pattern` fails, and when it matches the whole request path is appended to the upstream mirror. Anchor it (`^...$`) so a lookalike host cannot claim your distribution. The host is lower-cased before matching, so write the pattern in lower case. Omitting the field inherits the built-in matcher for that distro type (Debian keeps `security.debian.org`), the same way omitting `mirrors` keeps the built-in mirror list; setting it replaces the built-in. Only the built-in Debian security host routes to the dedicated Debian Security mirror — a `host_pattern` you configure for type `3` resolves to that entry's own mirror.
 - `benchmark_url` — relative path probed during mirror benchmarking.
 - `geo_mirror_api` — optional URL returning a list of geo-located mirrors (Ubuntu-style `mirrors.txt`).
-- `cache_rules[]` — per-pattern cache directives. `cache_control` supplies a default response `Cache-Control` for matched paths when the upstream omits that header (`200` uses the configured value; `404` uses `public, max-age=30`). Explicit upstream directives, including shorter freshness lifetimes, `private`, and `no-store`, are preserved. Defaults are applied before cache storage; `rewrite: true` enables URL rewriting for that pattern.
+- `cache_rules[]` — per-pattern cache directives. `cache_control` supplies a default response `Cache-Control` for matched paths when the upstream omits both `Cache-Control` and `Expires` (`200` uses the configured value; `404` uses `public, max-age=30`). Explicit upstream directives and expiration dates, including past or invalid `Expires` dates, shorter freshness lifetimes, `private`, and `no-store`, are preserved. Defaults are applied before cache storage; `rewrite: true` enables URL rewriting for that pattern.
 - `mirrors.official` / `mirrors.custom` — mirror host lists. Aliases of the form `cn:<name>` are auto-generated from each mirror's host (e.g. `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`).
 - `aliases` — explicit name-to-mirror mapping that overrides/augments the auto-generated aliases.
 
@@ -853,9 +861,10 @@ after switching the mirror    -> refetched from the new mirror
 
 Mirror election runs at startup and on an explicit refresh. Benchmark results
 are not persisted, so **a restart re-elects**, and so do `SIGHUP` and `POST
-/api/mirrors/refresh`. (A mirror timing out *during* benchmarking is not one of
-these: it is simply dropped from that run's candidates, and if every candidate
-fails the current mirror is left in place.)
+/api/mirrors/refresh`. A mirror timing out during benchmarking is dropped from
+that run's candidates. If an election fails during refresh, the complete previous
+routing remains active and the refresh reports an error; new match patterns and
+cache rules take effect only after a successful retry.
 
 This is the conservative behaviour — two mirrors are not guaranteed to serve
 byte-identical content, so entries are not shared between them. If you want a
@@ -981,8 +990,10 @@ or `temp_dir` exhaustion.
   cheaper than RAM at the p99.
 
 - **Disk water-mark on `temp_dir`.** Anything larger than `inline_max_mb`
-  spills exactly once to `temp_dir` (default `os.TempDir()`, i.e. `/tmp`) and
-  is removed on `Close()`. The transient peak is roughly
+  spills exactly once to `temp_dir` (default `os.TempDir()`, i.e. `/tmp`).
+  Its pathname is unlinked immediately while an anonymous file descriptor keeps
+  the data available for upload; closing it or exiting the process reclaims the
+  spill, including after a crash. The transient peak is roughly
   `concurrent_large_uploads × max_object_size`. On Kubernetes this matters in
   three places:
 

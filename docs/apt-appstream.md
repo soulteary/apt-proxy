@@ -12,7 +12,7 @@ Direct URLs now reach the configured mirror when clients disable by-hash or fall
 back to the named file. Existing by-hash routing is unchanged. Architecture names
 use letters, digits, underscores and hyphens, starting with a letter or digit.
 
-Matched files receive fallback `max-age=3600`; explicit upstream Cache-Control
+Matched files receive fallback `max-age=3600`; explicit upstream Cache-Control or Expires
 still takes precedence. Private-request isolation, upstream connection controls
 and download completeness checks continue to apply. The complete hierarchy and
 supported filename are required; arbitrary YAML/JSON files, nested files, unknown

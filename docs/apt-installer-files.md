@@ -36,7 +36,7 @@ Consequently, this subset alone does not promise a complete PXE or offline insta
 
 All matched files use fallback `max-age=3600`, including dated directories.
 `current` is mutable, so the longer binary/source package fallback is inappropriate.
-Explicit upstream Cache-Control still takes precedence, including `no-store`.
+Explicit upstream Cache-Control or Expires still takes precedence, including `no-store`.
 Existing private-request isolation, connection policy and cache length checks apply.
 No cache migration is needed. Existing custom distribution YAML must explicitly
 adopt these rules from the updated shipped example.

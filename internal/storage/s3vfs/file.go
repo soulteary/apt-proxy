@@ -56,8 +56,9 @@ const inlineSpillThreshold = 32 << 20
 
 // s3WFile implements vfs.WFile. It buffers writes in memory up to inlineMax
 // bytes; if the writer keeps going past that threshold it transparently
-// spills to a temporary file. Close() finally PUTs the accumulated content
-// to S3 in a single request and cleans the temp file up.
+// spills to an anonymous temporary file. Close() finally PUTs the accumulated
+// content to S3 and closes the descriptor; process exit also reclaims its disk
+// storage, even when graceful shutdown cannot run.
 type s3WFile struct {
 	ctx       context.Context
 	client    *minio.Client
@@ -128,10 +129,16 @@ func (w *s3WFile) spill() error {
 	if err != nil {
 		return err
 	}
+	// Linux and macOS retain access through the open descriptor after unlink.
+	// Remove the name before writing bytes so a crash during buffering/upload
+	// cannot leave package-sized files behind. Never sweep a shared TempDir.
+	if err := os.Remove(tmp.Name()); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if w.inlineBuf.Len() > 0 {
 		if _, err := tmp.Write(w.inlineBuf.Bytes()); err != nil {
 			_ = tmp.Close()
-			_ = os.Remove(tmp.Name())
 			return err
 		}
 		w.inlineBuf.Reset()
@@ -143,9 +150,8 @@ func (w *s3WFile) spill() error {
 
 // Close finalises the upload. For inline writers we PUT the accumulated
 // bytes directly from memory. For spilled writers we rewind the temp file
-// and stream it to S3, then delete the temp file regardless of the upload
-// outcome (the temp file is useless either way: success means the data is
-// in S3, failure means the next Store will rewrite it).
+// and stream it to S3, then close the anonymous file regardless of the upload
+// outcome. The descriptor is the only reference to its disk storage.
 func (w *s3WFile) Close() error {
 	if w.closed {
 		return nil
@@ -166,10 +172,7 @@ func (w *s3WFile) Close() error {
 	}
 
 	if w.spilled {
-		defer func() {
-			_ = w.tmp.Close()
-			_ = os.Remove(w.tmp.Name())
-		}()
+		defer func() { _ = w.tmp.Close() }()
 		if _, err := w.tmp.Seek(0, io.SeekStart); err != nil {
 			return err
 		}

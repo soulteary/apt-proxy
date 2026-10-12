@@ -17,6 +17,8 @@
 package proxy
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -593,8 +595,9 @@ func MatchingRule(path string, rules []distro.Rule) (*distro.Rule, bool) {
 // A construction-time async benchmark that is still pending keeps writing into
 // the set it captured, so its late result lands on a snapshot no longer
 // serving traffic and is dropped. That is the right precedence: this
-// synchronous election is both newer and complete.
-func buildRewriters(mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriters {
+// synchronous election is both newer and complete. If any required mirror
+// cannot be elected, callers retain the old set instead of publishing a partial one.
+func buildRewriters(mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) (*URLRewriters, error) {
 	log := logger.Default()
 	log.Info().Msg("refreshing mirror configurations...")
 
@@ -602,14 +605,25 @@ func buildRewriters(mode int, st *state.AppState, reg *distro.Registry, bench *b
 	engine.ClearCache()
 
 	rewriters := &URLRewriters{}
+	var errs []error
 	for _, m := range modesToInit(mode, reg) {
-		if rw := createRewriter(m, st, reg, engine); rw != nil {
-			rewriters.set(m, rw)
+		rw := createRewriter(m, st, reg, engine)
+		requiresMirror := false
+		for _, rule := range GetRewriteRulesByMode(reg, m) {
+			requiresMirror = requiresMirror || rule.Rewrite
 		}
+		if rw == nil || (rw.mirror == nil && requiresMirror) {
+			errs = append(errs, fmt.Errorf("no usable mirror for distribution type %d", m))
+			continue
+		}
+		rewriters.set(m, rw)
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 
 	log.Info().Msg("mirror configurations refreshed successfully")
-	return rewriters
+	return rewriters, nil
 }
 
 // RefreshRewriters refreshes the rewriters with updated mirror configurations.
@@ -622,37 +636,29 @@ func buildRewriters(mode int, st *state.AppState, reg *distro.Registry, bench *b
 // IMPORTANT: This function creates new rewriters outside the lock to avoid
 // blocking request processing during potentially slow network operations
 // (benchmark tests). The lock is only held briefly during the pointer swap.
-func RefreshRewriters(rewriters *URLRewriters, mode int, st *state.AppState, reg *distro.Registry) {
-	RefreshRewritersWithEngine(rewriters, mode, st, reg, nil)
+func RefreshRewriters(rewriters *URLRewriters, mode int, st *state.AppState, reg *distro.Registry) error {
+	return RefreshRewritersWithEngine(rewriters, mode, st, reg, nil)
 }
 
 // RefreshRewritersWithEngine is the engine-aware variant of RefreshRewriters.
 // A nil engine falls back to benchmarks.Default(). Only the supplied engine's
 // cache is cleared; per-Server engines no longer interfere with each other.
-func RefreshRewritersWithEngine(rewriters *URLRewriters, mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) {
+func RefreshRewritersWithEngine(rewriters *URLRewriters, mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) error {
 	if rewriters == nil {
-		return
+		return nil
 	}
-
-	log := logger.Default()
-	log.Info().Msg("refreshing mirror configurations...")
-
-	engine := benchEngine(bench)
-	engine.ClearCache()
-
-	// Create new rewriters OUTSIDE the lock to avoid blocking requests
-	// during potentially slow network operations (benchmark tests)
+	// Build outside the lock and publish only a complete, usable replacement.
+	next, err := buildRewriters(mode, st, reg, bench)
+	if err != nil {
+		return err
+	}
 	modes := modesToInit(mode, reg)
-	newByMode := make(map[int]*URLRewriter, len(modes))
-	for _, m := range modes {
-		newByMode[m] = createRewriter(m, st, reg, engine)
-	}
 
 	rewriters.Mu.Lock()
 	for _, m := range modes {
-		rewriters.set(m, newByMode[m])
+		rewriters.set(m, next.get(m))
 	}
 	rewriters.Mu.Unlock()
 
-	log.Info().Msg("mirror configurations refreshed successfully")
+	return nil
 }

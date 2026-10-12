@@ -48,7 +48,13 @@ func TestMirrorLifecycleLogsRedactCredentials(t *testing.T) {
 				{"asynchronous startup", func() *URLRewriter {
 					return createRewriterAsync(distro.TypeUbuntu, st, reg, &URLRewriters{}, engine)
 				}},
-				{"refresh", func() *URLRewriter { return buildRewriters(distro.TypeUbuntu, st, reg, engine).get(distro.TypeUbuntu) }},
+				{"refresh", func() *URLRewriter {
+					rewriters, err := buildRewriters(distro.TypeUbuntu, st, reg, engine)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return rewriters.get(distro.TypeUbuntu)
+				}},
 			} {
 				t.Run(step.name, func(t *testing.T) {
 					output.Reset()

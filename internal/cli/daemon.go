@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -60,6 +61,8 @@ import (
 // Server represents the main application server that handles HTTP requests,
 // manages caching, and coordinates all server components.
 type Server struct {
+	// mirrorRefreshMu serializes registry/state updates with routing publication.
+	mirrorRefreshMu     sync.Mutex
 	downloadClients     *access.Clients
 	config              *config.Config           // Application configuration
 	cache               httpcache.ExtendedCache  // HTTP cache implementation with management capabilities
@@ -695,31 +698,41 @@ func (s *Server) logPassthrough(list *passthrough.List) {
 // refreshMirrors reloads distributions config (when configured) and
 // refreshes mirror selection on this Server's proxy. Used as the reload
 // closure for the mirrors API handler and for SIGHUP-triggered reloads.
-func (s *Server) refreshMirrors() {
+func (s *Server) refreshMirrors() error {
+	s.mirrorRefreshMu.Lock()
+	defer s.mirrorRefreshMu.Unlock()
 	// Empty path is meaningful here too -- see the note in initialize.
 	if s.registry != nil {
 		if err := s.registry.Reload(s.config.DistributionsConfigPath); err != nil {
 			s.log.Warn().
-				Err(err).
+				Err(logsafe.Error(err)).
 				Str("path", s.config.DistributionsConfigPath).
 				Msg("failed to reload distributions config")
+			return apperrors.Wrap(apperrors.ErrConfigParseFail, "Failed to reload distributions configuration; previous routing retained", err)
 		}
 	}
 	if s.state != nil {
 		if err := config.ApplyToState(s.config, s.state, s.registry); err != nil {
-			s.log.Warn().Err(err).Msg("failed to re-apply config to state during reload")
+			s.log.Warn().Err(logsafe.Error(err)).Msg("failed to re-apply config to state during reload")
+			return apperrors.Wrap(apperrors.ErrConfigInvalid, "Failed to apply mirror configuration; previous routing retained", err)
 		}
 	}
 	if s.proxy != nil {
-		s.proxy.RefreshMirrors()
+		if err := s.proxy.RefreshMirrors(); err != nil {
+			return apperrors.Wrap(apperrors.ErrMirrorBenchmark, "Mirror election failed; previous routing retained", err).WithHTTPStatus(http.StatusServiceUnavailable)
+		}
 	}
+	return nil
 }
 
 // reload handles configuration hot reload triggered by SIGHUP signal.
 // It reloads distributions config (if path set) and refreshes mirror configurations.
 func (s *Server) reload() {
 	s.log.Info().Msg("received SIGHUP, reloading configuration...")
-	s.refreshMirrors()
+	if err := s.refreshMirrors(); err != nil {
+		s.log.Warn().Err(logsafe.Error(err)).Msg("configuration reload failed; previous routing retained")
+		return
+	}
 	s.log.Info().Msg("configuration reload complete")
 }
 

@@ -121,7 +121,7 @@ func TestRepositoryConcurrentColdDownloads(t *testing.T) {
 }
 
 // The cache has no public miss-queue hook. Observe the context Done call made
-// directly by Handler.ServeHTTP's follower select, excluding earlier context
+// directly by Handler.resolveMiss's follower select, excluding earlier context
 // propagation and transport cancellation checks. This intentionally pins the
 // dependency boundary: moving that select requires updating this test probe.
 type missWaitingContext struct {
@@ -132,7 +132,7 @@ type missWaitingContext struct {
 
 func (ctx *missWaitingContext) Done() <-chan struct{} {
 	if pc, _, _, ok := runtime.Caller(1); ok {
-		if fn := runtime.FuncForPC(pc); fn != nil && fn.Name() == "github.com/soulteary/httpcache-kit/v4.(*Handler).ServeHTTP" {
+		if fn := runtime.FuncForPC(pc); fn != nil && fn.Name() == "github.com/soulteary/httpcache-kit/v4.(*Handler).resolveMiss" {
 			ctx.once.Do(func() { close(ctx.waiting) })
 		}
 	}

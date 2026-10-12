@@ -15,12 +15,14 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	logger "github.com/soulteary/logger-kit/v3"
 
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
+	"github.com/soulteary/apt-proxy/internal/logsafe"
 )
 
 // MirrorsHandler handles mirror-related API endpoints.
@@ -31,12 +33,12 @@ import (
 // rather than mutating an unrelated Server's state.
 type MirrorsHandler struct {
 	log        *logger.Logger
-	reloadFunc func()
+	reloadFunc func() error
 }
 
 // NewMirrorsHandler creates a new MirrorsHandler. reloadFunc is required;
 // passing nil makes HandleMirrorsRefresh return 500.
-func NewMirrorsHandler(log *logger.Logger, reloadFunc func()) *MirrorsHandler {
+func NewMirrorsHandler(log *logger.Logger, reloadFunc func() error) *MirrorsHandler {
 	return &MirrorsHandler{
 		log:        log,
 		reloadFunc: reloadFunc,
@@ -58,7 +60,15 @@ func (h *MirrorsHandler) HandleMirrorsRefresh(w http.ResponseWriter, r *http.Req
 	}
 
 	start := time.Now()
-	h.reloadFunc()
+	if err := h.reloadFunc(); err != nil {
+		h.log.Error().Err(logsafe.Error(err)).Msg("mirrors refresh failed")
+		var appErr *apperrors.AppError
+		if !errors.As(err, &appErr) {
+			appErr = apperrors.Wrap(apperrors.ErrInternal, "Mirror refresh failed", err)
+		}
+		WriteAppError(w, appErr)
+		return
+	}
 	duration := time.Since(start)
 
 	h.log.Info().
