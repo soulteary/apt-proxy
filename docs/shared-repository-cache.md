@@ -5,6 +5,9 @@ mapped mirror bases. Repository IDs and the complete sorted base list define the
 identity; method, relative index path, query string and HTTP Vary stay distinct.
 Repository IDs must be nonempty, unique, at most 128 bytes and contain no NUL.
 The full body must match the requested SHA256 before it can populate a shared key.
+Mapped error, redirect and partial responses receive `no-store`, even if a mirror
+marks them public or fresh. A bodyless 304 can freshen an existing verified entry;
+HEAD retains its normal metadata behavior.
 Mutable Release/InRelease, packages, unmapped paths and other requests keep
 per-process identities when coordination is enabled.
 

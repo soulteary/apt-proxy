@@ -77,16 +77,36 @@ func (w *chargedWriter) Write(p []byte) (int, error) {
 }
 func (t *verifiedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	_, _, digest, shared := t.policy.content(req)
-	if !shared || req.Method != http.MethodGet {
+	if !shared {
 		return t.next.RoundTrip(req)
 	}
 	out := req.Clone(req.Context())
-	out.Header.Set("Accept-Encoding", "identity")
+	if req.Method == http.MethodGet {
+		out.Header.Set("Accept-Encoding", "identity")
+	}
 	res, err := t.next.RoundTrip(out)
 	if err != nil {
 		return nil, err
 	}
+	// HTTP 304 is protocol-bodyless and only freshens an existing verified
+	// generation. Trusted transport wrappers may replace http.NoBody with an
+	// owned closer; concrete Body identity cannot determine this status's
+	// semantics. Content-Length may still describe the 200 representation.
+	if res.StatusCode == http.StatusNotModified {
+		return res, nil
+	}
 	if res.StatusCode != http.StatusOK {
+		// Errors, redirects and partial representations do not establish the
+		// content digest. Keep their status/body, but prevent one mirror from
+		// publishing them under a shared immutable key, even with upstream
+		// freshness directives or repository-policy negative caching.
+		if res.Header == nil {
+			res.Header = make(http.Header)
+		}
+		res.Header.Set("Cache-Control", "no-store")
+		return res, nil
+	}
+	if req.Method != http.MethodGet {
 		return res, nil
 	}
 	fail := func(err error) (*http.Response, error) { _ = res.Body.Close(); return nil, err }

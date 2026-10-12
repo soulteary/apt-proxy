@@ -85,6 +85,14 @@ func (c *Controller) failover(r *http.Request, repo *repository, source, selecte
 			break
 		}
 		repo.active, repo.verified, repo.reason = next, map[string]string{}, "switched"
+		// Empty responses finish before the prospective mirror becomes active,
+		// so observeHealth's active-mirror guard correctly ignored that earlier
+		// completion. Commit its recovery together with the verified selection;
+		// body-bearing responses still establish recovery only at complete EOF.
+		if r.Method == http.MethodHead || res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusNotModified ||
+			((res.Body == nil || res.Body == http.NoBody) && res.ContentLength <= 0) {
+			repo.failures[next], repo.bodyFailures[next] = 0, false
+		}
 		for key, snap := range snapshots {
 			repo.verified[key] = snap.hash
 		}
