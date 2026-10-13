@@ -450,14 +450,15 @@ func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
 	cacheConfig := httpcache.DefaultCacheConfig()
 	applyCacheIntegrity(cacheConfig, s.config.Cache.Integrity)
 
-	// Apply custom settings if provided
-	if s.config.Cache.MaxSize > 0 {
+	// The loader resolves omitted defaults and preserves explicit CLI/ENV zeros.
+	// Passing those zeros through disables the corresponding backend limit.
+	if s.config.Cache.MaxSize >= 0 {
 		cacheConfig.WithMaxSize(s.config.Cache.MaxSize)
 	}
-	if s.config.Cache.TTL > 0 {
+	if s.config.Cache.TTL >= 0 {
 		cacheConfig.WithTTL(s.config.Cache.TTL)
 	}
-	if s.config.Cache.CleanupInterval > 0 {
+	if s.config.Cache.CleanupInterval >= 0 {
 		cacheConfig.WithCleanupInterval(s.config.Cache.CleanupInterval)
 	}
 

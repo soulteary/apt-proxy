@@ -8,6 +8,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
+
+	"github.com/soulteary/apt-proxy/internal/proxy"
 )
 
 // repositoryHTTPHandler replaces the adaptor's pooled fasthttp RequestCtx
@@ -17,10 +19,10 @@ import (
 // The app-owned lifecycle also cancels retained work before server shutdown.
 func repositoryHTTPHandler(lifecycle context.Context, handler http.Handler) fiber.Handler {
 	contexts := newRepositoryContextOwner(lifecycle)
-	return adaptor.HTTPHandlerWithContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return proxy.FiberHTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, _ := adaptor.LocalContextFromHTTPRequest(r)
 		if ctx == nil {
-			ctx = context.Background()
+			ctx = r.Context()
 		}
 		handler.ServeHTTP(w, detachedRepositoryRequest(contexts.forRequest(ctx), r))
 	}))

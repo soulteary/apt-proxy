@@ -22,8 +22,20 @@ caller's working directory before compilation. Client references whose derived
 evidence identifiers collide are rejected before any evidence is cleared.
 Identifiers use ASCII lowercase to detect tag collisions on case-insensitive
 filesystems too.
+Digest-pinned references, registry ports and IPv6 registry addresses are
+normalized to Docker-safe identifiers. Long identifiers receive a bounded
+128-character tag with a SHA256 suffix; the original client reference is still
+passed unchanged to Docker's base-image argument. Duplicate references or
+references whose normalized identifiers collide fail before Docker or cleanup.
+The entrypoint regression checks run with `python3 tests/apt-client/matrix_test.py`
+and are also executed in each matrix CI job.
 The gzip phase records origin requests and requires both binary and source
 indexes to use `.gz`, so an xz/plain fallback cannot pass as gzip coverage.
 CI runs all four clients independently and
 uploads evidence even on failure. These are local archive compatibility tests;
 they do not assert every public mirror or installer is compatible.
+
+This committed suite checks the normal daemon and explicit offline commands.
+Enabling runtime health, shared disk coordination or custom resource limits
+requires additional configuration and focused regressions; the client matrix
+alone does not prove cross-instance coalescing or authorize snapshot failover.

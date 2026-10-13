@@ -14,7 +14,7 @@ version you deploy.
   <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
 </p>
 
-> A lightweight **APT Cache Proxy** - just less 10MB in size!
+> An APT caching proxy with mirror selection, persistent caching and offline repositories.
 
 <p align="center">
   <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
@@ -24,6 +24,8 @@ version you deploy.
 
 APT Proxy is a lightweight, high-performance caching proxy for package managers. It accelerates package downloads by caching frequently used packages locally, dramatically reducing download times for subsequent installations. Whether you're managing multiple servers, building Docker images, or working in bandwidth-constrained environments, APT Proxy helps you save time and bandwidth.
 
+This development branch includes features planned for **v0.18.0**. The currently published v0.17.2 binaries and images do not include these additions. Read the [release candidate and upgrade notes](docs/releases/v0.18.0.md) before upgrading; the new version awaits approval for publication.
+
 <p align="center">
   <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
 </p>
@@ -31,7 +33,7 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 ### Key Features
 
 - **Multi-Distribution Support**: Works with APT (Ubuntu/Debian), YUM (CentOS), and APK (Alpine Linux)
-- **Lightweight**: Binary size is just less 10MB - minimal resource footprint
+- **Single-Binary Deployment**: Standalone binaries and container images; size varies by platform and build
 - **Smart Mirror Selection**: Automatically benchmarks and selects the fastest mirror
 - **Upstream Proxy**: Reaches mirror sites through an existing `HTTP_PROXY` / `HTTPS_PROXY` forward proxy (SOCKS5 included) when the host has no direct route out; mirror benchmarking takes the same path, so the elected mirror is one that is actually reachable
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
@@ -41,6 +43,13 @@ APT Proxy is a lightweight, high-performance caching proxy for package managers.
 - **Zero Configuration**: Works out of the box with sensible defaults
 - **Observability**: Built-in health checks, Prometheus metrics, structured logging, and optional OpenTelemetry tracing
 - **Cache Management**: REST API for cache statistics, purging, and cleanup, with API-key authentication and per-IP rate limiting
+
+- **Complete Repository Snapshots**: Prefetch all objects referenced by selected binary/source indexes, then verify, repair, export, import or serve offline
+- **Runtime Mirror Failover**: Optional bounded switching only after observed public repository metadata matches exactly
+- **Persistent Integrity Checks**: Private SHA256 records enabled by default; damaged or unverifiable legacy entries become misses
+- **Resource Admission**: Download concurrency and a common budget bound spool files, cache copies and S3 payload buffers
+- **Explicit Shared Repository Cache**: Reuse verified SHA256 by-hash indexes across mapped roots; cross-process coordination is limited to Unix disk storage
+- **Real APT Validation**: Signed update, installation, source and offline tests on Debian Bookworm/Trixie and Ubuntu 22.04/24.04
 
 ## Supported Platforms
 
@@ -526,6 +535,106 @@ Ubuntu geo discovery connect directly and ignore these proxy variables. Disable
 that policy to retain forward-proxy routing. See [upstream access](docs/upstream-access.md)
 for its enforcement boundary and configuration.
 
+## Repository operations and download policies
+
+### Download resource limits
+
+Unknown-length downloads default to a 1 GiB per-response spool limit and a 4 GiB shared spool budget per instance. Upstream fetches default to a 20-minute total timeout. Configure `download.max_spool_mb`, `download.total_spool_mb`, and `download.timeout_seconds` in YAML; zero selects the defaults. See [download limits](docs/download-limits.md) for scope and failure behavior.
+
+### Private repository requests
+
+Requests with `Authorization` or `Cookie` bypass shared caching; `Set-Cookie` responses are not stored. Authenticated cache-only requests return 504 without upstream access. This version uses a new cache-key namespace to exclude pre-upgrade private responses, causing a one-time cold cache without deleting legacy files. See [private repository isolation](docs/private-repositories.md) for migration and scope.
+
+### Package download client access
+
+Use `security.download_allow_cidrs` and `security.download_deny_cidrs` in YAML
+to restrict package downloads by connection-peer IPv4/IPv6 networks. Deny
+rules take precedence and checks run before cache lookup and upstream fetching.
+Both lists are empty by default. Forwarded headers do not grant access;
+behind a reverse proxy, restrict end clients at the proxy. Operational/API
+routes retain their existing controls. Restart to apply policy changes.
+See [download access control](docs/download-access.md) for configuration and scope.
+
+### Guarded download upstreams
+
+Optional YAML `upstream_access.enabled: true` restricts package downloads, mirror
+probes and Ubuntu geo discovery by target hosts, ports and resolved IPs. New connections validate all DNS answers and
+connect directly to approved IPs, preserving TLS hostname verification.
+Private repositories require explicit CIDR exceptions. Enabled repository
+transports ignore environment forward proxies; probe/discovery redirects and
+HEAD-to-GET fallback remain guarded. Startup and mirror refresh use the same
+per-instance policy. Restart to change policy.
+See [upstream access](docs/upstream-access.md) for examples and the separate
+background-client boundary.
+
+### Debian-family source packages
+
+Ubuntu, Ubuntu Ports and Debian source pool files now use the configured
+mirror and shared cache: `.dsc`, upstream/component/native archives, Debian
+packaging archives, legacy `.diff.gz` and original-archive `.asc` signatures.
+Rules are limited to versioned source filenames in Debian-style pools and
+preserve upstream cache directives. Existing custom distribution YAML must
+adopt the new rule explicitly. See [source package coverage](docs/apt-source-packages.md)
+for supported formats and client-side verification responsibilities.
+
+### Debian-family installer files
+
+Common netboot, hd-media and cdrom boot files and installer checksum manifests
+can now use configured mirrors and the cache. Rules require exact filenames in
+Debian-style `images/` or `legacy-images/` installer directories, with fallback `max-age=3600`. Custom YAML
+must adopt the new rules explicitly. See [installer file coverage](docs/apt-installer-files.md)
+for the supported subset and client verification responsibilities.
+
+Common installer PXE/UEFI resources are also covered: EFI loaders, the default
+PXELINUX configuration, boot menus and GRUB modules. Paths stay confined to
+installer netboot trees; this does not add DHCP/TFTP or boot configuration rewriting.
+
+### Debian-family AppStream metadata
+
+Direct DEP-11 component indexes, content-ID indexes and known icon archives
+now use the mirror and cache, including clients that fall back from by-hash URLs.
+Rules stay confined to `dists/<suite>/<component>/dep11/`; this does not allow
+arbitrary YAML/JSON files or tarballs. See [AppStream coverage](docs/apt-appstream.md).
+
+### Temporary resources and cache integrity
+
+Repository downloads now share nonblocking temporary-storage and active-download
+admission, including declared-length responses and overlapping cache/S3 copies.
+Defaults are a 1 GiB object limit, 4 GiB temporary budget per process, 32 active
+upstream downloads and 128 MiB disk headroom. Shared-budget refusal returns
+`503` with `Retry-After: 1`; a later cache-copy refusal preserves the complete
+upstream response and skips publication.
+See [resource limits](docs/resource-limits.md) for YAML defaults and overload
+behavior. Persistent cache SHA256 verification is enabled by default; see
+[cache integrity](docs/cache-integrity.md) for legacy-cache migration, storage I/O
+cost and the explicit `cache.integrity: none` opt-out. Enabling `shared_cache`
+requires SHA256 integrity even with that opt-out.
+
+### Complete repository snapshots and offline access
+
+`apt-proxy repository` can prefetch a selected suite/component/architecture's
+Packages and optional Sources indexes and every referenced object into a verified
+snapshot. Verify, repair, export and import operate on that selected set; `serve`
+provides an offline HTTP endpoint with no network fallback. APT verifies the
+preserved signatures. Selected xz indexes require the system `xz` executable.
+See [repository snapshots](docs/repository-offline.md) for commands, scope and limits.
+
+Explicit public repository identities and Unix shared disk coordination: [configuration and operational limits](docs/shared-repository-cache.md).
+
+### Runtime mirror health and client validation
+
+Enable `mirror_health.enabled: true` in YAML for bounded failover between
+explicitly equivalent public Debian-family archives. Every fully observed
+Release/InRelease fingerprint must match on the replacement; unknown, expired
+or divergent snapshots and private requests cannot switch. There is no automatic
+failback or background polling. `GET /api/mirrors/status` uses the existing
+management API policy. See [runtime mirror health](docs/runtime-mirror-health.md).
+
+Run `bash tests/apt-client/matrix.sh` for signed local repository tests with four
+actual APT clients, including installation, sources, SHA256 by-hash, gzip fallback,
+ranges, failure recovery and imported offline snapshots. This does not establish
+compatibility with every public mirror. See [client tests](docs/apt-client-tests.md).
+
 ## Docker Integration
 
 ### Running APT Proxy in Docker
@@ -590,7 +699,7 @@ View all available options:
 | `-passthrough` | Comma-separated third-party origins to fetch and cache unrewritten | (empty) |
 | `-cache-max-size` | Maximum cache size in GB (0 to disable) | `10` |
 | `-cache-ttl` | Cache TTL in hours (0 to disable) | `168` (7 days) |
-| `-cache-cleanup-interval` | Cache cleanup interval in minutes | `60` |
+| `-cache-cleanup-interval` | Cache cleanup interval in minutes (0 to disable) | `60` |
 | `-tls` | Enable TLS/HTTPS (requires `-tls-cert` and `-tls-key`) | `false` |
 | `-tls-cert` | Path to TLS certificate file | |
 | `-tls-key` | Path to TLS private key file | |
@@ -732,6 +841,14 @@ cache:
   max_size_gb: 20
   ttl_hours: 168
   cleanup_interval_min: 60
+  integrity: sha256          # default; optional none, see cache integrity
+
+# YAML-only shared download/copy budget; zero selects the defaults.
+resources:
+  max_object_mb: 1024
+  total_temp_mb: 4096
+  max_active_downloads: 32
+  min_free_mb: 128
 
 # YAML-only download bounds; zero selects these defaults, not unlimited values.
 download:
@@ -797,7 +914,13 @@ distributions_config: ./config/distributions.yaml
 
 **Environment variable expansion in YAML:** values support `${VAR}` and `${VAR:-default}` forms. Bare `$VAR` is **not** expanded. An undefined `${VAR}` is left as-is (instead of becoming empty) so that typos surface loudly.
 
-**Note:** the cache section uses the human-friendly fields shown above (`dir`, `max_size_gb`, `ttl_hours`, `cleanup_interval_min`); the raw byte/duration fields (`max_size`, `ttl`, `cleanup_interval`) are internal representations and are **not** read from YAML.
+**Note:** the cache section uses the human-friendly fields shown above (`dir`, `max_size_gb`, `ttl_hours`, `cleanup_interval_min`, `integrity`); the raw byte/duration fields (`max_size`, `ttl`, `cleanup_interval`) are internal representations and are **not** read from YAML.
+
+For the three cache size/TTL/cleanup fields, omitted or nonpositive YAML values
+retain the normal defaults (10 GiB, 168 hours and 60 minutes). Explicit CLI or
+environment values of `0` disable the corresponding backend control. This
+differs from the YAML-only `download`/`resources` limits, where `0` always selects
+a bounded default.
 
 **Config file search paths (in order):**
 1. Path specified via `-config` flag or `APT_PROXY_CONFIG_FILE` environment variable
@@ -811,9 +934,16 @@ distributions_config: ./config/distributions.yaml
 The cache supports a size limit configured via `max_size_gb` (YAML), `--cache-max-size` (CLI), or `APT_PROXY_CACHE_MAX_SIZE` (environment variable). When the total cache size exceeds this limit, the proxy automatically evicts the **least recently used** (LRU) files until the total size is within the limit. Eviction runs both when storing new items and during periodic cleanup.
 
 - Set a positive value (e.g. `20` for 20 GB) to enable the capacity limit and LRU eviction.
-- Set to `0` to disable the size limit; no size-based eviction is performed.
+- Set `--cache-max-size=0` or `APT_PROXY_CACHE_MAX_SIZE=0` to disable the size limit; no size-based eviction is performed. YAML `max_size_gb: 0` retains the default.
+
+Similarly, `--cache-ttl=0` / `APT_PROXY_CACHE_TTL=0` disables backend expiry,
+and `--cache-cleanup-interval=0` / `APT_PROXY_CACHE_CLEANUP_INTERVAL=0` disables
+periodic cleanup. Disabling backend TTL does not override HTTP freshness or
+upstream cache directives; a positive size limit can still evict during stores.
 
 After a process restart, the LRU order is approximated using file modification time until new accesses update it.
+
+With `shared_cache.coordination_dir`, shared disk mode disables capacity/TTL eviction, background cleanup and startup staging sweeps; online global purge is rejected. Stop every sharing instance before maintenance. See [shared repository cache](docs/shared-repository-cache.md).
 
 ### Cache Directory Layout
 
@@ -832,20 +962,21 @@ bytes are written under `staging/v1` and renamed into place, so re-storing a fil
 that is already cached never exposes a truncated or empty entry to a concurrent
 reader. Nothing under `staging/v1` is a cache entry — **exclude it when you size
 the cache directory, back it up, or rsync it.** Files a killed process left there
-are swept on the next start.
+are swept on the next start in ordinary single-instance mode. Shared disk mode
+requires offline cleanup after all instances have stopped.
 
-Only `body/v1` and `header/v1` count toward `max_size_gb`; that is the same total
-the LRU eviction above compares against the limit. Measured on a single
-1000-byte entry: body 1000 + header 103 = 1103 bytes accounted, with the 95-byte
-`stale-markers.json` excluded.
+In ordinary mode, `body/v1` and `header/v1` count toward `max_size_gb`; staging
+and invalidation markers do not. Header files include private integrity and
+generation metadata, and their size varies with the response. Staging payloads
+are bounded separately by `resources.total_temp_mb`.
 
 The S3 backend has no `staging/` prefix. Object writes go straight to the final
 key, because staging needs a rename and the VFS interface has none.
 
 ### Cache Keys and Mirror Selection
 
-A cache entry is keyed by the **rewritten** upstream URL, not by what the client
-asked for. Rewriting happens before the cache layer, so a request for
+By default, a cache key includes the **rewritten** upstream URL, HTTP method
+and Vary selection fields, rather than only the URL the client asked for. Rewriting happens before the cache layer, so a request for
 `/ubuntu/dists/noble/InRelease` is stored under the elected mirror's URL —
 `http://mirrors.example.com/ubuntu/dists/noble/InRelease`.
 
@@ -871,10 +1002,13 @@ that run's candidates. If an election fails during refresh, the complete previou
 routing remains active and the refresh reports an error; new match patterns and
 cache rules take effect only after a successful retry.
 
-This is the conservative behaviour — two mirrors are not guaranteed to serve
-byte-identical content, so entries are not shared between them. If you want a
-cache that stays warm across restarts, **pin the mirror** instead of letting it
-be elected:
+By default, entries are not shared between mirrors because their contents may
+differ. An explicit [shared_cache mapping](docs/shared-repository-cache.md) can
+reuse content-verified SHA256 by-hash indexes across equivalent roots; ordinary
+packages and mutable metadata do not receive that shared identity. With
+cross-process coordination, other requests use per-process identities and
+rewarm after restart. To keep the default cache warm across restarts,
+**pin the mirror**:
 
 ```bash
 ./apt-proxy --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ \
@@ -887,9 +1021,11 @@ the life of the deployment.
 ### S3 Storage Backend
 
 Instead of writing the cache to a local directory, `apt-proxy` can keep every cached
-body/header inside any **S3-compatible** object store. This is useful when several
-`apt-proxy` instances need to share a cache pool, when the cache must outlive
-ephemeral compute (e.g. Kubernetes nodes), or when local disk is simply too small.
+body/header inside an **S3-compatible** object store. This lets the cache outlive
+ephemeral compute (e.g. Kubernetes nodes) or move persistent objects off local
+disk. Concurrent instances writing the same bucket/prefix have no distributed
+generation-publication or miss-coordination guarantee; give instances separate
+prefixes. `shared_cache.coordination_dir` is supported only on Unix disk storage.
 
 Switch the backend with `--storage-backend=s3` (or `APT_PROXY_STORAGE_BACKEND=s3`,
 or `storage.backend: s3` in YAML). The minimum config is `endpoint`, `bucket`,
@@ -960,99 +1096,58 @@ APT_PROXY_S3_USE_PATH_STYLE=true
 - Health check (`/healthz`) reports the storage backend status: a HeadBucket
   round-trip for `s3`, `os.Stat` for `disk`.
 - In-memory metadata LRU (8192 entries by default) absorbs the chatty
-  `Header()` access pattern of `httpcache-kit` so most requests cost a single
-  S3 GET, not two.
+  `Header()` access pattern of `httpcache-kit`. Default integrity checks still
+  read the complete body before a hit; the metadata LRU cannot skip verification.
 - Writes use a "smart" upload strategy: bodies up to `inline_max_mb` stay in
   RAM and PUT in one shot; anything bigger spills to a temp file before
   `PutObject`. Tune `inline_max_mb` based on your typical package size.
 - `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` are **ignored** when the
-  S3 backend is active. Only TLS cert/key files still need a local path.
+  S3 backend is active. Large uploads and unknown-length downloads still need
+  writable local temporary space, and TLS cert/key files need local paths.
   Setting a non-default cache.dir while `storage.backend=s3` triggers a
   startup warning so the override is observable rather than silently dropped.
 
 **Resource sizing & capacity planning (S3 backend):**
 
-The defaults are tuned for low-to-medium concurrency; under heavy concurrent
-ingest you must size memory and disk accordingly, otherwise you risk OOM kills
-or `temp_dir` exhaustion.
+S3 inline payloads and spilled copies both count against
+`resources.total_temp_mb` (4096 MiB by default). During a switch from memory to
+disk, both overlapping copies are charged. `inline_max_mb` (32 MiB by default)
+is a per-write threshold; `concurrent_writes × inline_max_mb` is not a process
+RSS limit. Background publication can retain its charge after an upstream slot
+is released. HTTP buffers, metadata and the Go runtime need additional memory
+headroom. For predominantly small packages, a 4–8 MiB inline threshold may be
+appropriate; measure with your workload.
 
-- **Memory peak ≈ `concurrent_uploads × inline_max_mb`.** The `inline_max_mb`
-  threshold (default `32`) is a *per-write* cap, not a global one. Every
-  in-flight write that has not yet crossed the threshold holds its own buffer
-  in RAM. Worst-case examples:
+Spills use anonymous files: the pathname is unlinked immediately, while closing
+the descriptor or exiting the process reclaims the space.
+`storage.s3.temp_dir` defaults to the system temporary directory and must be
+writable. A read-only root filesystem requires a separate writable volume.
+Disk admission includes held temporary reservations and `resources.min_free_mb`
+(128 MiB by default); failed inspection refuses admission. Budgets are per
+instance, so allocate limits for each process when sharing a volume.
 
-  | Concurrent uploads | `inline_max_mb` | Approx. RSS headroom needed |
-  | ------------------ | --------------- | --------------------------- |
-  | 50                 | `32`            | ~1.6 GiB                    |
-  | 200                | `32`            | ~6.4 GiB                    |
-  | 1000               | `32`            | ~32 GiB                     |
-  | 1000               | `4`             | ~4 GiB                      |
+On Kubernetes, mount temporary storage on an `emptyDir` and set explicit memory
+and `ephemeral-storage` requests/limits. The volume must accommodate the chosen
+budget, reserved disk headroom and other writes. This application configuration
+is an example; validate Pod limits against measured workload:
 
-  If your typical APT objects are small (`Packages.gz`, `.deb` < 4 MiB), drop
-  `inline_max_mb` to `4`–`8` to keep the inline path while shrinking the worst
-  case. If you regularly serve large packages (kernels, CUDA, LLVM toolchains
-  > 100 MiB), keep `inline_max_mb` modest and accept the spill — disk is
-  cheaper than RAM at the p99.
+```yaml
+resources:
+  max_object_mb: 1024
+  total_temp_mb: 4096
+  max_active_downloads: 32
+  min_free_mb: 128
+storage:
+  backend: s3
+  s3:
+    inline_max_mb: 8
+    temp_dir: /var/cache/apt-proxy/tmp
+    # endpoint, bucket and credentials as in the complete example above
+```
 
-- **Disk water-mark on `temp_dir`.** Anything larger than `inline_max_mb`
-  spills exactly once to `temp_dir` (default `os.TempDir()`, i.e. `/tmp`).
-  Its pathname is unlinked immediately while an anonymous file descriptor keeps
-  the data available for upload; closing it or exiting the process reclaims the
-  spill, including after a crash. The transient peak is roughly
-  `concurrent_large_uploads × max_object_size`. On Kubernetes this matters in
-  three places:
-
-  1. `/tmp` typically lives on the container's writable layer or an
-     `emptyDir` volume — both count against `ephemeral-storage` limits. Set
-     `resources.requests.ephemeral-storage` and `resources.limits.ephemeral-storage`
-     explicitly, or the kubelet may evict the pod under disk pressure with no
-     warning.
-  2. Prefer mounting an `emptyDir` (optionally `medium: Memory` only if you
-     have RAM to spare) at the path you point `temp_dir` to. This decouples
-     the spill water-mark from the image layer and gives you a predictable
-     ceiling.
-  3. Read-only root filesystems must still grant write access to `temp_dir`
-     (typical pattern: `readOnlyRootFilesystem: true` + a dedicated
-     `emptyDir` mount).
-
-- **Sample Pod sizing** (200 concurrent connections, mixed APT traffic with
-  occasional > 32 MiB packages):
-
-  ```yaml
-  resources:
-    requests:
-      memory: "1Gi"           # baseline + LRU + small-object inline path
-      cpu: "500m"
-      ephemeral-storage: "2Gi"
-    limits:
-      memory: "8Gi"           # 200 × 32 MiB inline worst case + headroom
-      cpu: "2"
-      ephemeral-storage: "8Gi"
-  volumeMounts:
-    - name: spill
-      mountPath: /var/cache/apt-proxy/tmp
-  volumes:
-    - name: spill
-      emptyDir:
-        sizeLimit: 8Gi
-  ```
-
-  And in `apt-proxy.yaml`:
-
-  ```yaml
-  storage:
-    backend: s3
-    s3:
-      inline_max_mb: 8         # smaller cap → lower memory peak
-      temp_dir: /var/cache/apt-proxy/tmp
-  ```
-
-- **Rule of thumb.** Pick `inline_max_mb` so that
-  `expected_concurrency × inline_max_mb` fits comfortably inside your memory
-  *limit* (not request), and size `temp_dir` to at least
-  `expected_concurrency × p99_package_size`. When in doubt, lower
-  `inline_max_mb` first: the disk path is well-tested and the only cost is one
-  extra `write→read` round-trip per large object.
+Uploads use streaming single PUT; `resources.max_object_mb` cannot exceed
+5120 MiB on S3. See [resource limits](docs/resource-limits.md) for admission
+refusals, deadlines and budget boundaries.
 
 A complete working example (compose stack with OtterIO + auto-provisioned bucket
 + pre-wired apt-proxy) lives in [`examples/s3-otterio/`](examples/s3-otterio/).
@@ -1117,6 +1212,7 @@ The server attaches the following headers to every response:
 - `X-Version`, `X-Build-*` — version and build metadata (also available at `GET /version`).
 - Standard security headers (e.g. `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security` when TLS is on).
 - `X-Cache: HIT` / `MISS` / `SKIP` on proxy responses (used by the request logger to classify traffic).
+- Budget-controlled cacheable GET responses can carry the `X-Cache-Staging` HTTP trailer: `ADMITTED` means response staging was admitted; `SKIP` means it was skipped. Read the entire body to observe the trailer. `ADMITTED` does not promise background publication has committed. HEAD, HTTP/1.0 and other responses without trailer support skip budget-controlled publication.
 
 **Example: Get Cache Statistics (with authentication)**
 
@@ -1218,7 +1314,7 @@ flowchart LR
 
 1. **Client Request**: APT client sends package request to apt-proxy
 2. **Cache Check**: Handler checks if package exists in local cache
-3. **Cache Hit**: If cached and fresh, return immediately from cache
+3. **Cache Hit**: Verify the persistent record and complete body by default, then serve the matching fresh representation
 4. **Cache Miss**: Rewrite URL to fastest mirror, fetch from upstream
 5. **Store & Respond**: Cache response and return to client
 
@@ -1466,6 +1562,12 @@ the keys stable. See *Cache Keys and Mirror Selection*.
 **Issue**: Cache directory growing too large
 **Solution**: Configure cache limits with `--cache-max-size` or use the cleanup API endpoint.
 
+### Upgrading to the planned v0.18.0
+
+Review integrity verification, Vary migration, download bounds, S3 temporary
+space and shared-disk maintenance before upgrading. See the
+[upgrade and release candidate notes](docs/releases/v0.18.0.md).
+
 ## License
 
 This project is licensed under the [Apache License 2.0](https://github.com/soulteary/apt-proxy/blob/master/LICENSE).
@@ -1487,82 +1589,3 @@ This project builds upon the excellent work of:
 ---
 
 Made with ❤️ by the APT Proxy community
-
-### Download resource limits
-
-Unknown-length downloads default to a 1 GiB per-response spool limit and a 4 GiB shared spool budget per instance. Upstream fetches default to a 20-minute total timeout. Configure `download.max_spool_mb`, `download.total_spool_mb`, and `download.timeout_seconds` in YAML; zero selects the defaults. See [download limits](docs/download-limits.md) for scope and failure behavior.
-
-### Private repository requests
-
-Requests with `Authorization` or `Cookie` bypass shared caching; `Set-Cookie` responses are not stored. Authenticated cache-only requests return 504 without upstream access. This version uses a new cache-key namespace to exclude pre-upgrade private responses, causing a one-time cold cache without deleting legacy files. See [private repository isolation](docs/private-repositories.md) for migration and scope.
-
-### Package download client access
-
-Use `security.download_allow_cidrs` and `security.download_deny_cidrs` in YAML
-to restrict package downloads by connection-peer IPv4/IPv6 networks. Deny
-rules take precedence and checks run before cache lookup and upstream fetching.
-Both lists are empty by default. Forwarded headers do not grant access;
-behind a reverse proxy, restrict end clients at the proxy. Operational/API
-routes retain their existing controls. Restart to apply policy changes.
-See [download access control](docs/download-access.md) for configuration and scope.
-
-### Guarded download upstreams
-
-Optional YAML `upstream_access.enabled: true` restricts package downloads, mirror
-probes and Ubuntu geo discovery by target hosts, ports and resolved IPs. New connections validate all DNS answers and
-connect directly to approved IPs, preserving TLS hostname verification.
-Private repositories require explicit CIDR exceptions. Enabled repository
-transports ignore environment forward proxies; probe/discovery redirects and
-HEAD-to-GET fallback remain guarded. Startup and mirror refresh use the same
-per-instance policy. Restart to change policy.
-See [upstream access](docs/upstream-access.md) for examples and the separate
-background-client boundary.
-
-### Debian-family source packages
-
-Ubuntu, Ubuntu Ports and Debian source pool files now use the configured
-mirror and shared cache: `.dsc`, upstream/component/native archives, Debian
-packaging archives, legacy `.diff.gz` and original-archive `.asc` signatures.
-Rules are limited to versioned source filenames in Debian-style pools and
-preserve upstream cache directives. Existing custom distribution YAML must
-adopt the new rule explicitly. See [source package coverage](docs/apt-source-packages.md)
-for supported formats and client-side verification responsibilities.
-
-### Debian-family installer files
-
-Common netboot, hd-media and cdrom boot files and installer checksum manifests
-can now use configured mirrors and the cache. Rules require exact filenames in
-Debian-style `images/` or `legacy-images/` installer directories, with fallback `max-age=3600`. Custom YAML
-must adopt the new rules explicitly. See [installer file coverage](docs/apt-installer-files.md)
-for the supported subset and client verification responsibilities.
-
-Common installer PXE/UEFI resources are also covered: EFI loaders, the default
-PXELINUX configuration, boot menus and GRUB modules. Paths stay confined to
-installer netboot trees; this does not add DHCP/TFTP or boot configuration rewriting.
-
-### Debian-family AppStream metadata
-
-Direct DEP-11 component indexes, content-ID indexes and known icon archives
-now use the mirror and cache, including clients that fall back from by-hash URLs.
-Rules stay confined to `dists/<suite>/<component>/dep11/`; this does not allow
-arbitrary YAML/JSON files or tarballs. See [AppStream coverage](docs/apt-appstream.md).
-
-## Temporary resources and cache integrity
-
-Repository downloads now share nonblocking temporary-storage and active-download
-admission, including declared-length responses and overlapping cache/S3 copies.
-See [resource limits](docs/resource-limits.md) for YAML defaults and overload
-behavior. Persistent cache SHA256 verification is enabled by default; see
-[cache integrity](docs/cache-integrity.md) for legacy-cache migration, storage I/O
-cost and the explicit `cache.integrity: none` opt-out.
-
-### Complete repository snapshots and offline access
-
-`apt-proxy repository` can prefetch a selected suite/component/architecture's
-Packages and optional Sources indexes and every referenced object into a verified
-snapshot. Verify, repair, export and import operate on that selected set; `serve`
-provides an offline HTTP endpoint with no network fallback. APT verifies the
-preserved signatures. Selected xz indexes require the system `xz` executable.
-See [repository snapshots](docs/repository-offline.md) for commands, scope and limits.
-
-Explicit public repository identities and Unix shared disk coordination: [configuration and operational limits](docs/shared-repository-cache.md).

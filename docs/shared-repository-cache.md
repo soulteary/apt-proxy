@@ -28,6 +28,10 @@ transfer encodings and trailers bypass cache reads and writes and receive no-sto
 Local request IDs and adapter framing are removed before shared upstream delivery.
 Bases cannot contain credentials, query parameters or fragments. Configuration
 changes require restarting every sharing instance with the same policy.
+Enabling this policy forces SHA256 cache integrity, even when
+`cache.integrity: none` is selected for ordinary mode. Omitting `shared_cache`
+leaves this identity policy disabled; a configured policy without
+`coordination_dir` supplies the explicit identities without cross-process locks.
 
 Coordination uses kernel file locks on Unix, held through the asynchronous cache
 commit. Followers recheck cache after acquiring the miss lock. Header/body operations
@@ -44,6 +48,9 @@ are required; statistics are per-instance estimates. Online global purge is reje
 Stop every instance before removing old cache entries or orphan native staging files.
 S3 coordination is rejected: this implementation does not supply the conditional
 immutable-generation publication needed for safe shared object-storage writes.
+Windows coordination is unsupported. For ordinary S3 deployments, use a separate
+bucket prefix per independently running instance rather than relying on shared
+publication guarantees.
 
 Use the global resource budget to bound temporary copies and preserve disk headroom.
 The by-hash verification spool supports the same staging budget and retains its
