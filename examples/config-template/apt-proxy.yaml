@@ -209,5 +209,15 @@ mirror_health:
 upstream_keep_alive: true
 
 # Distribution mode
+# Optional CentOS Metalink discovery. Client repository definitions must point
+# their metalink URL at public_url/metalink while preserving repo/arch/protocol.
+# See docs/centos-metalink.md. Only explicitly named returned mirror hosts are used.
+# metalink:
+#   public_url: http://apt-cache.example:3142
+#   source_url: https://mirrors.centos.org/metalink
+#   allowed_mirror_hosts: [mirrors.tuna.tsinghua.edu.cn, mirrors.ustc.edu.cn]
+#   refresh_seconds: 600
+#   timeout_seconds: 15
+
 # Options: all, ubuntu, ubuntu-ports, debian, centos, alpine
 mode: all

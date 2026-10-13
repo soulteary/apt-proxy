@@ -37,6 +37,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/benchmarks"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/logsafe"
+	"github.com/soulteary/apt-proxy/internal/metalink"
 	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/resource"
@@ -207,6 +208,7 @@ type routing struct {
 // the per-Server state previously held in package-level globals: the
 // AppState, distro Registry, URL rewriters, and the host-pattern cache.
 type PackageStruct struct {
+	metalink     *metalink.Controller
 	mirrorHealth *mirrorhealth.Controller
 	Handler      http.Handler   // The underlying HTTP handler (typically a reverse proxy)
 	Rules        []distro.Rule  // Caching rules for different package types
@@ -247,6 +249,7 @@ type PackageStruct struct {
 
 // Options configures NewPackageStruct.
 type Options struct {
+	Metalink           *metalink.Config
 	Resources          *resource.Manager
 	MirrorHealth       *mirrorhealth.Config
 	UpstreamAccess     *access.UpstreamConfig
@@ -283,6 +286,10 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 	}
 
 	policy, err := access.NewUpstream(opts.UpstreamAccess)
+	if err != nil {
+		return nil, err
+	}
+	metalinks, err := metalink.New(opts.Metalink, opts.UpstreamAccess, opts.Resources)
 	if err != nil {
 		return nil, err
 	}
@@ -326,10 +333,14 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 	if opts.TransportWrapper != nil {
 		transport = opts.TransportWrapper(transport)
 	}
+	if metalinks != nil {
+		transport = metalinks.WrapTransport(transport)
+	}
 	bench := benchmarks.NewEngineWithPolicy(policy)
 	rewriters := newRewriters(mode, opts.State, opts.Registry, opts.Async, bench)
 
 	ps := &PackageStruct{
+		metalink:     metalinks,
 		mirrorHealth: health,
 		Rules:        GetRewriteRulesByMode(opts.Registry, mode),
 		CacheDir:     opts.CacheDir,
@@ -513,6 +524,9 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	// memory that the adapter can reuse for the next request.
 	r = detachRequest(spanCtx, r)
 	normalizeRepositoryCredentials(r)
+	if ap.metalink != nil && ap.metalink.Handle(rw, r, ap.Handler) {
+		return
+	}
 
 	// apt-cacher-ng's HTTPS/// marker names a third-party origin inside the
 	// path. Handle it here rather than letting it reach pattern matching,
@@ -710,6 +724,9 @@ func (ap *PackageStruct) RefreshMirrors() error {
 	rewriters, err := buildRewriters(ap.mode, ap.state, ap.registry, ap.bench)
 	if err != nil {
 		return err // Keep the complete old routing, including its match patterns.
+	}
+	if ap.metalink != nil {
+		ap.metalink.Refresh()
 	}
 	next := &routing{
 		healthEpoch: ap.mirrorHealth.Reset(),

@@ -125,7 +125,13 @@ apt-get install vim -y
 
 APT Proxy 支持 DNF/YUM 仓库。CentOS Stream 9 和 10 使用
 [CentOS Stream 镜像](https://mirror.stream.centos.org/)和基于 metalink 的仓库定义。
-首先为 apt-proxy 指定 Stream 镜像：
+要保留 metalink 发现与 DNF 的元数据摘要校验，可启用可选的 `metalink`
+配置，将仓库文件中的 metalink 服务地址改为 apt-proxy。返回 XML 中的下载链接
+会指向代理，并按仓库快照共享缓存。详见
+[CentOS Metalink 配置](docs/centos-metalink.md)和
+[真实 DNF 客户端测试](docs/dnf-client-tests.md)。
+
+如果使用固定 base URL，先为 apt-proxy 指定 Stream 镜像：
 
 ```bash
 ./apt-proxy \
@@ -148,9 +154,9 @@ sudo dnf clean all
 sudo dnf makecache
 ```
 
-如果镜像提供方已经修改过仓库文件，请在执行命令前先检查文件内容。apt-proxy
-当前尚不处理 CentOS metalink 响应，相关工作由
-[Issue #70](https://github.com/soulteary/apt-proxy/issues/70)跟踪。客户端使用 HTTP
+如果镜像提供方已经修改过仓库文件，请在执行命令前先检查文件内容。
+这套固定 base URL 配置不使用 metalink；可选的 metalink 入口需要明确配置允许的镜像主机。
+客户端使用 HTTP
 访问 apt-proxy，apt-proxy 再从配置好的 HTTPS 上游获取内容。
 
 ### Alpine Linux
