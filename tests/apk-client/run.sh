@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-mkdir -p /fixture/build/apt-proxy-fixture /fixture/keys /fixture/valid /fixture/traces /evidence /root/.abuild
+mkdir -p /fixture/build/apt-proxy-fixture /fixture/keys /fixture/valid /fixture/traces /fixture/client-cache /evidence /root/.abuild
 proxy_pid= origin_pid=
 cleanup() {
   if [ -n "$origin_pid" ]; then curl -fsS http://127.0.0.1:8080/__control/status > /evidence/final-status.json 2>/dev/null || true; fi
@@ -38,13 +38,16 @@ package() {
   install -D -m644 "$srcdir/payload" "$pkgdir/usr/share/apt-proxy-fixture/payload"
 }
 EOF
-# Only this trusted local data recipe is built as root in the disposable image.
-(cd /fixture/build/apt-proxy-fixture && abuild -F checksum && abuild -F -r)
+# The image already contains the build tools for this local data recipe. -d
+# skips dependency installation, while source verification and signing remain.
+(cd /fixture/build/apt-proxy-fixture && abuild -F checksum && abuild -F -d)
 find /fixture/packages -name 'apt-proxy-fixture-*.apk' -exec cp '{}' "$repo/" ';'
 package=$(find "$repo" -name '*.apk' | head -1)
 test -n "$package"
 make_index() {
-  (cd "$repo" && apk index -o APKINDEX.tar.gz ./*.apk && abuild-sign -k /fixture/keys/fixture.rsa -p /fixture/keys/fixture.rsa.pub APKINDEX.tar.gz)
+  # APK chooses the package subdirectory from the index architecture. Match
+  # abuild's repository layout by indexing this noarch package for the client.
+  (cd "$repo" && apk index --rewrite-arch "$arch" -o APKINDEX.tar.gz ./*.apk && abuild-sign -k /fixture/keys/fixture.rsa -p /fixture/keys/fixture.rsa.pub APKINDEX.tar.gz)
 }
 make_index
 cp "$repo/APKINDEX.tar.gz" /fixture/valid/APKINDEX.tar.gz

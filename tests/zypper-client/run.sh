@@ -8,7 +8,10 @@ export LC_ALL=C
 proxy_pid= origin_pid=
 cleanup() {
   if [ -n "$origin_pid" ]; then curl -fsS http://127.0.0.1:8080/__control/status > /evidence/final-status.json 2>/dev/null || true; fi
-  if [ -f /var/log/zypper.log ]; then cp /var/log/zypper.log /evidence/zypper.log; fi
+  if [ -f /var/log/zypper.log ]; then
+    cp /var/log/zypper.log /evidence/zypper.log
+    chmod 0644 /evidence/zypper.log
+  fi
   if [ -n "$proxy_pid" ]; then kill "$proxy_pid" 2>/dev/null || true; wait "$proxy_pid" 2>/dev/null || true; fi
   if [ -n "$origin_pid" ]; then kill "$origin_pid" 2>/dev/null || true; wait "$origin_pid" 2>/dev/null || true; fi
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-mkdir -p /fixture/build /fixture/repo/pacman/x86_64 /fixture/valid /fixture/gnupg /evidence
+mkdir -p /fixture/build /fixture/repo/pacman/x86_64 /fixture/valid /fixture/gnupg /fixture/client-cache /evidence
 proxy_pid= origin_pid=
 cleanup() {
   if [ -n "$origin_pid" ]; then curl -fsS http://127.0.0.1:8080/__control/status > /evidence/final-status.json 2>/dev/null || true; fi
