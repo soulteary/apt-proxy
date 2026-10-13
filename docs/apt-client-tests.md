@@ -1,7 +1,7 @@
 # Real APT client compatibility
 
 Run `bash tests/apt-client/matrix.sh` with Docker and Go installed. The default
-matrix uses Debian Bookworm/Trixie and Ubuntu 22.04/24.04. Pass image names to
+matrix uses Debian Bookworm/Trixie and Ubuntu 22.04/24.04/26.04. Pass image names to
 select clients. Each container builds an isolated binary/source repository,
 generates an ephemeral signing key and TLS certificate, and starts the actual
 apt-proxy binary. Bootstrap tools are installed while building the image;
@@ -13,7 +13,10 @@ fallback, `apt-get install`, source dependency downloads, byte-checked ranges,
 the client and upstream connections. An unauthenticated private update must
 fail, as must a tampered InRelease signature. The fixture also prefetches a complete
 binary/source snapshot, verifies it, exports/imports it, stops the origin, and
-performs signed offline update, installation and source downloads. No signature or TLS verification is disabled.
+performs signed offline update, installation and source downloads. A normal
+online reinstall follows `apt-get clean` and must leave the origin package GET
+count unchanged; `cache-hit.json` records that proxy-cache proof and installed
+payload verification. No signature or TLS verification is disabled.
 
 Logs and assertion evidence are written to `apt-client-evidence/` (override
 with `APT_CLIENT_EVIDENCE_DIR`). Private signing keys and TLS private keys stay
@@ -28,11 +31,13 @@ normalized to Docker-safe identifiers. Long identifiers receive a bounded
 passed unchanged to Docker's base-image argument. Duplicate references or
 references whose normalized identifiers collide fail before Docker or cleanup.
 The entrypoint regression checks run with `python3 tests/apt-client/matrix_test.py`
-and are also executed in each matrix CI job.
+and run in ordinary CI without Docker.
 The gzip phase records origin requests and requires both binary and source
 indexes to use `.gz`, so an xz/plain fallback cannot pass as gzip coverage.
-CI runs all four clients independently and
-uploads evidence even on failure. These are local archive compatibility tests;
+The [client compatibility workflow](client-compatibility.md) runs the selected
+clients on manual requests, and all clients before a version release. It
+uploads evidence even on failure. Ordinary PRs and main pushes run only the
+fast harness regressions. These are local archive compatibility tests;
 they do not assert every public mirror or installer is compatible.
 
 This committed suite checks the normal daemon and explicit offline commands.

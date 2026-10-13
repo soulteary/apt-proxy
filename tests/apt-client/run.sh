@@ -155,6 +155,26 @@ mkdir -p /fixture/source-download
 cmp /fixture/source-download/apt-proxy-fixture_1.0.dsc "$pool/apt-proxy-fixture_1.0.dsc"
 cmp /fixture/source-download/apt-proxy-fixture_1.0.tar.xz "$pool/apt-proxy-fixture_1.0.tar.xz"
 object=ubuntu/pool/main/a/apt-proxy-fixture/apt-proxy-fixture_1.0_all.deb
+curl -fsS http://127.0.0.1:8080/__control/status > /evidence/cache-before.json
+apt-get clean
+test ! -f /var/cache/apt/archives/apt-proxy-fixture_1.0_all.deb
+apt-get install -y --reinstall --no-install-recommends apt-proxy-fixture
+cmp /usr/share/apt-proxy-fixture/payload /fixture/binary/usr/share/apt-proxy-fixture/payload
+curl -fsS http://127.0.0.1:8080/__control/status > /evidence/cache-after.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+package = '/ubuntu/pool/main/a/apt-proxy-fixture/apt-proxy-fixture_1.0_all.deb'
+def count(name):
+    return sum(r['method'] == 'GET' and r['path'] == package
+               for r in json.loads(Path('/evidence/' + name).read_text())['requests'])
+first, second = count('cache-before.json'), count('cache-after.json')
+assert first >= 1 and second == first, (first, second)
+Path('/evidence/cache-hit.json').write_text(json.dumps({
+    'first_origin_package_gets': first, 'second_origin_package_gets': second,
+    'client_cache_cleared': True, 'payload_matches': True,
+}, indent=2) + '\n')
+PY
 curl -fsS -H 'Range: bytes=100-299' -D /evidence/range.headers "http://127.0.0.1:3142/$object" -o /fixture/range.bin
 grep -q '206' /evidence/range.headers
 python3 - <<'PY'
@@ -212,4 +232,4 @@ mkdir -p /fixture/offline-source
 (cd /fixture/offline-source && apt-get source --download-only apt-proxy-fixture)
 cmp /fixture/offline-source/apt-proxy-fixture_1.0.dsc "$pool/apt-proxy-fixture_1.0.dsc"
 cmp /fixture/offline-source/apt-proxy-fixture_1.0.tar.xz "$pool/apt-proxy-fixture_1.0.tar.xz"
-printf 'PASS: signature rejection, offline installation and source, signed update, by-hash and gzip indexes, install, source, range, retry/interruption, authenticated HTTPS\n' | tee /evidence/result.txt
+printf 'PASS: proxy cache hit after client cache cleanup, signature rejection, offline installation and source, signed update, by-hash and gzip indexes, install, source, range, retry/interruption, authenticated HTTPS\n' | tee /evidence/result.txt

@@ -99,9 +99,13 @@ class MatrixTest(unittest.TestCase):
         return ids
 
     def test_default_image_ids_stay_stable(self):
-        images = ("quay.io/centos/centos:stream9", "quay.io/centos/centos:stream10")
+        images = ("quay.io/centos/centos:stream9", "quay.io/centos/centos:stream10",
+                  "quay.io/fedora/fedora:44", "rockylinux/rockylinux:9",
+                  "rockylinux/rockylinux:10", "almalinux:9", "almalinux:10")
         ids = self.assert_successful_images(self.run_matrix(), images)
-        self.assertEqual(ids, ["quay.io-centos-centos-stream9", "quay.io-centos-centos-stream10"])
+        self.assertEqual(ids, ["quay.io-centos-centos-stream9", "quay.io-centos-centos-stream10",
+                               "quay.io-fedora-fedora-44", "rockylinux-rockylinux-9",
+                               "rockylinux-rockylinux-10", "almalinux-9", "almalinux-10"])
 
     def test_digest_and_registry_port_references(self):
         digest = "a" * 64

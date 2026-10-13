@@ -5,4 +5,10 @@ apt-proxy
 # Disposable real APT client evidence
 apt-client-evidence/
 dnf-client-evidence/
+apk-client-evidence/
+pacman-client-evidence/
+zypper-client-evidence/
+client-compatibility-evidence/
+client-compatibility-summary/
+downloaded-client-evidence/
 __pycache__/

@@ -1,0 +1,20 @@
+[
+  {"id":"debian-bookworm","family":"apt","image":"debian:bookworm-slim"},
+  {"id":"debian-trixie","family":"apt","image":"debian:trixie-slim"},
+  {"id":"ubuntu-2204","family":"apt","image":"ubuntu:22.04"},
+  {"id":"ubuntu-2404","family":"apt","image":"ubuntu:24.04"},
+  {"id":"ubuntu-2604","family":"apt","image":"ubuntu:26.04"},
+  {"id":"centos-stream9","family":"dnf","image":"quay.io/centos/centos:stream9"},
+  {"id":"centos-stream10","family":"dnf","image":"quay.io/centos/centos:stream10"},
+  {"id":"fedora-44","family":"dnf","image":"quay.io/fedora/fedora:44"},
+  {"id":"rocky-9","family":"dnf","image":"rockylinux/rockylinux:9"},
+  {"id":"rocky-10","family":"dnf","image":"rockylinux/rockylinux:10"},
+  {"id":"alma-9","family":"dnf","image":"almalinux:9"},
+  {"id":"alma-10","family":"dnf","image":"almalinux:10"},
+  {"id":"alpine-322","family":"apk","image":"alpine:3.22"},
+  {"id":"alpine-323","family":"apk","image":"alpine:3.23"},
+  {"id":"alpine-324","family":"apk","image":"alpine:3.24"},
+  {"id":"arch","family":"pacman","image":"archlinux:base"},
+  {"id":"opensuse-leap16","family":"zypper","image":"opensuse/leap:16.0"},
+  {"id":"opensuse-tumbleweed","family":"zypper","image":"opensuse/tumbleweed:latest"}
+]

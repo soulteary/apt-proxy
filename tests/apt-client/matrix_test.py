@@ -99,9 +99,9 @@ class MatrixTest(unittest.TestCase):
         return ids
 
     def test_default_image_ids_stay_stable(self):
-        images = ("debian:bookworm-slim", "debian:trixie-slim", "ubuntu:22.04", "ubuntu:24.04")
+        images = ("debian:bookworm-slim", "debian:trixie-slim", "ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04")
         ids = self.assert_successful_images(self.run_matrix(), images)
-        self.assertEqual(ids, ["debian-bookworm-slim", "debian-trixie-slim", "ubuntu-22.04", "ubuntu-24.04"])
+        self.assertEqual(ids, ["debian-bookworm-slim", "debian-trixie-slim", "ubuntu-22.04", "ubuntu-24.04", "ubuntu-26.04"])
 
     def test_digest_and_registry_port_references(self):
         digest = "a" * 64
