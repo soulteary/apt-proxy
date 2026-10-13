@@ -5,6 +5,11 @@ repositories**. It runs real package managers against disposable signed
 repositories through the current proxy binary. It does not test whether the
 proxy daemon runs on every client operating system.
 
+For the completed 18-client evidence snapshot, exact client versions,
+configuration prerequisites and capability boundaries, see
+[verified client support](client-support.md). This page describes how to run
+and maintain the suite.
+
 ## When to run it
 
 In GitHub Actions, select **Client repository cache compatibility → Run
@@ -20,9 +25,9 @@ version. Version publication still requires a tag.
 
 Ordinary pull requests and main-branch pushes do not run the Docker client
 matrix. CI retains fast planner/evidence and shell-entrypoint regressions,
-Go checks, and the existing integration tests. Before this new workflow is
-merged, run the existing **Release** workflow manually against the feature
-branch to exercise its reusable client workflow from the same commit.
+Go checks, and the existing integration tests. To validate an entire branch
+without publishing, manually run **Release** on that branch; its reusable client
+workflow executes from the same commit.
 
 ## Selected clients
 
@@ -37,7 +42,9 @@ branch to exercise its reusable client workflow from the same commit.
 The cloud matrix runs all 18 images on Linux AMD64 Docker hosts. Local family
 entrypoints compile the proxy for the Docker daemon's architecture; use a
 supported client image for that architecture. Arch's official image requires
-an AMD64 host. Version tags and rolling images can change upstream, so evidence
+the Linux AMD64 platform; this run used native AMD64, and ARM-host emulation
+is not part of the verified complete matrix. Version tags and rolling images
+can change upstream, so evidence
 identifies the requested image and exact tested proxy source commit. A matrix
 entry is a test target, not a compatibility claim until its run succeeds.
 
@@ -45,8 +52,10 @@ entry is a test target, not a compatibility claim until its run succeeds.
 
 Every family must complete all of these checks:
 
-1. Refresh repository metadata and install a small signed native package using
-   the real client with signature verification enabled.
+1. Refresh repository metadata and install a small native package using the
+   real client with its protocol's signature and hash trust checks enabled.
+   APT verifies signed metadata and authenticated package hashes rather than
+   independent GPG signatures on these `.deb` files.
 2. Verify the installed payload byte for byte.
 3. Clear the client's package cache and reinstall. The origin's package GET
    count must stay unchanged, and must have been nonzero for the first install.

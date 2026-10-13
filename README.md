@@ -24,7 +24,7 @@ version you deploy.
 
 APT Proxy is a lightweight, high-performance caching proxy for package managers. It accelerates package downloads by caching frequently used packages locally, dramatically reducing download times for subsequent installations. Whether you're managing multiple servers, building Docker images, or working in bandwidth-constrained environments, APT Proxy helps you save time and bandwidth.
 
-This development branch includes features planned for **v0.18.0**. The currently published v0.17.2 binaries and images do not include these additions. Read the [release candidate and upgrade notes](docs/releases/v0.18.0.md) before upgrading; the new version awaits approval for publication.
+This README describes the current main branch. [v0.18.0](https://github.com/soulteary/apt-proxy/releases/tag/v0.18.0) has been published; its [upgrade notes](docs/releases/v0.18.0.md) describe that release. The optional Metalink endpoint and expanded client test suite were added afterward. See [verified client support and version availability](docs/client-support.md) before applying those instructions to a released binary or image.
 
 <p align="center">
   <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
@@ -32,7 +32,7 @@ This development branch includes features planned for **v0.18.0**. The currently
 
 ### Key Features
 
-- **Multi-Distribution Support**: Works with APT (Ubuntu/Debian), YUM (CentOS), and APK (Alpine Linux)
+- **Client Repository Caching**: Verified with APT, DNF/DNF5, APK, pacman and zypper; repository routing and configuration requirements are described in the [support guide](docs/client-support.md)
 - **Single-Binary Deployment**: Standalone binaries and container images; size varies by platform and build
 - **Smart Mirror Selection**: Automatically benchmarks and selects the fastest mirror
 - **Upstream Proxy**: Reaches mirror sites through an existing `HTTP_PROXY` / `HTTPS_PROXY` forward proxy (SOCKS5 included) when the host has no direct route out; mirror benchmarking takes the same path, so the elected mirror is one that is actually reachable
@@ -40,18 +40,24 @@ This development branch includes features planned for **v0.18.0**. The currently
 - **apt-cacher-ng Friendly**: Compatible with most [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) usage patterns, including the `HTTPS///` rewrite marker for TLS upstreams — so existing `sources.list` entries migrate unchanged (note: advanced features such as the Import/Maint web UI, full `acng.conf` syntax, and cross-distro deb deduplication are not implemented)
 - **Third-Party Archives**: Fetches and caches origins you name in a `passthrough` allowlist (a PPA, a vendor repo, an internal archive) — off by default, because apt-proxy is not an open forward proxy
 - **Host-Root Archives**: Routes by the request `Host` when an archive lives at a domain root with no path prefix to match (`security.debian.org`, `apt.armbian.com`), configurable per distribution with `host_pattern`
-- **Zero Configuration**: Works out of the box with sensible defaults
+- **Built-in Repository Routes**: Ubuntu, Ubuntu Ports, Debian, CentOS and Alpine; configure other archives through distribution mappings or an explicit passthrough allowlist
 - **Observability**: Built-in health checks, Prometheus metrics, structured logging, and optional OpenTelemetry tracing
 - **Cache Management**: REST API for cache statistics, purging, and cleanup, with API-key authentication and per-IP rate limiting
 
-- **Complete Repository Snapshots**: Prefetch all objects referenced by selected binary/source indexes, then verify, repair, export, import or serve offline
-- **Runtime Mirror Failover**: Optional bounded switching only after observed public repository metadata matches exactly
+- **Complete APT Repository Snapshots**: Prefetch all objects referenced by selected binary/source indexes, then verify, repair, export, import or serve offline
+- **APT Runtime Mirror Failover**: Optional bounded switching only after observed public Release/InRelease metadata matches exactly
 - **Persistent Integrity Checks**: Private SHA256 records enabled by default; damaged or unverifiable legacy entries become misses
 - **Resource Admission**: Download concurrency and a common budget bound spool files, cache copies and S3 payload buffers
-- **Explicit Shared Repository Cache**: Reuse verified SHA256 by-hash indexes across mapped roots; cross-process coordination is limited to Unix disk storage
+- **Explicit Shared APT Repository Cache**: Reuse verified SHA256 by-hash indexes across mapped roots; cross-process coordination is limited to Unix disk storage
 - **Real Client Cache Validation**: Manual and release-gated Docker tests for APT, DNF/DNF5, APK, pacman and zypper; signed downloads, installation and cache reuse
 
-## Supported Platforms
+<a id="supported-platforms"></a>
+
+## Proxy Daemon Platforms
+
+These are platforms for running the proxy process. Client repository caching
+is validated separately below; a macOS daemon binary does not imply Homebrew
+client coverage.
 
 Pre-built binaries (tar.gz on the [releases page](https://github.com/soulteary/apt-proxy/releases) and `.deb` / `.rpm` / `.apk` packages):
 
@@ -65,6 +71,29 @@ Multi-arch Docker images (`soulteary/apt-proxy` and `ghcr.io/soulteary/apt-proxy
 - `linux/arm/v7`
 
 > Note: ARMv6 is shipped as a standalone binary only; there is no ARMv6 Docker image.
+
+## Verified Client Repository Caching
+
+All 18 client images passed [signed local repository tests](https://github.com/soulteary/apt-proxy/actions/runs/38382735057)
+on Linux AMD64 on 2026-10-13, using proxy source `6a8f683`:
+
+- **APT:** Debian 12 Bookworm / 13 Trixie; Ubuntu 22.04 / 24.04 / 26.04.
+- **DNF/DNF5:** CentOS Stream 9/10, Rocky Linux 9/10, AlmaLinux 9/10 and Fedora 44.
+- **APK:** Alpine 3.22 / 3.23 / 3.24, with APK2 and APK3 reading signed legacy packages and indexes.
+- **pacman:** Arch Linux, with an explicit custom repository mapping.
+- **zypper:** openSUSE Leap 16.0 and Tumbleweed, with an explicit rpm-md archive mapping.
+
+Every client refreshed metadata, installed and verified a package, cleared its
+own cache and reinstalled with origin package GET counts unchanged at **1 → 1**.
+Integrity rejection and certificate verification in HTTPS phases also passed.
+The full matrix runs manually or before version publication.
+
+This verifies the configured local repositories and named client versions;
+stock vendor repositories still need appropriate configuration. It does not
+certify all public mirrors, native YUM, APK ADB formats, every CPU architecture,
+or Homebrew/Winget/Chocolatey/FreeBSD pkg. Offline snapshots and runtime mirror
+health have additional APT-specific scope. See [tested versions, configuration
+requirements and capability boundaries](docs/client-support.md).
 
 ## Quick Start
 
@@ -1573,11 +1602,11 @@ the keys stable. See *Cache Keys and Mirror Selection*.
 **Issue**: Cache directory growing too large
 **Solution**: Configure cache limits with `--cache-max-size` or use the cleanup API endpoint.
 
-### Upgrading to the planned v0.18.0
+### Upgrading to v0.18.0
 
 Review integrity verification, Vary migration, download bounds, S3 temporary
 space and shared-disk maintenance before upgrading. See the
-[upgrade and release candidate notes](docs/releases/v0.18.0.md).
+[release and upgrade notes](docs/releases/v0.18.0.md).
 
 ## License
 

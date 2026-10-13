@@ -23,7 +23,7 @@
 
 APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
 
-本开发分支包含计划用于 **v0.18.0** 的新能力；当前已发布的 v0.17.2 二进制和容器镜像不包含这些新增内容。升级前请阅读[发布候选说明与迁移步骤](docs/releases/v0.18.0.zh-CN.md)，新版本将在确认后发布。
+本文说明当前 main 分支。[v0.18.0](https://github.com/soulteary/apt-proxy/releases/tag/v0.18.0) 已发布，[升级说明](docs/releases/v0.18.0.zh-CN.md)描述该版本。可选 Metalink 端点和扩展的客户端测试是在该版本之后加入的；将相关配置用于已发布的程序或镜像前，请核对[客户端支持与版本可用性](docs/client-support.md)。
 
 <p align="center">
   <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
@@ -31,7 +31,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 
 ### 核心特性
 
-- **多发行版支持**：支持 APT（Ubuntu/Debian）、YUM（CentOS）和 APK（Alpine Linux）
+- **客户端软件仓库缓存**：已实测 APT、DNF/DNF5、APK、pacman 和 zypper，仓库路由与配置要求见[支持说明](docs/client-support.md)
 - **单文件部署**：提供独立二进制和容器镜像，文件大小随平台与构建方式变化
 - **智能镜像选择**：自动测试并选择最快的镜像源
 - **前置代理**：主机无法直连镜像站时，可经由已有的 `HTTP_PROXY` / `HTTPS_PROXY` 前置代理访问（支持 SOCKS5）；镜像测速走同一条链路，因此选出来的镜像一定是真正连得上的
@@ -39,18 +39,23 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景，包括用于 TLS 上游的 `HTTPS///` 重写标记 —— 现有的 `sources.list` 条目无需改写即可迁移（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
 - **第三方软件源**：可通过 `passthrough` 白名单指定要缓存的源站（PPA、厂商源、内部源），默认关闭 —— apt-proxy 不是开放转发代理
 - **域名根仓库**：仓库直接放在域名根目录、路径里没有前缀可匹配时（`security.debian.org`、`apt.armbian.com`），按请求 `Host` 路由，可通过 `host_pattern` 按发行版配置
-- **零配置**：开箱即用，默认配置即可满足大多数场景
+- **内置仓库路由**：提供 Ubuntu、Ubuntu Ports、Debian、CentOS、Alpine 路由；其他仓库需配置发行版映射或明确的 passthrough 白名单
 - **可观测性**：内置健康检查、Prometheus 指标、结构化日志，并可选启用 OpenTelemetry 链路追踪
 - **缓存管理**：REST API 支持缓存统计、清理与维护，附带 API Key 鉴权与按 IP 限流
 
-- **完整仓库快照**：预取所选二进制包与源码索引引用的全部对象，支持校验、修复、导入导出及离线服务
-- **运行时镜像故障切换**：可选启用，仅在公共仓库已观察元数据完全一致时切换
+- **完整 APT 仓库快照**：预取所选二进制包与源码索引引用的全部对象，支持校验、修复、导入导出及离线服务
+- **APT 运行时镜像故障切换**：可选启用，仅在公共仓库已观察的 Release/InRelease 元数据完全一致时切换
 - **持久缓存完整性**：默认校验私有 SHA256 记录，损坏或未验证的旧条目按未命中处理
 - **资源限制**：上游下载、缓存副本和 S3 缓冲共同受暂存预算与并发限制
-- **显式共享仓库缓存**：可选按仓库身份共享经 SHA256 验证的 by-hash 索引；跨进程协调限 Unix 磁盘后端
+- **显式共享 APT 仓库缓存**：可选按仓库身份共享经 SHA256 验证的 by-hash 索引；跨进程协调限 Unix 磁盘后端
 - **真实客户端缓存验证**：手动和发布前运行 APT、DNF/DNF5、APK、pacman、zypper 的 Docker 测试，验证签名下载、安装与缓存复用
 
-## 支持的平台
+<a id="支持的平台"></a>
+
+## 代理服务端运行平台
+
+以下是代理程序的运行平台。客户端软件仓库的缓存能力在下一节单独说明；
+提供 macOS 服务端二进制，不代表已验证 Homebrew 客户端。
 
 预编译二进制（[releases 页面](https://github.com/soulteary/apt-proxy/releases) 上的 tar.gz 以及 `.deb` / `.rpm` / `.apk` 安装包）：
 
@@ -64,6 +69,26 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - `linux/arm/v7`
 
 > 说明：ARMv6 仅以独立二进制形式发布，未提供 ARMv6 的 Docker 镜像。
+
+## 已验证的客户端软件仓库缓存
+
+2026-10-13，[完整签名仓库测试](https://github.com/soulteary/apt-proxy/actions/runs/38382735057)
+在 Linux AMD64 上使用代理提交 `6a8f683`，18 个客户端镜像全部通过：
+
+- **APT：** Debian 12 Bookworm / 13 Trixie；Ubuntu 22.04 / 24.04 / 26.04。
+- **DNF/DNF5：** CentOS Stream 9/10、Rocky Linux 9/10、AlmaLinux 9/10、Fedora 44。
+- **APK：** Alpine 3.22 / 3.23 / 3.24，覆盖 APK2、APK3 读取传统签名包与索引的场景。
+- **pacman：** Arch Linux，需要显式配置自定义仓库映射。
+- **zypper：** openSUSE Leap 16.0、Tumbleweed，需要显式配置 rpm-md 仓库映射。
+
+每个客户端都完成索引刷新、安装与载荷核对，清空自身缓存后重装，源站软件包 GET
+请求数均保持 **1 → 1**，证明命中代理缓存。协议对应的完整性拒绝检查，以及 HTTPS
+阶段的证书验证也均通过。完整矩阵由手动触发，或在版本发布前执行。
+
+这验证了明确配置的本地仓库与对应客户端版本，各发行版默认仓库仍需匹配配置。
+它不等于所有公共镜像、原生 YUM、APK ADB 格式、全部 CPU 架构，或
+Homebrew/Winget/Chocolatey/FreeBSD pkg 都已验证；离线快照、镜像健康切换另有
+APT 范围限制。具体版本、配置要求和未验证范围见[客户端支持说明](docs/client-support.md)。
 
 ## 快速开始
 
@@ -1455,10 +1480,10 @@ http_proxy=http://192.168.33.1:3142 \
 **问题**：缓存目录过大
 **解决方案**：使用 `--cache-max-size` 配置缓存限制，或使用清理 API 端点。
 
-### 升级到计划中的 v0.18.0
+### 升级到 v0.18.0
 
 检查默认完整性校验、Vary 缓存迁移、下载额度、S3 暂存空间和共享磁盘维护方式后再升级。
-详见[中文升级与发布候选说明](docs/releases/v0.18.0.zh-CN.md)。
+详见[中文发布与升级说明](docs/releases/v0.18.0.zh-CN.md)。
 
 ## 开源协议
 
