@@ -4,11 +4,11 @@
 
 | Metric | Value |
 | --- | --- |
-| Total | 321 |
-| Passed | 320 |
+| Total | 532 |
+| Passed | 531 |
 | Failed | 0 |
 | Skipped | 1 |
-| Coverage | 80.77% |
+| Coverage | 83.00% |
 | Threshold | 80.00% |
 
 ### Packages
@@ -16,15 +16,22 @@
 | Package | Status | Tests | Failed | Coverage |
 | --- | --- | --- | --- | --- |
 | cmd/apt-proxy | no\_tests | 0 | 0 | 0.00% |
-| internal/api | pass | 33 | 0 | 87.85% |
-| internal/benchmarks | pass | 21 | 0 | 85.06% |
-| internal/cli | pass | 47 | 0 | 59.73% |
-| internal/config | pass | 39 | 0 | 73.20% |
-| internal/distro | pass | 30 | 0 | 94.44% |
+| internal/access | pass | 15 | 0 | 95.11% |
+| internal/api | pass | 34 | 0 | 88.24% |
+| internal/benchmarks | pass | 26 | 0 | 93.21% |
+| internal/cli | pass | 92 | 0 | 73.77% |
+| internal/config | pass | 50 | 0 | 74.82% |
+| internal/distro | pass | 33 | 0 | 94.44% |
 | internal/errors | pass | 15 | 0 | 94.29% |
-| internal/mirrors | pass | 16 | 0 | 95.77% |
+| internal/logsafe | pass | 4 | 0 | 96.77% |
+| internal/mirrorhealth | pass | 24 | 0 | 90.02% |
+| internal/mirrors | pass | 18 | 0 | 97.40% |
 | internal/passthrough | pass | 4 | 0 | 94.44% |
-| internal/proxy | pass | 85 | 0 | 82.65% |
-| internal/state | pass | 12 | 0 | 94.64% |
-| internal/storage/s3vfs | pass | 13 | 0 | 84.68% |
+| internal/proxy | pass | 132 | 0 | 85.94% |
+| internal/repository | pass | 10 | 0 | 80.90% |
+| internal/resource | pass | 7 | 0 | 78.22% |
+| internal/sharedcache | pass | 18 | 0 | 74.10% |
+| internal/state | pass | 13 | 0 | 100.00% |
+| internal/storage | pass | 11 | 0 | 78.13% |
+| internal/storage/s3vfs | pass | 20 | 0 | 83.93% |
 | internal/system | pass | 6 | 0 | 81.03% |
