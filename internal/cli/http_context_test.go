@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"runtime"
 	"strconv"
 	"strings"
@@ -108,7 +107,9 @@ func TestRepositoryHTTPRequestMetadataSurvivesRequestReuse(t *testing.T) {
 	request.Request.Header.SetProtocol("HTTP/1.0")
 	request.Request.Header.Set("Accept-Language", "fr")
 	request.Request.Header.Set("X-Tenant", "bruce")
-	if retained.Method != http.MethodGet || retained.Proto != "HTTP/1.1" || retained.Host != "alice.example" || retained.RequestURI != originalURI || retained.URL.RawQuery != "tenant=alice" || retained.Header.Get("Accept-Language") != "en" || retained.Header.Get("X-Tenant") != "alice" {
+	// Fiber's adaptor hands net/http the routed origin-form target. Preserve
+	// that target and its authority rather than the absolute-form request line.
+	if retained.Method != http.MethodGet || retained.Proto != "HTTP/1.1" || retained.Host != "alice.example" || retained.RequestURI != "/ubuntu/pool/package.deb?tenant=alice" || retained.URL.RawQuery != "tenant=alice" || retained.Header.Get("Accept-Language") != "en" || retained.Header.Get("X-Tenant") != "alice" {
 		t.Fatalf("recycled request changed retained selection metadata: method=%s proto=%s host=%s target=%s URL=%s headers=%v", retained.Method, retained.Proto, retained.Host, retained.RequestURI, retained.URL, retained.Header)
 	}
 }
@@ -162,8 +163,9 @@ func TestRepositoryAsyncVarySelectionSurvivesRequestReuse(t *testing.T) {
 	request.Request.Header.SetMethod("GET")
 	request.Request.Header.Set("Accept-Language", "en")
 	app := fiber.New()
+	bridge := repositoryHTTPHandler(lifecycle, handler)
 	c := app.AcquireCtx(&request)
-	if err := repositoryHTTPHandler(lifecycle, handler)(c); err != nil {
+	if err := bridge(c); err != nil {
 		t.Fatal(err)
 	}
 	app.ReleaseCtx(c)
@@ -179,19 +181,25 @@ func TestRepositoryAsyncVarySelectionSurvivesRequestReuse(t *testing.T) {
 	request.Request.Header.Set("Accept-Language", "fr")
 	releaseStore()
 	httpcache.Writes.Wait()
-	warm := httptest.NewRequest("GET", "http://proxy.example/ubuntu/pool/a.deb", nil)
-	warm.Header.Set("Accept-Language", "en")
-	warmResponse := httptest.NewRecorder()
-	handler.ServeHTTP(warmResponse, warm)
-	if warmResponse.Header().Get("X-Cache") != "HIT" || warmResponse.Body.String() != "language=en" || calls != 1 {
-		t.Fatalf("handler return canceled asynchronous publication: label=%s body=%s calls=%d", warmResponse.Header().Get("X-Cache"), warmResponse.Body, calls)
+	var warm fasthttp.RequestCtx
+	warm.Request.SetRequestURI("http://proxy.example/ubuntu/pool/a.deb")
+	warm.Request.Header.SetMethod("GET")
+	warm.Request.Header.Set("Accept-Language", "en")
+	c = app.AcquireCtx(&warm)
+	if err := bridge(c); err != nil {
+		t.Fatal(err)
 	}
-	next := httptest.NewRequest("GET", "http://proxy.example/ubuntu/pool/a.deb", nil)
-	next.Header.Set("Accept-Language", "fr")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, next)
+	app.ReleaseCtx(c)
+	if label, body := string(warm.Response.Header.Peek("X-Cache")), string(warm.Response.Body()); label != "HIT" || body != "language=en" || calls != 1 {
+		t.Fatalf("handler return canceled asynchronous publication: label=%s body=%s calls=%d", label, body, calls)
+	}
+	c = app.AcquireCtx(&request)
+	if err := bridge(c); err != nil {
+		t.Fatal(err)
+	}
+	app.ReleaseCtx(c)
 	httpcache.Writes.Wait()
-	if got := w.Body.String(); got != "language=fr" {
-		t.Fatalf("async variant indexed recycled metadata: got=%q label=%q calls=%d, want language=fr", got, w.Header().Get("X-Cache"), calls)
+	if got := string(request.Response.Body()); got != "language=fr" {
+		t.Fatalf("async variant indexed recycled metadata: got=%q label=%q calls=%d, want language=fr", got, request.Response.Header.Peek("X-Cache"), calls)
 	}
 }

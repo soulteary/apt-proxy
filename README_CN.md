@@ -13,7 +13,7 @@
   <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
 </p>
 
-> 一个轻量级的 APT 缓存代理 - 仅仅不到 10MB 大小！
+> 一个支持镜像选择、本地缓存与离线仓库的 APT 代理。
 
 <p align="center">
   <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
@@ -23,6 +23,8 @@
 
 APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
 
+本开发分支包含计划用于 **v0.18.0** 的新能力；当前已发布的 v0.17.2 二进制和容器镜像不包含这些新增内容。升级前请阅读[发布候选说明与迁移步骤](docs/releases/v0.18.0.zh-CN.md)，新版本将在确认后发布。
+
 <p align="center">
   <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
 </p>
@@ -30,7 +32,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 ### 核心特性
 
 - **多发行版支持**：支持 APT（Ubuntu/Debian）、YUM（CentOS）和 APK（Alpine Linux）
-- **轻量级**：二进制文件不到 10MB，资源占用极低
+- **单文件部署**：提供独立二进制和容器镜像，文件大小随平台与构建方式变化
 - **智能镜像选择**：自动测试并选择最快的镜像源
 - **前置代理**：主机无法直连镜像站时，可经由已有的 `HTTP_PROXY` / `HTTPS_PROXY` 前置代理访问（支持 SOCKS5）；镜像测速走同一条链路，因此选出来的镜像一定是真正连得上的
 - **Docker 友好**：无缝集成 Docker 容器和构建流程
@@ -40,6 +42,13 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **零配置**：开箱即用，默认配置即可满足大多数场景
 - **可观测性**：内置健康检查、Prometheus 指标、结构化日志，并可选启用 OpenTelemetry 链路追踪
 - **缓存管理**：REST API 支持缓存统计、清理与维护，附带 API Key 鉴权与按 IP 限流
+
+- **完整仓库快照**：预取所选二进制包与源码索引引用的全部对象，支持校验、修复、导入导出及离线服务
+- **运行时镜像故障切换**：可选启用，仅在公共仓库已观察元数据完全一致时切换
+- **持久缓存完整性**：默认校验私有 SHA256 记录，损坏或未验证的旧条目按未命中处理
+- **资源限制**：上游下载、缓存副本和 S3 缓冲共同受暂存预算与并发限制
+- **显式共享仓库缓存**：可选按仓库身份共享经 SHA256 验证的 by-hash 索引；跨进程协调限 Unix 磁盘后端
+- **真实 APT 验证**：Debian Bookworm/Trixie、Ubuntu 22.04/24.04 运行签名、下载、源码与离线客户端测试
 
 ## 支持的平台
 
@@ -247,7 +256,7 @@ distributions:
 - `host_pattern` — 可选，用于匹配请求 `Host` 头的正则。适用于仓库直接放在域名根目录、路径里没有前缀可供 `url_pattern` 匹配的情况（例如 `deb http://security.debian.org <suite>-security main`，或 `apt.armbian.com`）。仅在 `url_pattern` 未命中时才会尝试；命中后会把整个请求路径拼到上游镜像后。请使用 `^...$` 锚定，避免相似域名冒充你的发行版。匹配前会把 host 转为小写，因此模式请写成小写。省略该字段时会继承该发行版类型的内置匹配器（Debian 保留 `security.debian.org`），与省略 `mirrors` 时沿用内置镜像列表的行为一致；显式设置则覆盖内置值。只有内置的 Debian security 域名会路由到专用的 Debian Security 镜像 —— 你为 type `3` 自行配置的 `host_pattern` 会解析到该条目自己的镜像。
 - `benchmark_url` — 镜像测速用的相对路径。
 - `geo_mirror_api` — 可选，返回地理镜像列表（Ubuntu 风格的 `mirrors.txt`）。
-- `cache_rules[]` — 上游没有提供 `Cache-Control` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式提供的较短有效期、`private` 和 `no-store` 等指令会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。
+- `cache_rules[]` — 上游没有提供 `Cache-Control` 与 `Expires` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式指令与过期时间（包括过去或无效的 `Expires`）、较短有效期、`private` 和 `no-store` 会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。
 - `mirrors.official` / `mirrors.custom` — 镜像主机列表。基于主机末段会自动生成 `cn:<name>` 形式的别名（如 `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`）。
 - `aliases` — 显式别名映射，可覆盖/补充自动生成的别名。
 
@@ -497,6 +506,94 @@ HTTPS_PROXY=socks5h://127.0.0.1:1080 ./apt-proxy
 会直接连接目标并忽略上述代理变量；需要前置代理时应关闭该策略。
 具体检查范围与配置见[上游访问策略](docs/upstream-access.md)。
 
+## 仓库操作与下载策略
+
+### 下载资源限制
+
+未知长度下载默认限制单个暂存文件为 1 GiB，每个实例共享暂存预算为 4 GiB；上游获取总超时默认为 20 分钟。可在 YAML 中配置 `download.max_spool_mb`、`download.total_spool_mb` 和 `download.timeout_seconds`，零值使用默认限制。这组旧式限制只约束未知长度落盘；它同时计入下面的共享资源预算。详见[下载限制说明](docs/download-limits.md)。
+
+### 私有仓库请求
+
+携带 `Authorization` 或 `Cookie` 的请求绕过共享缓存，带 `Set-Cookie` 的响应不会存储。认证请求指定仅使用缓存时返回 504，不访问上游。本版本启用新的缓存键命名空间，以隔离升级前可能包含私有内容的条目；升级后会有一次冷缓存，旧文件不会直接删除。详见[私有仓库隔离说明](docs/private-repositories.md)。
+
+### 软件包下载客户端访问控制
+
+可在 YAML 中设置 `security.download_allow_cidrs` 和
+`security.download_deny_cidrs`，按直接连接来源的 IPv4/IPv6 网段限制下载。
+拒绝规则优先，检查在缓存读取和上游请求之前执行；默认两个列表均为空。
+转发头不能授予下载权限。部署在反向代理之后时，需要在反向代理限制最终客户端。
+运维和管理 API 路由沿用原有策略；修改下载规则后需要重启。
+配置示例和适用范围见 [下载访问控制说明](docs/download-access.md)。
+
+### 下载上游连接防护
+
+可在 YAML 中启用 `upstream_access.enabled: true`，限制软件下载、镜像测速和 Ubuntu
+地理镜像发现的上游主机、
+端口和解析地址。新连接检查全部 DNS 结果后直接连接已允许的 IP，保留 TLS 主机名
+验证。私有仓库需要明确的 CIDR 例外；启用后的仓库连接不使用环境变量中的转发代理。
+测速和发现请求的重定向及 HEAD→GET 回退同样受保护；启动和镜像刷新沿用实例策略。
+修改后需要重启。配置示例及镜像测速等后台请求的适用边界见
+[上游访问说明](docs/upstream-access.md)。
+
+### Debian 系源码包覆盖
+
+Ubuntu、Ubuntu Ports 和 Debian 的源码池文件现可经配置的镜像代理并缓存，
+包括 `.dsc`、原始/附加/原生源码归档、Debian 补丁归档、旧式 `.diff.gz`
+及原始归档的 `.asc` 签名。规则仅匹配 Debian 风格源码池中的带版本文件，
+保留上游缓存指令。已有自定义发行版 YAML 需要明确加入新规则。
+支持范围和客户端验证职责见 [源码包覆盖说明](docs/apt-source-packages.md)。
+
+### Debian 系安装器文件
+
+常用 netboot、hd-media、cdrom 启动文件及安装器校验清单现可经配置的镜像
+代理并缓存。规则限定到 Debian 风格安装器 `images/` 或 `legacy-images/` 目录中的具体文件名，默认缓存
+3600 秒；自定义 YAML 需显式补充新规则。支持范围及客户端校验职责见
+[安装器文件覆盖说明](docs/apt-installer-files.md)。
+
+安装器目录中的常用 PXE/UEFI 资源也可代理并缓存：EFI 加载器、默认 PXELINUX
+配置、启动菜单及 GRUB 模块。范围限定在安装器 netboot 目录内，不提供
+DHCP/TFTP 服务或启动配置内容改写。
+
+### Debian 系 AppStream 元数据
+
+DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可使用镜像和缓存，
+包括从 by-hash 回退到直接 URL 的客户端。规则限定在
+`dists/<suite>/<component>/dep11/`，不开放任意 YAML、JSON 或归档下载。
+支持范围见[AppStream 元数据](docs/apt-appstream.md)。
+
+### 完整仓库快照和离线访问
+
+`apt-proxy repository` 可预取指定 suite、component、架构的 Packages 索引、
+可选 Sources 索引及其全部引用对象，校验大小和 SHA256 后发布完整快照。
+提供 verify、repair、export、import，以及无上游回退的离线 HTTP serve 命令。
+原始签名由 APT 验证；选定的 xz 索引需要系统 xz，另有包含 xz 的可选容器镜像。
+命令、支持范围和限制见[仓库快照说明](docs/repository-offline.md)。
+
+显式公共仓库身份与 Unix 共享磁盘协调：[配置和运行边界](docs/shared-repository-cache.md)。
+
+### 临时资源与缓存完整性
+
+仓库下载默认限制单对象 1 GiB、每实例暂存总量 4 GiB、32 个上游活跃下载，
+并为磁盘保留 128 MiB 可用空间。已声明长度的响应、HTTP 缓存副本和 S3 内存/落盘副本
+同样参与准入；共享预算拒绝时返回 `503` 与 `Retry-After: 1`。
+缓存副本在响应已成功送达后超出预算时跳过缓存发布。配置与边界见[资源限制](docs/resource-limits.md)。
+
+持久缓存默认使用 `cache.integrity: sha256`，命中前读取并校验完整响应体；
+旧的未验证记录会被惰性重新下载，S3 命中也可能先传输整个对象。
+可明确设置 `cache.integrity: none` 接受旧格式的性能权衡；启用 `shared_cache` 时仍强制完整性校验。
+迁移与 I/O 成本见[缓存完整性](docs/cache-integrity.md)。
+
+### 运行时镜像健康与客户端验证
+
+`mirror_health.enabled: true` 可为显式等价的公共 Debian 系仓库启用有界故障切换。
+替代镜像必须与当前镜像已完整观察到的 Release/InRelease 指纹相同；未知、过期或不同的
+快照以及私有请求不会切换。无自动回切或后台轮询，状态可在受现有管理 API 策略保护的
+`GET /api/mirrors/status` 查看。配置见[运行时镜像健康](docs/runtime-mirror-health.md)。
+
+运行 `bash tests/apt-client/matrix.sh` 可执行四个真实 APT 客户端的本地签名仓库测试，
+覆盖安装、源码、SHA256 by-hash、gzip 回退、范围请求、故障恢复和离线导入后的访问。
+这些测试不表示所有公共镜像均已验证，详见[客户端测试](docs/apt-client-tests.md)。
+
 ## Docker 集成
 
 ### 在 Docker 中运行 APT Proxy
@@ -561,7 +658,7 @@ http_proxy=http://host.docker.internal:3142 \
 | `-passthrough` | 逗号分隔的第三方源站白名单，原样抓取并缓存 | （空） |
 | `-cache-max-size` | 最大缓存大小（GB，0 表示禁用） | `10` |
 | `-cache-ttl` | 缓存 TTL（小时，0 表示禁用） | `168`（7 天） |
-| `-cache-cleanup-interval` | 缓存清理间隔（分钟） | `60` |
+| `-cache-cleanup-interval` | 缓存清理间隔（分钟，0 表示禁用） | `60` |
 | `-tls` | 启用 TLS/HTTPS（需同时提供 `-tls-cert` 与 `-tls-key`） | `false` |
 | `-tls-cert` | TLS 证书文件路径 | |
 | `-tls-key` | TLS 私钥文件路径 | |
@@ -704,6 +801,14 @@ cache:
   max_size_gb: 20
   ttl_hours: 168
   cleanup_interval_min: 60
+  integrity: sha256          # 默认；可选 none，见缓存完整性说明
+
+# 所有下载与暂存副本共用；仅支持 YAML，0 选择默认值。
+resources:
+  max_object_mb: 1024
+  total_temp_mb: 4096
+  max_active_downloads: 32
+  min_free_mb: 128
 
 # 仅支持 YAML；0 选择以下默认值，不表示无限制。
 download:
@@ -768,7 +873,11 @@ distributions_config: ./config/distributions.yaml
 
 **YAML 中的环境变量展开：** 仅识别 `${VAR}` 与 `${VAR:-default}` 两种形式；裸 `$VAR` **不会**被展开。未定义的 `${VAR}` 会**保持原样**（而不是替换为空），便于及时发现拼写错误。
 
-**说明：** 缓存仅识别上述人类可读字段（`dir`、`max_size_gb`、`ttl_hours`、`cleanup_interval_min`）；原始字节 / Duration 字段（`max_size`、`ttl`、`cleanup_interval`）属于内部表示，不会从 YAML 读入。
+**说明：** 缓存识别上述人类可读字段（`dir`、`max_size_gb`、`ttl_hours`、`cleanup_interval_min`、`integrity`）；原始字节 / Duration 字段（`max_size`、`ttl`、`cleanup_interval`）属于内部表示，不会从 YAML 读入。
+
+缓存大小、TTL 与清理间隔这三个 YAML 字段省略或非正值时，保留普通默认值
+（10 GiB、168 小时、60 分钟）；通过 CLI 或环境变量显式设置 `0` 才会关闭对应后端控制。
+这与仅支持 YAML 的 `download` / `resources` 限制不同，后者的 `0` 始终选择有界默认值。
 
 **配置文件搜索路径（按顺序）：**
 1. 通过 `-config` 参数或 `APT_PROXY_CONFIG_FILE` 环境变量指定的路径
@@ -782,9 +891,15 @@ distributions_config: ./config/distributions.yaml
 缓存支持通过 `max_size_gb`（YAML）、`--cache-max-size`（CLI）或 `APT_PROXY_CACHE_MAX_SIZE`（环境变量）设置容量上限。当总缓存大小超过该限制时，代理会按 **最久未访问**（LRU）自动删除文件，直至总容量保持在限制以内。淘汰会在写入新条目时以及定期清理时执行。
 
 - 设置为正整数（如 `20` 表示 20 GB）可启用容量限制与 LRU 淘汰。
-- 设置为 `0` 表示不限制容量，不进行按容量淘汰。
+- 设置 `--cache-max-size=0` 或 `APT_PROXY_CACHE_MAX_SIZE=0` 可关闭容量限制，不进行按容量淘汰；YAML 的 `max_size_gb: 0` 保留默认值。
+
+同理，`--cache-ttl=0` / `APT_PROXY_CACHE_TTL=0` 关闭后端过期淘汰，
+`--cache-cleanup-interval=0` / `APT_PROXY_CACHE_CLEANUP_INTERVAL=0` 关闭定期清理。
+关闭后端 TTL 不改变 HTTP 新鲜度或上游缓存指令；仍为正值的容量限制可以在写入时执行淘汰。
 
 进程重启后，在尚未有新访问之前，LRU 顺序按文件修改时间近似。
+
+启用 `shared_cache.coordination_dir` 后，实例间共享磁盘缓存会关闭容量/TTL 淘汰、后台清理和启动暂存扫描；全局在线 purge 被拒绝。维护前必须停止所有共享实例，详见[共享仓库缓存](docs/shared-repository-cache.md)。
 
 ### 缓存目录结构
 
@@ -797,15 +912,15 @@ staging/v1/               正在写入的条目，空闲时为空
 stale-markers.json        失效状态
 ```
 
-一个条目由 body 和 header 共同构成，两者作为一步发布：字节先写进 `staging/v1`，再 rename 到位，因此重复写入一个已缓存的文件，不会让并发的读者看到截断或空的条目。`staging/v1` 下的东西都不是缓存条目 —— **做容量统计、备份或 rsync 时请排除它。** 进程被杀留下的残留文件会在下次启动时清掉。
+一个条目由 body 和 header 共同构成，两者作为一步发布：字节先写进 `staging/v1`，再 rename 到位，因此重复写入一个已缓存的文件，不会让并发的读者看到截断或空的条目。`staging/v1` 下的东西都不是缓存条目 —— **做容量统计、备份或 rsync 时请排除它。** 普通单实例模式会在下次启动时清理进程被杀留下的暂存文件；共享磁盘协调模式要求所有实例停止后离线清理。
 
-只有 `body/v1` 和 `header/v1` 计入 `max_size_gb`，这也正是上面 LRU 淘汰拿去和上限比较的那个总量。实测单个 1000 字节条目：body 1000 + header 103 = 1103 字节计入，95 字节的 `stale-markers.json` 不计入。
+普通模式下，`body/v1` 和 `header/v1` 计入 `max_size_gb`；暂存文件与失效标记不计入。Header 文件含私有完整性和代际元数据，其大小随响应字段变化。暂存文件由独立的 `resources.total_temp_mb` 预算约束。
 
 S3 后端没有 `staging/` 前缀，对象写入直接落到最终 key —— 暂存依赖 rename，而 VFS 接口里没有。
 
 ### 缓存键与镜像选择
 
-缓存条目是以**改写后**的上游 URL 为键的，而不是客户端请求的地址。改写发生在缓存
+默认缓存条目以**改写后**的上游 URL 为基础，并区分 HTTP 方法和 Vary 选择字段，而不是只使用客户端请求的地址。改写发生在缓存
 层之前，因此客户端请求 `/ubuntu/dists/noble/InRelease` 实际会被存在所选镜像的 URL
 下 —— `http://mirrors.example.com/ubuntu/dists/noble/InRelease`。
 
@@ -818,12 +933,14 @@ S3 后端没有 `staging/` 前缀，对象写入直接落到最终 key —— �
 切换镜像之后           -> 从新镜像重新拉取
 ```
 
-镜像选优只在启动时和显式刷新时执行。测速结果不会持久化，因此**重启会重选**，
-`SIGHUP` 和 `POST /api/mirrors/refresh` 同样会。（测速过程中某个镜像超时**不**属于
-这一类：它只是在这一轮里被排除掉；若所有候选都失败，则保持当前镜像不变。）
+镜像测速选优在启动时和显式刷新时执行。可选的[运行时镜像健康](docs/runtime-mirror-health.md)
+还能基于已观察到的仓库元数据执行有界故障切换。测速结果不会持久化，因此**重启会重选**，
+`SIGHUP` 和 `POST /api/mirrors/refresh` 也会重新选优。刷新失败时保留完整的原有路由与缓存规则。
 
-这是保守而正确的行为 —— 两个镜像并不保证提供逐字节一致的内容，因此条目不在它们之间
-共享。如果你希望缓存能跨重启保持热度，**请直接指定镜像**，不要交给自动选优：
+默认不会跨镜像共享条目，因为镜像内容未必相同。显式的 [shared_cache 映射](docs/shared-repository-cache.md)
+可让经过内容校验的 SHA256 by-hash 索引跨等价镜像复用，普通软件包和可变元数据不会因此获得共享身份。
+启用跨进程协调后，非共享请求按进程隔离，重启会使这部分缓存重新预热。
+希望默认模式下缓存能跨重启保持热度时，可**直接指定镜像**：
 
 ```bash
 ./apt-proxy --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ \
@@ -835,8 +952,9 @@ S3 后端没有 `staging/` 前缀，对象写入直接落到最终 key —— �
 ### S3 存储后端
 
 除了写到本地目录，`apt-proxy` 也可以把所有缓存的 body / header 直接落到任何 **S3
-兼容**的对象存储里。适合多实例共享缓存、缓存需要跨容器/节点持久化、或本地磁盘空间
-吃紧的场景。
+兼容**的对象存储里。适合缓存需要跨容器/节点持久化、或本地磁盘空间吃紧的场景。
+同一桶和前缀上的多实例并发写入不提供分布式代际发布与 miss 协调保证；
+需使用独立前缀隔离实例。`shared_cache.coordination_dir` 仅支持 Unix 磁盘后端。
 
 通过 `--storage-backend=s3`（或 `APT_PROXY_STORAGE_BACKEND=s3`、YAML 中的
 `storage.backend: s3`）启用。最少配置只需要 `endpoint`、`bucket`、`access_key`、
@@ -906,84 +1024,46 @@ APT_PROXY_S3_USE_PATH_STYLE=true
 - `/healthz` 健康检查会感知存储后端：`s3` 模式做一次 HeadBucket，`disk` 模式做
   `os.Stat`。
 - `s3vfs` 内置 8192 条元数据 LRU，用于吸收 `httpcache-kit` 频繁的 `Header()`
-  访问，使大多数请求只产生一次 S3 GET。
+  访问。默认完整性校验仍须在命中前读取完整响应体，不能依赖元数据 LRU 跳过校验。
 - 写入采用"智能"上传策略：≤ `inline_max_mb` 的对象在内存中累积后一次 PUT；超过
   阈值则落盘到临时文件再 `PutObject`。可根据典型包大小调整。
-- S3 模式下 `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` 会被**忽略**；只有
-  TLS 证书路径仍然需要本地文件。当 `storage.backend=s3` 同时显式设置了非默认
+- S3 模式下 `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` 不作为持久缓存目录；
+  大对象上传和未知长度下载仍需可写的本地暂存目录，TLS 证书也需要本地文件。当 `storage.backend=s3` 同时显式设置了非默认
   cache.dir 时，启动会输出一行警告，避免该特例被静默吞掉。
 
 **资源容量规划（S3 后端）：**
 
-默认参数面向中低并发场景。在高并发写入下，必须按以下方式显式规划内存与磁盘，
-否则可能触发 OOM 或 `temp_dir` 写满。
+S3 内联响应体与落盘副本都计入 `resources.total_temp_mb`（默认 4096 MiB）；
+从内存切换到磁盘时，重叠的两份副本同时计费。`inline_max_mb`（默认 32 MiB）是
+单次写入的阈值，不能把 `并发写入数 × inline_max_mb` 当作整个进程的 RSS 上限。
+缓存异步发布可以在上游下载槽释放后继续持有预算。HTTP 缓冲、元数据和 Go 运行时
+仍需要额外内存余量；可按典型包大小将内联阈值调到 4–8 MiB。
 
-- **内存峰值 ≈ 并发写入数 × `inline_max_mb`。** `inline_max_mb`（默认 `32`）
-  是**每个写入**的内存上限，不是全局上限。每一个尚未越过阈值的并发写入都会
-  独立持有自己的缓冲区。最坏情况估算：
+超过阈值后使用匿名暂存文件：文件名立即 unlink，描述符关闭或进程退出才回收空间。
+`storage.s3.temp_dir` 留空时使用系统临时目录，必须可写；只读根文件系统应单独挂载可写卷。
+磁盘检查同时考虑已保留暂存字节和 `resources.min_free_mb`（默认 128 MiB），失败时拒绝准入。
+全局预算按实例计算，多个实例共享卷时必须分别分配额度。
 
-  | 并发写入数 | `inline_max_mb` | 预估所需 RSS  |
-  | ---------- | --------------- | ------------- |
-  | 50         | `32`            | ~1.6 GiB      |
-  | 200        | `32`            | ~6.4 GiB      |
-  | 1000       | `32`            | ~32 GiB       |
-  | 1000       | `4`             | ~4 GiB        |
+在 Kubernetes 中，将暂存目录挂到 `emptyDir`，并显式设置 Pod 的内存与
+`ephemeral-storage` 请求和上限。卷应能容纳所选暂存预算、磁盘保留空间及其他写入。
+下面是应用配置示例，Pod 额度仍需根据实际负载验证：
 
-  如果你服务的主要是小对象（`Packages.gz`、< 4 MiB 的 `.deb`），可以把
-  `inline_max_mb` 下调到 `4`–`8`，仍走内存路径但显著缩小最坏内存占用；如果
-  经常分发大包（kernel、CUDA、LLVM 工具链 > 100 MiB），就把 `inline_max_mb`
-  保持较小、接受 spill——p99 时刻磁盘比内存便宜。
+```yaml
+resources:
+  max_object_mb: 1024
+  total_temp_mb: 4096
+  max_active_downloads: 32
+  min_free_mb: 128
+storage:
+  backend: s3
+  s3:
+    inline_max_mb: 8
+    temp_dir: /var/cache/apt-proxy/tmp
+    # endpoint、bucket 和凭据见上方完整示例
+```
 
-- **`temp_dir` 的磁盘水位。** 大于 `inline_max_mb` 的写入会**一次性**落盘到
-  `temp_dir`（默认 `os.TempDir()`，即 `/tmp`），并在 `Close()` 时删除。瞬时
-  峰值约为 `大对象并发数 × 最大对象大小`。在 Kubernetes 上需要留意三点：
-
-  1. `/tmp` 通常落在容器可写层或 `emptyDir` 上——这些都计入
-     `ephemeral-storage` 限额。务必显式设置
-     `resources.requests.ephemeral-storage` 与
-     `resources.limits.ephemeral-storage`，否则 kubelet 可能在磁盘压力下
-     无声驱逐 Pod。
-  2. 推荐挂载一个 `emptyDir`（如内存够大也可使用 `medium: Memory`）到你
-     `temp_dir` 指向的路径，把 spill 水位与镜像层解耦，并获得可预期的上限。
-  3. 启用只读根文件系统（`readOnlyRootFilesystem: true`）时，必须给
-     `temp_dir` 单独挂载一个可写的 `emptyDir`。
-
-- **Pod 配置示例**（200 并发，混合流量，偶尔出现 > 32 MiB 的包）：
-
-  ```yaml
-  resources:
-    requests:
-      memory: "1Gi"           # 基线 + LRU + 小对象内联缓冲
-      cpu: "500m"
-      ephemeral-storage: "2Gi"
-    limits:
-      memory: "8Gi"           # 200 × 32 MiB 内联最坏情况 + 余量
-      cpu: "2"
-      ephemeral-storage: "8Gi"
-  volumeMounts:
-    - name: spill
-      mountPath: /var/cache/apt-proxy/tmp
-  volumes:
-    - name: spill
-      emptyDir:
-        sizeLimit: 8Gi
-  ```
-
-  以及 `apt-proxy.yaml` 中：
-
-  ```yaml
-  storage:
-    backend: s3
-    s3:
-      inline_max_mb: 8         # 收紧上限以压低内存峰值
-      temp_dir: /var/cache/apt-proxy/tmp
-  ```
-
-- **经验法则。** 选取的 `inline_max_mb` 应满足
-  `预期并发 × inline_max_mb` 能舒适地落在你的内存 *limit*（不是 request）以内；
-  `temp_dir` 至少要预留 `预期并发 × p99 包大小`。拿不准时优先调小
-  `inline_max_mb`：spill 路径经过良好测试，唯一代价不过是大对象多走一次
-  `write→read` 而已。
+S3 上传使用单次流式 PUT；`resources.max_object_mb` 不得超过 5120 MiB。
+更多拒绝行为、超时与预算边界见[资源限制](docs/resource-limits.md)。
 
 完整可运行的示例（含 OtterIO + 自动建桶 + 接好的 apt-proxy）见
 [`examples/s3-otterio/`](examples/s3-otterio/)。
@@ -1047,6 +1127,7 @@ APT Proxy 提供 REST API 端点用于监控和管理：
 - `X-Version`、`X-Build-*` — 版本与构建元信息（也可在 `GET /version` 查询）。
 - 标准安全响应头（如 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`，启用 TLS 时还有 `Strict-Transport-Security`）。
 - 代理响应附带 `X-Cache: HIT`/`MISS`/`SKIP`，用于访问日志按命中类型分类。
+- 预算控制的可缓存 GET 可附带 `X-Cache-Staging` HTTP trailer：`ADMITTED` 表示响应暂存准入，`SKIP` 表示暂存被跳过。必须读完整响应体才能看到 trailer；`ADMITTED` 不承诺异步缓存已提交。HEAD、HTTP/1.0 等不支持该 trailer 的情况跳过预算控制的发布。
 
 **示例：获取缓存统计（带认证）**
 
@@ -1148,7 +1229,7 @@ flowchart LR
 
 1. **客户端请求**：APT 客户端发送包请求到 apt-proxy
 2. **缓存检查**：Handler 检查包是否存在于本地缓存
-3. **缓存命中**：如果已缓存且未过期，立即从缓存返回
+3. **缓存命中**：按默认策略校验持久记录与完整响应体，再返回符合请求选择字段和有效期的条目
 4. **缓存未命中**：将 URL 重写到最快镜像，从上游获取
 5. **存储并响应**：缓存响应并返回给客户端
 
@@ -1364,6 +1445,11 @@ http_proxy=http://192.168.33.1:3142 \
 **问题**：缓存目录过大
 **解决方案**：使用 `--cache-max-size` 配置缓存限制，或使用清理 API 端点。
 
+### 升级到计划中的 v0.18.0
+
+检查默认完整性校验、Vary 缓存迁移、下载额度、S3 暂存空间和共享磁盘维护方式后再升级。
+详见[中文升级与发布候选说明](docs/releases/v0.18.0.zh-CN.md)。
+
 ## 开源协议
 
 本项目基于 [Apache License 2.0](https://github.com/soulteary/apt-proxy/blob/master/LICENSE) 协议。
@@ -1385,66 +1471,3 @@ http_proxy=http://192.168.33.1:3142 \
 ---
 
 由 APT Proxy 社区用 ❤️ 打造
-
-### 下载资源限制
-
-未知长度下载默认限制单个暂存文件为 1 GiB，每个实例共享暂存预算为 4 GiB；上游获取总超时默认为 20 分钟。可在 YAML 中配置 `download.max_spool_mb`、`download.total_spool_mb` 和 `download.timeout_seconds`，零值使用默认限制。预算不包含正式缓存及其他缓存临时副本；详见[下载限制说明](docs/download-limits.md)。
-
-### 私有仓库请求
-
-携带 `Authorization` 或 `Cookie` 的请求绕过共享缓存，带 `Set-Cookie` 的响应不会存储。认证请求指定仅使用缓存时返回 504，不访问上游。本版本启用新的缓存键命名空间，以隔离升级前可能包含私有内容的条目；升级后会有一次冷缓存，旧文件不会直接删除。详见[私有仓库隔离说明](docs/private-repositories.md)。
-
-### 软件包下载客户端访问控制
-
-可在 YAML 中设置 `security.download_allow_cidrs` 和
-`security.download_deny_cidrs`，按直接连接来源的 IPv4/IPv6 网段限制下载。
-拒绝规则优先，检查在缓存读取和上游请求之前执行；默认两个列表均为空。
-转发头不能授予下载权限。部署在反向代理之后时，需要在反向代理限制最终客户端。
-运维和管理 API 路由沿用原有策略；修改下载规则后需要重启。
-配置示例和适用范围见 [下载访问控制说明](docs/download-access.md)。
-
-### 下载上游连接防护
-
-可在 YAML 中启用 `upstream_access.enabled: true`，限制软件下载、镜像测速和 Ubuntu
-地理镜像发现的上游主机、
-端口和解析地址。新连接检查全部 DNS 结果后直接连接已允许的 IP，保留 TLS 主机名
-验证。私有仓库需要明确的 CIDR 例外；启用后的仓库连接不使用环境变量中的转发代理。
-测速和发现请求的重定向及 HEAD→GET 回退同样受保护；启动和镜像刷新沿用实例策略。
-修改后需要重启。配置示例及镜像测速等后台请求的适用边界见
-[上游访问说明](docs/upstream-access.md)。
-
-### Debian 系源码包覆盖
-
-Ubuntu、Ubuntu Ports 和 Debian 的源码池文件现可经配置的镜像代理并缓存，
-包括 `.dsc`、原始/附加/原生源码归档、Debian 补丁归档、旧式 `.diff.gz`
-及原始归档的 `.asc` 签名。规则仅匹配 Debian 风格源码池中的带版本文件，
-保留上游缓存指令。已有自定义发行版 YAML 需要明确加入新规则。
-支持范围和客户端验证职责见 [源码包覆盖说明](docs/apt-source-packages.md)。
-
-### Debian 系安装器文件
-
-常用 netboot、hd-media、cdrom 启动文件及安装器校验清单现可经配置的镜像
-代理并缓存。规则限定到 Debian 风格安装器 `images/` 或 `legacy-images/` 目录中的具体文件名，默认缓存
-3600 秒；自定义 YAML 需显式补充新规则。支持范围及客户端校验职责见
-[安装器文件覆盖说明](docs/apt-installer-files.md)。
-
-安装器目录中的常用 PXE/UEFI 资源也可代理并缓存：EFI 加载器、默认 PXELINUX
-配置、启动菜单及 GRUB 模块。范围限定在安装器 netboot 目录内，不提供
-DHCP/TFTP 服务或启动配置内容改写。
-
-### Debian 系 AppStream 元数据
-
-DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可使用镜像和缓存，
-包括从 by-hash 回退到直接 URL 的客户端。规则限定在
-`dists/<suite>/<component>/dep11/`，不开放任意 YAML、JSON 或归档下载。
-支持范围见[AppStream 元数据](docs/apt-appstream.md)。
-
-### 完整仓库快照和离线访问
-
-`apt-proxy repository` 可预取指定 suite、component、架构的 Packages 索引、
-可选 Sources 索引及其全部引用对象，校验大小和 SHA256 后发布完整快照。
-提供 verify、repair、export、import，以及无上游回退的离线 HTTP serve 命令。
-原始签名由 APT 验证；选定的 xz 索引需要系统 xz，另有包含 xz 的可选容器镜像。
-命令、支持范围和限制见[仓库快照说明](docs/repository-offline.md)。
-
-显式公共仓库身份与 Unix 共享磁盘协调：[配置和运行边界](docs/shared-repository-cache.md)。

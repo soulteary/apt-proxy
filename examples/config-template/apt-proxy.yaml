@@ -10,8 +10,9 @@
 #
 # Configuration priority: CLI flags > Environment variables > Config file > Defaults
 #
-# This file shows the user-facing YAML schema. Download limits, download CIDR
-# lists and upstream_access are YAML-only and require a restart after changes.
+# This file shows common user-facing YAML fields. Download/resource limits,
+# download CIDR lists and upstream_access are YAML-only and require a restart.
+# Optional mirror_health and shared_cache policies are documented in docs/.
 # See README "Configuration Options" for the available flags and ENV equivalents.
 
 # Server configuration
@@ -30,21 +31,38 @@ cache:
   # Directory to store cached packages
   dir: /var/cache/apt-proxy
   
-  # Maximum cache size in GB (0 to disable size limit).
+  # Maximum cache size in GiB. Omitted/nonpositive YAML values use default 10.
+  # To disable, use --cache-max-size=0 or APT_PROXY_CACHE_MAX_SIZE=0.
   # When exceeded, least-recently-used files are evicted automatically to keep total size within the limit.
   max_size_gb: 20
   
-  # Cache TTL in hours (0 to disable TTL-based eviction)
+  # Cache TTL in hours. Omitted/nonpositive YAML values use the default.
+  # To disable, use --cache-ttl=0 or APT_PROXY_CACHE_TTL=0.
   # Default: 168 (7 days)
   ttl_hours: 168
   
-  # Cache cleanup interval in minutes (0 to disable automatic cleanup)
+  # Cache cleanup interval in minutes. Nonpositive YAML uses the default.
+  # To disable, use --cache-cleanup-interval=0 or APT_PROXY_CACHE_CLEANUP_INTERVAL=0.
   # Default: 60 (1 hour)
   cleanup_interval_min: 60
 
+  # Default private SHA256 records; complete-body verification precedes a hit.
+  # "none" opts out in ordinary mode; shared_cache always requires SHA256.
+  integrity: sha256
+
+# Shared payload-copy and active-download admission (YAML-only).
+# MiB units. Zero selects these bounded defaults; this is not a total RSS limit.
+# See docs/resource-limits.md for refusals, disk headroom and per-instance scope.
+resources:
+  max_object_mb: 1024
+  total_temp_mb: 4096
+  max_active_downloads: 32
+  min_free_mb: 128
+
 # Upstream fetch time and unknown-length response spooling (YAML-only).
 # Units are MiB and seconds. Zero selects the defaults, rather than disabling
-# these limits. The spool budget excludes permanent cache and S3 write buffers.
+# these limits. This legacy spool sub-limit excludes persistent cache and S3
+# buffers; the resources budget above counts spool and cache/S3 payload copies.
 # Unknown-length bodies are completely spooled before delivery to the client.
 download:
   max_spool_mb: 1024
@@ -55,7 +73,9 @@ download:
 # By default the cache lives on the local filesystem (above). Switch to "s3"
 # to keep every cached body/header in any S3-compatible object store
 # (MinIO / Ceph / R2 / B2 / OSS / COS / AWS S3, ...). When backend is "s3"
-# the cache.dir field above is ignored.
+# cache.dir is not the persistent cache directory. Local temporary space is
+# still needed for large uploads and unknown-length downloads. Give independent
+# instances separate S3 prefixes; Unix disk coordination is a separate feature.
 #
 # A complete working example (compose stack with OtterIO, an Apache-2.0
 # S3-compatible fork of MinIO) lives in examples/s3-otterio/.
@@ -72,8 +92,8 @@ storage:
     use_ssl: true         # use HTTPS to talk to the endpoint
     use_path_style: false # MinIO/Ceph need true; AWS/R2/B2 use false
     inline_max_mb: 32     # writes <= 32 MiB stay in RAM, larger spill to temp_dir
-                          # NOTE: this is a per-write cap; memory peak ~= concurrency * inline_max_mb.
-                          # Lower this (e.g. 4-8) under high concurrency. See README "Resource sizing".
+                          # Per-write threshold; payload memory and disk copies share resources.total_temp_mb.
+                          # Lower this (e.g. 4-8) as needed, while reserving separate process memory headroom.
     temp_dir: ""          # empty = os.TempDir()
 
 # Optional: path to distributions/mirrors YAML (distributions.yaml)

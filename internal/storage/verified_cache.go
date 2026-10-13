@@ -16,6 +16,8 @@ package storage
 
 import (
 	"io"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +34,16 @@ type VerifiedCache struct{ httpcache.ExtendedCache }
 // whose stored headers do not reveal their request credentials. Existing files
 // remain available to normal backend cleanup instead of being deleted on boot.
 const privateCacheNamespace = "apt-proxy-private-v1:"
+
+// Varied keys have a versioned namespace before the HTTP method. Derive their
+// GET prefix from the public key encoder so length checks do not depend on the
+// library's private namespace spelling. Plain and legacy GET keys stay valid.
+var variedGETCacheKeyPrefix = func() string {
+	req := &http.Request{Method: http.MethodGet, URL: &url.URL{}}
+	key := httpcache.NewRequestKey(req).Vary("Accept-Language", req).String()
+	prefix, _, _ := strings.Cut(key, ":")
+	return prefix + ":"
+}()
 
 func privateCacheKeys(keys []string) []string {
 	result := make([]string, len(keys))
@@ -82,7 +94,7 @@ func (c *VerifiedCache) retrieve(key string, recheck bool) (*httpcache.Resource,
 		return nil, httpcache.ErrNotFoundInCache
 	}
 	// HEAD metadata describes the GET body without carrying that body.
-	if !strings.HasPrefix(key, "GET:") {
+	if !strings.HasPrefix(key, "GET:") && !strings.HasPrefix(key, variedGETCacheKeyPrefix) {
 		return res, nil
 	}
 	raw := res.Header().Get("Content-Length")

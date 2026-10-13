@@ -42,3 +42,22 @@ In that mode new cache writes use the legacy record format; existing verified
 records remain verified when read. Unknown modes are rejected at startup.
 The historical Content-Length/session isolation checks remain active. The
 private cache namespace and real upstream request credentials are unaffected.
+
+Enabling `shared_cache` requires SHA256 integrity and overrides the `none`
+opt-out. Shared identities therefore cannot reuse unverified legacy records.
+
+## Vary migration and resource cost
+
+The released httpcache-kit v4.1.0 dependency uses a versioned Vary namespace.
+Persisted variants from an older namespace safely become misses and are lazily
+refetched; ordinary non-Vary base keys are unchanged by that library migration.
+This is additional to the daemon's required-digest and private-isolation checks
+above. No manual purge is required, but plan for temporary extra upstream
+traffic. See the [v0.18.0 candidate upgrade notes](releases/v0.18.0.md).
+
+Native disk retrieval retains an open header descriptor until the corresponding
+cache resource closes, allowing generation checks to distinguish a peer's
+replacement even when timestamps and body digests match. Include this additional
+descriptor per live retrieved resource when sizing process file-descriptor
+limits. Integrity hashing uses streaming reads rather than a package-sized
+in-memory buffer; it still adds complete-body I/O before a hit.

@@ -21,20 +21,19 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	logger "github.com/soulteary/logger-kit/v3"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 )
 
-// fiberApp mounts ps exactly as the daemon does (app.All("/*",
-// adaptor.HTTPHandler(...))). That conversion moves the authority from
+// fiberApp mounts ps with the same repository bridge as the daemon. That
+// conversion moves the authority from
 // URL.Host into Host and leaves URL.Host empty, so testing through it is the
 // only way to cover what production actually sees -- httptest.NewRequest
 // keeps the absolute-form authority in URL.Host and hides the difference.
 func fiberApp(ps *PackageStruct) *fiber.App {
 	app := fiber.New()
-	app.All("/*", adaptor.HTTPHandler(ps))
+	app.All("/*", FiberHTTPHandler(ps))
 	return app
 }
 

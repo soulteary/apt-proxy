@@ -15,8 +15,12 @@ target deployment and read its `README.md`.
 
 - Just kicking the tires on a laptop? Start with [`basic/`](basic/).
 - Want to pin a fast mirror (e.g. Tsinghua/USTC)? See [`specify-mirrors/`](specify-mirrors/).
-- Multi-host / shared cache / object storage? See [`s3-otterio/`](s3-otterio/) — it
-  works against AWS S3, R2, B2, OSS, COS, Ceph RGW (and MinIO) too; only env vars change.
+- Need durable object storage? See [`s3-otterio/`](s3-otterio/) — it also works
+  against other S3-compatible providers with their connection settings. Give
+  independently running instances separate bucket prefixes; S3 does not provide
+  shared publication or miss-coordination guarantees. For coordinated shared
+  Unix disk storage and verified by-hash identities, see
+  [shared repository cache](../docs/shared-repository-cache.md).
 - Need a distribution apt-proxy does not ship (Deepin, Armbian, Arch, an
   internal archive)? See [`custom-distros/`](custom-distros/).
 - Need to know what every config knob does? Read

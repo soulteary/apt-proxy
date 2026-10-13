@@ -1,7 +1,7 @@
 # config-template
 
-A fully-commented `apt-proxy.yaml` showing **every** supported configuration
-key with defaults and inline notes. **Not** a directly-runnable example —
+A commented `apt-proxy.yaml` showing common configuration keys with examples,
+defaults and inline notes. **Not** a directly-runnable example —
 copy it, trim what you don't need, then point apt-proxy at it.
 
 ## Use it
@@ -32,7 +32,11 @@ So a flag (e.g. `--port=8000`) always wins over the same key in this YAML.
 ## What's in the file
 
 - `server:` — bind host/port and debug logging.
-- `cache:` — local cache directory, size cap, TTL, cleanup interval.
+- `cache:` — local cache directory, size cap, TTL, cleanup interval and integrity.
+  Nonpositive YAML cache size/TTL/cleanup fields retain defaults; explicit CLI
+  or environment `0` disables the corresponding backend control.
+- `resources:` — object size, combined temporary payload copies, active upstream
+  downloads and disk headroom; zero selects bounded defaults.
 - `storage:` — switch between local disk and S3-compatible object storage.
   See [`../s3-otterio/`](../s3-otterio/) for a runnable S3 example.
 - `download:` — upstream fetch deadline and unknown-length spool budgets;
@@ -47,8 +51,13 @@ So a flag (e.g. `--port=8000`) always wins over the same key in this YAML.
   environment forward proxies; S3 and telemetry clients are outside its scope.
 - `mode:` — restrict to a single distro family or serve them all.
 
-Download limits, download CIDR lists and upstream access policy are YAML-only.
+Download/resource limits, download CIDR lists and upstream access policy are YAML-only.
 Restart the daemon after changing them; mirror refresh does not reload these
 settings. See [download limits](../../docs/download-limits.md),
 [download access](../../docs/download-access.md) and
-[upstream access](../../docs/upstream-access.md) for their scope and examples.
+[upstream access](../../docs/upstream-access.md),
+[resource limits](../../docs/resource-limits.md) and
+[cache integrity](../../docs/cache-integrity.md) for their scope and examples.
+For optional policies absent from this template, see
+[runtime mirror health](../../docs/runtime-mirror-health.md) and
+[shared repository cache](../../docs/shared-repository-cache.md).

@@ -97,5 +97,8 @@ This is equality checking against metadata actually observed from the active
 mirror, not a PGP verifier or an atomic repository snapshot service. APT still
 verifies signatures and artifact checksums. Repository contents can change
 between a probe and a download, and only observed suites are covered; configured
-roots must therefore be operator-approved equivalents. Existing cache entries
-need no migration, and fingerprints are not recovered from cached bodies.
+roots must therefore be operator-approved equivalents. Enabling runtime health
+itself requires no cache migration, and fingerprints are not recovered from
+cached bodies. The separate default integrity and released Vary-key migrations
+can cause lazy rewarming when upgrading the daemon; see the
+[v0.18.0 candidate notes](releases/v0.18.0.md).
