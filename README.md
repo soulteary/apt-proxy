@@ -126,7 +126,13 @@ After the first download, all subsequent package operations will be significantl
 
 APT Proxy works with DNF/YUM repositories. CentOS Stream 9 and 10 use the
 [CentOS Stream mirror](https://mirror.stream.centos.org/) and metalink-based
-repository definitions. Configure apt-proxy with the Stream mirror first:
+repository definitions. To keep Metalink discovery and DNF's metadata digest
+checks, configure the optional `metalink` endpoint and replace the repository's
+Metalink origin with apt-proxy. The XML's metadata and package links then pass
+through one snapshot cache namespace. See [CentOS Metalink setup](docs/centos-metalink.md)
+and [real DNF client tests](docs/dnf-client-tests.md).
+
+For a fixed base URL instead, configure apt-proxy with the Stream mirror first:
 
 ```bash
 ./apt-proxy \
@@ -150,8 +156,8 @@ sudo dnf makecache
 ```
 
 Inspect the repository files before applying the command if they have been
-customized by an image vendor. apt-proxy does not currently process CentOS
-metalink responses; that work is tracked in [issue #70](https://github.com/soulteary/apt-proxy/issues/70).
+customized by an image vendor. This fixed-base configuration does not use
+Metalink; the optional Metalink endpoint requires an explicit mirror host list.
 The client-facing URL intentionally uses HTTP while apt-proxy fetches from the
 configured HTTPS upstream.
 

@@ -48,6 +48,7 @@ import (
 	"github.com/soulteary/apt-proxy/internal/distro"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	"github.com/soulteary/apt-proxy/internal/logsafe"
+	"github.com/soulteary/apt-proxy/internal/metalink"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/resource"
@@ -104,6 +105,9 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, err
 	}
 	if err := config.ValidateCacheIntegrity(cfg.Cache.Integrity); err != nil {
+		return nil, err
+	}
+	if _, err := metalink.New(cfg.Metalink, cfg.UpstreamAccess); err != nil {
 		return nil, err
 	}
 	s := &Server{
@@ -300,6 +304,7 @@ func (s *Server) initialize() error {
 			return identity.WrapTransportWithBudget(next, s.downloadTempDir(), s.resources)
 		},
 		MirrorHealth:       s.config.MirrorHealth,
+		Metalink:           s.config.Metalink,
 		UpstreamAccess:     s.config.UpstreamAccess,
 		State:              s.state,
 		Registry:           s.registry,

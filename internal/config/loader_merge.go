@@ -32,6 +32,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	}
 
 	result := *base
+	if override.Metalink != nil {
+		result.Metalink = override.Metalink
+	}
 	if override.SharedCache != nil {
 		result.SharedCache = override.SharedCache
 	}
@@ -177,6 +180,9 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 
 	result := *base
+	if override.Metalink != nil {
+		result.Metalink = override.Metalink
+	}
 	if override.SharedCache != nil {
 		result.SharedCache = override.SharedCache
 	}

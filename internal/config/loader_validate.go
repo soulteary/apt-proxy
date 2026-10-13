@@ -26,6 +26,7 @@ import (
 
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/metalink"
 	"github.com/soulteary/apt-proxy/internal/passthrough"
 	"github.com/soulteary/apt-proxy/internal/sharedcache"
 	"github.com/soulteary/apt-proxy/internal/state"
@@ -71,6 +72,9 @@ func ValidateConfig(config *Config) error {
 		return err
 	}
 	if _, err := access.NewUpstream(config.UpstreamAccess); err != nil {
+		return err
+	}
+	if _, err := metalink.New(config.Metalink, config.UpstreamAccess); err != nil {
 		return err
 	}
 	if config.Download.MaxSpoolMB < 0 || config.Download.TotalSpoolMB < 0 || config.Download.TimeoutSeconds < 0 {
