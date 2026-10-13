@@ -1,0 +1,104 @@
+name: Client repository cache compatibility
+
+on:
+  workflow_dispatch:
+    inputs:
+      family:
+        description: Client package manager family
+        type: choice
+        default: all
+        options: [all, apt, dnf, apk, pacman, zypper]
+  workflow_call:
+    inputs:
+      family:
+        description: Client package manager family (all for release gates)
+        type: string
+        default: all
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Select trusted client images
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      family: ${{ steps.plan.outputs.family }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate matrix and evidence handling
+        run: python3 tests/client-compatibility/client_matrix_test.py
+      - id: plan
+        name: Plan clients from the committed allowlist
+        env:
+          CLIENT_FAMILY: ${{ inputs.family || 'all' }}
+        run: python3 tests/client-compatibility/client_matrix.py plan --family "$CLIENT_FAMILY" --github-output "$GITHUB_OUTPUT"
+
+  clients:
+    name: ${{ matrix.id }} (${{ matrix.family }})
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Run the real client against a local signed repository
+        env:
+          CLIENT_ID: ${{ matrix.id }}
+        run: python3 tests/client-compatibility/client_matrix.py run "$CLIENT_ID"
+      - name: Preserve logs and cache evidence, including failed attempts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: client-evidence-${{ github.run_id }}-${{ matrix.id }}-${{ github.run_attempt }}
+          path: client-compatibility-evidence/${{ matrix.id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  summary:
+    name: Verify all client cache evidence
+    if: always()
+    needs: [plan, clients]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+          persist-credentials: false
+      - name: Download this run's evidence from all attempts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: client-evidence-${{ github.run_id }}-*
+          path: downloaded-client-evidence/
+      - name: Reject missing, failed, stale or invalid cache evidence
+        if: always()
+        env:
+          CLIENT_FAMILY: ${{ needs.plan.outputs.family || 'all' }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          MATRIX_RESULT: ${{ needs.clients.result }}
+        run: |
+          python3 tests/client-compatibility/client_matrix.py summary \
+            --family "$CLIENT_FAMILY" --source-sha "$SOURCE_SHA" \
+            --run-id "$GITHUB_RUN_ID" --matrix-result "$MATRIX_RESULT" \
+            --reports downloaded-client-evidence
+      - name: Upload compatibility summary
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: client-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: client-compatibility-summary/
+          if-no-files-found: warn
+          retention-days: 30

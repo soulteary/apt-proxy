@@ -10,7 +10,7 @@ import threading
 import urllib.parse
 
 ROOT = pathlib.Path('/fixture/repo').resolve()
-STATE = {'fault': '', 'counts': {}, 'paths': [], 'private': 0, 'ranges': 0}
+STATE = {'fault': '', 'counts': {}, 'paths': [], 'requests': [], 'private': 0, 'ranges': 0}
 LOCK = threading.Lock()
 
 
@@ -63,6 +63,7 @@ class Repository(http.server.BaseHTTPRequestHandler):
         etag = '"' + hashlib.sha256(body).hexdigest() + '"'
         with LOCK:
             STATE['paths'].append(path)
+            STATE['requests'].append({'method': 'HEAD' if head else 'GET', 'path': path})
             STATE['counts'][path] = STATE['counts'].get(path, 0) + 1
             fault = STATE['fault'] if path.endswith('.deb') and not head else ''
             if fault:

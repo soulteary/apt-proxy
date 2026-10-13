@@ -20,7 +20,7 @@ client_image_id() {
   fi
   printf '%s' "$image_id"
 }
-if [ "$#" -eq 0 ]; then set -- debian:bookworm-slim debian:trixie-slim ubuntu:22.04 ubuntu:24.04; fi
+if [ "$#" -eq 0 ]; then set -- debian:bookworm-slim debian:trixie-slim ubuntu:22.04 ubuntu:24.04 ubuntu:26.04; fi
 evidence_root=${APT_CLIENT_EVIDENCE_DIR:-"$repo_root/apt-client-evidence"}
 mkdir -p "$evidence_root"
 evidence_root=$(cd "$evidence_root" && pwd -P)

@@ -20,7 +20,11 @@ client_image_id() {
   fi
   printf '%s' "$image_id"
 }
-if [ "$#" -eq 0 ]; then set -- quay.io/centos/centos:stream9 quay.io/centos/centos:stream10; fi
+if [ "$#" -eq 0 ]; then
+  set -- quay.io/centos/centos:stream9 quay.io/centos/centos:stream10 \
+    quay.io/fedora/fedora:44 rockylinux/rockylinux:9 rockylinux/rockylinux:10 \
+    almalinux:9 almalinux:10
+fi
 evidence_root=${DNF_CLIENT_EVIDENCE_DIR:-"$repo_root/dnf-client-evidence"}
 mkdir -p "$evidence_root"
 evidence_root=$(cd "$evidence_root" && pwd -P)

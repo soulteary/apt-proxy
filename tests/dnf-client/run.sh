@@ -17,7 +17,34 @@ cat /etc/os-release
 dnf --version
 rpm --eval '%{_arch}' > /fixture/arch
 source /etc/os-release
-printf '%s\n' "${VERSION_ID%%.*}" > /fixture/stream
+# Preserve the client's native variables without claiming that the fixture
+# models the distribution's public repository layout.
+if [ "$ID" = centos ] && [ -f /etc/dnf/vars/stream ]; then
+  repo_template='centos-baseos-$stream'
+  printf 'centos-baseos-%s\n' "$(cat /etc/dnf/vars/stream)" > /fixture/repository-id
+else
+  repo_template="fixture-$ID-"'${releasever}'
+  printf 'fixture-%s-%s\n' "$ID" "${VERSION_ID%%.*}" > /fixture/repository-id
+fi
+if command -v dnf5 >/dev/null 2>&1 && [ "$(readlink -f "$(command -v dnf)")" = "$(readlink -f "$(command -v dnf5)")" ]; then
+  dnf_generation=5
+  dnf_options=(--disable-repo='*' --enable-repo=apt-proxy-fixture)
+else
+  dnf_generation=4
+  dnf_options=(--disablerepo='*' --enablerepo=apt-proxy-fixture --setopt=metadata_timer_sync=0)
+fi
+printf '%s\n' "$dnf_generation" > /fixture/dnf-generation
+python3 - <<'PY'
+import json
+from pathlib import Path
+import subprocess
+json.dump({'repository_id': Path('/fixture/repository-id').read_text().strip(),
+           'architecture': Path('/fixture/arch').read_text().strip(),
+           'dnf_generation': int(Path('/fixture/dnf-generation').read_text()),
+           'dnf_version': subprocess.check_output(['dnf', '--version'], text=True),
+           'coverage': 'local signed rpm-md and Metalink fixture'},
+          open('/evidence/client.json', 'w'), indent=2)
+PY
 python3 - <<'PY'
 from pathlib import Path
 import random
@@ -50,11 +77,12 @@ gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key 'DNF F
 fingerprint=$(gpg --batch --with-colons --list-keys | awk -F: '$1 == "fpr" {print $10; exit}')
 gpg --batch --armor --export "$fingerprint" > /fixture/repository.asc
 rpmsign --define '_gpg_name '"$fingerprint" --define '_gpg_path /fixture/gnupg' \
+  --define '_openpgp_sign gpg' --define '_openpgp_sign_id '"$fingerprint" \
   --define '__gpg /usr/bin/gpg' --define '_gpg_digest_algo sha256' \
   --addsign /fixture/rpmbuild/RPMS/noarch/apt-proxy-fixture-1.0-1.noarch.rpm
 cp /fixture/rpmbuild/RPMS/noarch/*.rpm /fixture/repo/Packages/
-rpm --import /fixture/repository.asc
-rpm --checksig /fixture/repo/Packages/*.rpm | tee /evidence/rpm-signature.txt
+rpmkeys --import /fixture/repository.asc
+rpmkeys --checksig /fixture/repo/Packages/*.rpm | tee /evidence/rpm-signature.txt
 createrepo_c --checksum sha256 /fixture/repo
 gpg --batch --yes --pinentry-mode loopback --passphrase '' --armor --detach-sign \
   -o /fixture/repo/repodata/repomd.xml.asc /fixture/repo/repodata/repomd.xml
@@ -107,7 +135,7 @@ EOF
 cat > /etc/yum.repos.d/apt-proxy-fixture.repo <<'EOF'
 [apt-proxy-fixture]
 name=Local apt-proxy Metalink fixture
-metalink=http://127.0.0.1:3142/metalink?repo=centos-baseos-$stream&arch=$basearch&protocol=https,http
+metalink=http://127.0.0.1:3142/metalink?repo=REPOSITORY_TEMPLATE&arch=$basearch&protocol=https,http
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
@@ -117,24 +145,25 @@ metadata_expire=0
 countme=1
 skip_if_unavailable=0
 EOF
+sed -i "s/REPOSITORY_TEMPLATE/$repo_template/" /etc/yum.repos.d/apt-proxy-fixture.repo
 dnf_fixture() {
   local trace=$1; shift
   # DNF's GPG subprocess can leave gpg-agent alive after the transaction.
   # Keep DNF as the shell's child while its detached tracer follows children;
   # a signing-agent lifetime must not keep a completed DNF command waiting.
   strace -D -f -e trace=connect -s 512 -o "/evidence/$trace.connect.log" \
-    dnf --disablerepo='*' --enablerepo=apt-proxy-fixture --setopt=metadata_timer_sync=0 -y "$@"
+    dnf "${dnf_options[@]}" -y "$@"
 }
 curl -fsS -X POST http://127.0.0.1:8080/__control/reset
 curl -fsS -X POST http://127.0.0.1:8080/__control/fail-first
 start_proxy
-dnf_fixture makecache makecache --refresh
+dnf_fixture makecache --refresh makecache
 dnf_fixture install install apt-proxy-fixture
 rpm -V apt-proxy-fixture
 cmp /usr/share/apt-proxy-fixture/payload /fixture/rpmbuild/SOURCES/payload
 curl -fsS http://127.0.0.1:8080/__control/status > /evidence/first-install.json
-arch=$(cat /fixture/arch); stream=$(cat /fixture/stream)
-curl -fsS "http://127.0.0.1:3142/metalink?repo=centos-baseos-$stream-stream&arch=$arch&protocol=https,http" > /evidence/rewritten-metalink.xml
+arch=$(cat /fixture/arch); repository_id=$(cat /fixture/repository-id)
+curl -fsS "http://127.0.0.1:3142/metalink?repo=$repository_id&arch=$arch&protocol=https,http" > /evidence/rewritten-metalink.xml
 python3 - <<'PY'
 import json
 import urllib.parse
@@ -168,7 +197,8 @@ before = rpm_gets('/evidence/first-install.json')
 after = rpm_gets('/evidence/second-install.json')
 assert before > 0 and after == before, (before, after)
 with open('/evidence/cache-hit.json', 'w') as out:
-    json.dump({'first_origin_rpm_gets': before, 'second_origin_rpm_gets': after,
+    json.dump({'first_origin_package_gets': before, 'second_origin_package_gets': after,
+               'first_origin_rpm_gets': before, 'second_origin_rpm_gets': after,
                'client_cache_cleared': True, 'payload_matches': True}, out, indent=2)
 PY
 # A fresh proxy cache prevents a previous validated snapshot from masking an
@@ -176,7 +206,7 @@ PY
 curl -fsS -X POST http://127.0.0.1:8080/__control/bad-hash
 start_proxy
 dnf_fixture integrity-clean clean all
-if dnf_fixture integrity makecache --refresh; then
+if dnf_fixture integrity --refresh makecache; then
   echo 'DNF unexpectedly accepted a mismatched Metalink repomd digest' >&2
   exit 1
 fi
@@ -203,5 +233,7 @@ assert internet_connections, 'DNF made no observed network connections'
 with open('/evidence/client-connections.json', 'w') as out:
     json.dump(internet_connections, out, indent=2)
 PY
-cp /var/log/dnf.librepo.log /evidence/dnf.librepo.log
+for logfile in /var/log/dnf.librepo.log /var/log/dnf5.log /var/log/librepo.log; do
+  if [ -f "$logfile" ]; then cp "$logfile" /evidence/; fi
+done
 printf 'PASS: native DNF Metalink, signed metadata and RPM installation, verified upstream TLS, mirror fallback, warm proxy cache, digest rejection, no direct DNF origin connections\n' | tee /evidence/result.txt

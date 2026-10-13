@@ -48,7 +48,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **持久缓存完整性**：默认校验私有 SHA256 记录，损坏或未验证的旧条目按未命中处理
 - **资源限制**：上游下载、缓存副本和 S3 缓冲共同受暂存预算与并发限制
 - **显式共享仓库缓存**：可选按仓库身份共享经 SHA256 验证的 by-hash 索引；跨进程协调限 Unix 磁盘后端
-- **真实 APT 验证**：Debian Bookworm/Trixie、Ubuntu 22.04/24.04 运行签名、下载、源码与离线客户端测试
+- **真实客户端缓存验证**：手动和发布前运行 APT、DNF/DNF5、APK、pacman、zypper 的 Docker 测试，验证签名下载、安装与缓存复用
 
 ## 支持的平台
 
@@ -130,6 +130,10 @@ APT Proxy 支持 DNF/YUM 仓库。CentOS Stream 9 和 10 使用
 会指向代理，并按仓库快照共享缓存。详见
 [CentOS Metalink 配置](docs/centos-metalink.md)和
 [真实 DNF 客户端测试](docs/dnf-client-tests.md)。
+
+[Docker 客户端兼容性测试](docs/client-compatibility.md)使用 APT、DNF/DNF5、APK、
+pacman 和 zypper 验证签名仓库下载、安装和代理缓存复用。可在 GitHub Actions
+手动运行；完整矩阵也会在版本发布前运行，全部通过后才能发布。
 
 如果使用固定 base URL，先为 apt-proxy 指定 Stream 镜像：
 
@@ -596,7 +600,7 @@ DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可
 快照以及私有请求不会切换。无自动回切或后台轮询，状态可在受现有管理 API 策略保护的
 `GET /api/mirrors/status` 查看。配置见[运行时镜像健康](docs/runtime-mirror-health.md)。
 
-运行 `bash tests/apt-client/matrix.sh` 可执行四个真实 APT 客户端的本地签名仓库测试，
+运行 `bash tests/apt-client/matrix.sh` 可执行五个真实 APT 客户端的本地签名仓库测试，
 覆盖安装、源码、SHA256 by-hash、gzip 回退、范围请求、故障恢复和离线导入后的访问。
 这些测试不表示所有公共镜像均已验证，详见[客户端测试](docs/apt-client-tests.md)。
 

@@ -15,7 +15,18 @@ env:
   GO_VERSION: "1.27.2"
 
 jobs:
+  client_compatibility:
+    name: Verify client repository caching before release
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/client-compatibility.yml
+    with:
+      family: all
+
   build:
+    needs: client_compatibility
+    # Ordinary main pushes keep the existing lightweight release preflight.
+    # Manual runs and tags require the entire client matrix to succeed.
+    if: ${{ !cancelled() && (needs.client_compatibility.result == 'success' || needs.client_compatibility.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write   # GoReleaser needs write access on tag pushes

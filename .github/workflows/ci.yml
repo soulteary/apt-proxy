@@ -47,6 +47,13 @@ jobs:
             exit 1
           fi
 
+      - name: Validate client test planning and evidence (without Docker)
+        run: |
+          python3 tests/client-compatibility/client_matrix_test.py
+          for family in apt dnf apk pacman zypper; do
+            python3 "tests/$family-client/matrix_test.py"
+          done
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

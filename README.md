@@ -49,7 +49,7 @@ This development branch includes features planned for **v0.18.0**. The currently
 - **Persistent Integrity Checks**: Private SHA256 records enabled by default; damaged or unverifiable legacy entries become misses
 - **Resource Admission**: Download concurrency and a common budget bound spool files, cache copies and S3 payload buffers
 - **Explicit Shared Repository Cache**: Reuse verified SHA256 by-hash indexes across mapped roots; cross-process coordination is limited to Unix disk storage
-- **Real APT Validation**: Signed update, installation, source and offline tests on Debian Bookworm/Trixie and Ubuntu 22.04/24.04
+- **Real Client Cache Validation**: Manual and release-gated Docker tests for APT, DNF/DNF5, APK, pacman and zypper; signed downloads, installation and cache reuse
 
 ## Supported Platforms
 
@@ -131,6 +131,11 @@ checks, configure the optional `metalink` endpoint and replace the repository's
 Metalink origin with apt-proxy. The XML's metadata and package links then pass
 through one snapshot cache namespace. See [CentOS Metalink setup](docs/centos-metalink.md)
 and [real DNF client tests](docs/dnf-client-tests.md).
+
+The [Docker client compatibility suite](docs/client-compatibility.md) tests
+signed repository downloads, installation and proxy cache reuse with APT,
+DNF/DNF5, APK, pacman and zypper. Run it manually in GitHub Actions; the complete
+matrix also gates version publication.
 
 For a fixed base URL instead, configure apt-proxy with the Stream mirror first:
 
@@ -636,7 +641,7 @@ or divergent snapshots and private requests cannot switch. There is no automatic
 failback or background polling. `GET /api/mirrors/status` uses the existing
 management API policy. See [runtime mirror health](docs/runtime-mirror-health.md).
 
-Run `bash tests/apt-client/matrix.sh` for signed local repository tests with four
+Run `bash tests/apt-client/matrix.sh` for signed local repository tests with five
 actual APT clients, including installation, sources, SHA256 by-hash, gzip fallback,
 ranges, failure recovery and imported offline snapshots. This does not establish
 compatibility with every public mirror. See [client tests](docs/apt-client-tests.md).

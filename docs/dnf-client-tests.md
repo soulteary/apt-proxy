@@ -1,9 +1,19 @@
-# Real DNF Metalink compatibility
+# Real RPM repository caching with DNF and DNF5
 
 Run `bash tests/dnf-client/matrix.sh` with Docker and Go installed. The default
-matrix uses the official `quay.io/centos/centos:stream9` and `:stream10` images.
-Pass image references to select clients. The suite compiles the current proxy
-for the Docker daemon's architecture; CI executes both clients on x86_64.
+matrix uses CentOS Stream 9/10 (`quay.io/centos/centos:stream9`, `:stream10`),
+Fedora 44 (`quay.io/fedora/fedora:44`), Rocky Linux 9/10
+(`rockylinux/rockylinux:9`, `:10`), and AlmaLinux 9/10 (`almalinux:9`, `:10`).
+The images come from each project's container registry or Docker Official
+Images. Pass image references to select clients. The suite compiles the current
+proxy for the Docker daemon's architecture.
+
+Fedora exercises its native DNF5; the Enterprise Linux clients use their native
+DNF. The entrypoint detects the selected command and uses the appropriate
+repository-selection flags, then records the full client version and detected
+generation in `client.json`. Modern RPM's OpenPGP signing macros and legacy
+GnuPG macros both select the same ephemeral key; package and repository
+signature verification remain enabled.
 
 Each disposable container builds a dependency-free noarch RPM, signs it with
 an ephemeral GPG key, creates rpm-md metadata with `createrepo_c`, and signs
@@ -15,9 +25,12 @@ disposable container.
 
 The fixture serves a Metalink v3 document with a SHA256 digest, size, and two
 certificate-verified HTTPS mirror URLs. The actual DNF client uses a proxy
-`metalink=` URL containing native `$stream` and `$basearch` variables and the
-official repository's `countme=1` setting. The
-source checks the expanded query values, including `protocol=https,http`.
+`metalink=` URL containing native `$basearch` and repository variables:
+CentOS preserves `$stream` in `centos-baseos-$stream`; Fedora, Rocky and Alma use
+`fixture-<distribution>-${releasever}` with their own `$releasever`. All clients
+retain `countme=1`. The source checks the expanded query values, including
+`protocol=https,http`. The non-CentOS names identify local fixtures and do not
+claim to reproduce those distributions' public mirror or repository layout.
 Discovery responses use `Cache-Control: no-cache`, exercising dynamic list
 refreshes while identical repository packages remain reusable in the proxy.
 
@@ -48,7 +61,10 @@ references. Colliding identifiers are rejected before previous evidence is
 cleared. Entrypoint regression checks run with
 `python3 tests/dnf-client/matrix_test.py`.
 
-CI runs Stream 9 and 10 independently and uploads logs, syscall traces, Metalink
-XML, cache counters, and rejection evidence even when a test fails. These tests
-validate an isolated Metalink/rpm-md repository; they do not assert availability
-or synchronization of every public CentOS mirror.
+The client compatibility workflow runs clients independently when manually
+requested or when publishing a version, and uploads logs, syscall traces,
+Metalink XML, cache counters, and rejection evidence even when a test fails.
+See [Client compatibility tests](client-compatibility.md) for workflow
+selection and execution. These tests validate each client's actual RPM
+repository downloads and apt-proxy caching using isolated signed fixtures;
+they do not assert availability or synchronization of every public mirror.

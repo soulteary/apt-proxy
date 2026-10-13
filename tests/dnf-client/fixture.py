@@ -85,7 +85,7 @@ class Repository(http.server.BaseHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query)
             # Verify that DNF expands its native repository variables and that
             # apt-proxy preserves the source's query parameters.
-            if (query.get("repo") != ["centos-baseos-" + Path("/fixture/stream").read_text().strip() + "-stream"]
+            if (query.get("repo") != [Path("/fixture/repository-id").read_text().strip()]
                     or query.get("arch") != [Path("/fixture/arch").read_text().strip()]
                     or query.get("protocol") != ["https,http"]):
                 self.send_error(400, "Unexpected Metalink query")
