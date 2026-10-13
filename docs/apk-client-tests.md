@@ -28,10 +28,17 @@ The suite requires signed `apk update` and package installation, followed by
 byte-for-byte payload verification. It removes the package and all client cache
 files, updates again, and reinstalls. The fixture's origin package GET counter
 must remain unchanged, proving a proxy cache hit. A fresh proxy cache is used
-for each negative phase. Corrupting only a signature member while retaining
-valid gzip framing must cause index update and package installation to fail.
-Client signature and certificate checks remain enabled throughout. Syscall
-traces also require every APK network connection to use the proxy port.
+for each negative phase. A corrupted index signature with valid gzip framing
+must fail index update. For the package negative, one signed control metadata
+byte changes while the archive framing, complete payload and total transfer
+size remain valid. The original signed index stays unchanged: repository
+installation must reject the package identity mismatch. An independent native
+`apk verify` control checks the original package signature successfully and
+rejects the altered package signature. This distinction follows APK's legacy
+trusted-index identity model, rather than assuming repository installation
+independently verifies its embedded package signature. Client signature and
+certificate checks remain enabled throughout. Syscall traces also require
+every APK network connection to use the proxy port.
 
 Evidence is written beneath `apk-client-evidence/`, or
 `APK_CLIENT_EVIDENCE_DIR`, with separate Docker-safe image identifiers. It includes
@@ -41,7 +48,9 @@ keys and certificate keys remain inside the disposable container.
 
 Run `python3 tests/apk-client/matrix_test.py` for lightweight entrypoint checks.
 These stub Docker and Go, and cover image identifiers, collisions, and cleanup
-of previous evidence before build failures. They require no Docker daemon.
+of previous evidence before build failures. They also verify archive mutation
+preserves gzip framing, transfer size and untouched package data. They require
+no Docker daemon.
 Coverage concerns the local signed fixture and the selected client versions.
 
 The [shared compatibility guide](client-compatibility.md) describes the unified

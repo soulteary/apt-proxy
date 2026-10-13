@@ -102,6 +102,7 @@ apk_fixture() {
     apk --cache-dir /fixture/client-cache "$@"
 }
 start_proxy
+apk_fixture verify-original verify "$package"
 apk_fixture update update
 apk_fixture install add apt-proxy-fixture
 cmp /usr/share/apt-proxy-fixture/payload /fixture/build/apt-proxy-fixture/payload
@@ -123,19 +124,7 @@ json.dump({'first_origin_package_gets':before,'second_origin_package_gets':after
            'client_cache_cleared':True,'payload_matches':True},open('/evidence/cache-hit.json','w'),indent=2)
 PY
 apk_fixture final-remove del apt-proxy-fixture
-tamper_signature() {
-  python3 - "$1" <<'PY'
-import gzip,sys,zlib
-from pathlib import Path
-path=Path(sys.argv[1]); data=path.read_bytes()
-stream=zlib.decompressobj(31); fragment=bytearray(stream.decompress(data))
-assert fragment[:100].split(b'\0')[0].startswith(b'.SIGN.'), 'Not a signed legacy APK gzip member'
-assert int(fragment[124:136].strip(b'\0 '),8)>0 and len(fragment)>512
-fragment[512] ^= 1
-path.write_bytes(gzip.compress(bytes(fragment),mtime=0)+stream.unused_data)
-PY
-}
-tamper_signature "$repo/APKINDEX.tar.gz"
+python3 /tests/tamper.py signature "$repo/APKINDEX.tar.gz"
 rm -rf /fixture/client-cache; mkdir -p /fixture/client-cache
 start_proxy
 if apk_fixture rejected-index update > /evidence/rejected-index.log 2>&1; then
@@ -143,22 +132,26 @@ if apk_fixture rejected-index update > /evidence/rejected-index.log 2>&1; then
 fi
 grep -Ei 'signature|UNTRUSTED' /evidence/rejected-index.log
 cp /fixture/valid/APKINDEX.tar.gz "$repo/APKINDEX.tar.gz"
-tamper_signature "$package"
-# Rebuild the signed index so its advertised size reflects the corrupted
-# signature member; rejection must come from package verification itself.
-make_index
+# The signed index remains untouched. Repository installs verify its package
+# identity; apk verify separately checks the package's own signature.
+python3 /tests/tamper.py package "$package"
+if apk_fixture rejected-package-signature verify "$package" > /evidence/rejected-package-signature.log 2>&1; then
+  echo 'APK accepted an invalid package signature' >&2; exit 1
+fi
+grep -Ei 'signature|UNTRUSTED' /evidence/rejected-package-signature.log
 rm -rf /fixture/client-cache; mkdir -p /fixture/client-cache
 start_proxy
 apk_fixture valid-index update
 if apk_fixture rejected-package add apt-proxy-fixture > /evidence/rejected-package.log 2>&1; then
-  echo 'APK accepted an invalid package signature' >&2; exit 1
+  echo 'APK accepted a package with a mismatched trusted-index identity' >&2; exit 1
 fi
-grep -Ei 'signature|UNTRUSTED' /evidence/rejected-package.log
+grep -Ei 'signature|UNTRUSTED|checksum|integrity' /evidence/rejected-package.log
 python3 - <<'PY'
 import json
 from pathlib import Path
 connections=[]
-phases=('update','install','remove','second-update','reinstall','final-remove','rejected-index','valid-index','rejected-package')
+phases=('verify-original','update','install','remove','second-update','reinstall','final-remove',
+        'rejected-index','rejected-package-signature','valid-index','rejected-package')
 for phase in phases:
     trace=Path('/fixture/traces') / (phase+'.connect.log')
     for line in trace.read_text().splitlines():
@@ -170,6 +163,7 @@ for phase in phases:
 assert connections
 json.dump(connections,open('/evidence/client-connections.json','w'),indent=2)
 json.dump({'signed_index':True,'signed_package':True,'tampered_index_rejected':True,
+           'tampered_package_signature_rejected':True,'tampered_package_identity_rejected':True,
            'tampered_package_rejected':True,'tls_verification':True},open('/evidence/signatures.json','w'),indent=2)
 PY
-printf 'PASS: native APK signed update/install, proxy package cache hit after client-cache removal, index/package signature rejection, verified TLS, no direct origin connections\n' | tee /evidence/result.txt
+printf 'PASS: native APK signed update/install, proxy package cache hit after client-cache removal, index/package signature and trusted-index identity rejection, verified TLS, no direct origin connections\n' | tee /evidence/result.txt

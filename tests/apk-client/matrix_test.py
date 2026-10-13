@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Exercise the real matrix entrypoint without building images or running DNF."""
+"""Exercise APK matrix entrypoints and archive tampering without Docker."""
 
+import gzip
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import tarfile
 import unittest
+
+from tamper import member, padded_gzip, tamper_package, tamper_signature
 
 
 STUB = r'''#!/usr/bin/env python3
@@ -58,7 +63,7 @@ class MatrixTest(unittest.TestCase):
         script = Path(os.environ.get("MATRIX_SCRIPT", Path(__file__).with_name("matrix.sh")))
         self.script = fixtures / "matrix.sh"
         shutil.copyfile(script, self.script)
-        for name in ("Dockerfile", "fixture.py", "run.sh"):
+        for name in ("Dockerfile", "fixture.py", "tamper.py", "run.sh"):
             (fixtures / name).write_text("unused stub fixture\n")
         self.bin = self.root / "bin"
         self.bin.mkdir()
@@ -165,6 +170,69 @@ class MatrixTest(unittest.TestCase):
             with self.subTest(image=image):
                 self.assertNotEqual(self.run_matrix(image).returncode, 0)
                 self.assertEqual(self.calls(), [])
+
+
+class ArchiveTamperTest(unittest.TestCase):
+    @staticmethod
+    def tar_member(name, payload):
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as archive:
+            entry = tarfile.TarInfo(name)
+            entry.size = len(payload)
+            entry.pax_headers = {"mtime": "1791886580.123456789"}
+            archive.addfile(entry, io.BytesIO(payload))
+        return stream.getvalue()
+
+    def archive(self):
+        signature = gzip.compress(self.tar_member(".SIGN.RSA.fixture.rsa.pub", b"S" * 256), mtime=0)
+        control = gzip.compress(self.tar_member(".PKGINFO", b"pkgname = apt-proxy-fixture\n"
+                                               b"pkgdesc = Local signed APK cache fixture\n"),
+                                compresslevel=1, mtime=0)
+        data = gzip.compress(self.tar_member("usr/share/apt-proxy-fixture/payload", b"payload"), mtime=0)
+        return signature, control, data
+
+    def test_package_changes_only_signed_control_with_exact_transfer_size(self):
+        signature, control, data = self.archive()
+        original = signature + control + data
+        modified = tamper_package(original)
+        self.assertEqual(len(modified), len(original))
+        _, modified_signature, remainder = member(modified)
+        modified_control, compressed_control, remaining_data = member(remainder)
+        self.assertEqual(modified_signature, signature)
+        self.assertEqual(remaining_data, data)
+        self.assertEqual(len(compressed_control), len(control))
+        original_control = gzip.decompress(control)
+        self.assertEqual(sum(a != b for a, b in zip(original_control, modified_control)), 1)
+        with tarfile.open(fileobj=io.BytesIO(modified_control), mode="r:") as archive:
+            self.assertEqual(archive.getnames(), [".PKGINFO"])
+            metadata = archive.extractfile(".PKGINFO").read()
+        self.assertIn(b"pkgname = apt-proxy-fixture\n", metadata)
+        self.assertNotIn(b"pkgdesc = Local signed APK cache fixture\n", metadata)
+
+    def test_signature_changes_with_valid_gzip_and_unchanged_package_members(self):
+        signature, control, data = self.archive()
+        modified, _, remainder = member(tamper_signature(signature + control + data))
+        self.assertEqual(remainder, control + data)
+        original = gzip.decompress(signature)
+        self.assertEqual(sum(a != b for a, b in zip(original, modified)), 1)
+        self.assertEqual(modified[:512], original[:512])
+        with tarfile.open(fileobj=io.BytesIO(original), mode="r:") as archive:
+            entry = archive.getmembers()[0]
+        self.assertEqual(modified[:entry.offset_data], original[:entry.offset_data])
+        self.assertEqual(modified[entry.offset_data + 1:], original[entry.offset_data + 1:])
+
+    def test_padding_preserves_gzip_payload_and_exact_length(self):
+        fragment = b"valid control metadata" * 20
+        size = len(gzip.compress(fragment, compresslevel=9, mtime=0))
+        for padding in (0, 1, 2, 3, 4, 5, 8):
+            with self.subTest(padding=padding):
+                compressed = padded_gzip(fragment, size + padding)
+                self.assertEqual(len(compressed), size + padding)
+                self.assertEqual(gzip.decompress(compressed), fragment)
+                if padding:
+                    self.assertEqual(compressed[3], 16)
+                    self.assertEqual(compressed[10:10 + padding], b"X" * (padding - 1) + b"\0")
+        self.assertIsNone(padded_gzip(fragment, size - 1))
 
 
 if __name__ == "__main__":

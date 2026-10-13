@@ -47,7 +47,7 @@ arch=$(docker info --format '{{.Architecture}}')
 case "$arch" in aarch64|arm64) go_arch=arm64 ;; x86_64|amd64) go_arch=amd64 ;; *) echo "Unsupported Docker architecture: $arch" >&2; exit 1 ;; esac
 cd "$repo_root"
 CGO_ENABLED=0 GOOS=linux GOARCH="$go_arch" go build -o "$build_context/apt-proxy" ./cmd/apt-proxy
-cp tests/apk-client/{Dockerfile,fixture.py,run.sh} "$build_context/"
+cp tests/apk-client/{Dockerfile,fixture.py,tamper.py,run.sh} "$build_context/"
 for client_image in "$@"; do
   image_id=$(client_image_id "$client_image")
   docker build --platform "linux/$go_arch" --build-arg "APK_CLIENT_IMAGE=$client_image" -t "apt-proxy-apk-test:$image_id" "$build_context"
