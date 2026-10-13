@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -26,6 +28,8 @@ import (
 
 var ErrCapacity = errors.New("metalink repository capacity reached")
 var queryPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+var artifactContentRange = regexp.MustCompile(`^bytes [0-9]+-[0-9]+/(?:[0-9]+|\*)$`)
+var entityTags = regexp.MustCompile(`^(?:W/)?"[^\x00-\x20\x22\x7f]*"(?:\s*,\s*(?:W/)?"[^\x00-\x20\x22\x7f]*")*$`)
 
 type repository struct {
 	done     chan struct{}
@@ -619,14 +623,11 @@ func (t *routingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		if err != nil {
 			continue
 		}
-		if res.StatusCode >= 300 && res.StatusCode < 400 && res.StatusCode != http.StatusNotModified || res.StatusCode == http.StatusNotFound || res.StatusCode >= 500 {
+		if !validArtifactResponse(r, res) {
 			_ = res.Body.Close()
 			continue
 		}
 		cacheHeaders(res.Header)
-		if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusPartialContent && res.StatusCode != http.StatusNotModified {
-			res.Header.Set("Cache-Control", "no-store")
-		}
 		res.Request = r
 		timer.Stop()
 		res.Body = &leasedBody{ReadCloser: res.Body, release: cancel}
@@ -634,4 +635,42 @@ func (t *routingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		return res, nil
 	}
 	return nil, fmt.Errorf("no mirror can serve the verified Metalink snapshot")
+}
+
+// Mirror-specific failures do not establish that the artifact is unavailable
+// from every mirror. Partial and bodyless successes must also match the request
+// semantics before they can complete a canonical cache request.
+func validArtifactResponse(r *http.Request, res *http.Response) bool {
+	switch res.StatusCode {
+	case http.StatusOK:
+		return true
+	case http.StatusNotModified:
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			return false
+		}
+		if values := r.Header.Values("If-None-Match"); len(values) > 0 {
+			value := strings.TrimSpace(strings.Join(values, ","))
+			return value == "*" || entityTags.MatchString(value)
+		}
+		_, err := http.ParseTime(r.Header.Get("If-Modified-Since"))
+		return err == nil
+	case http.StatusPartialContent:
+		if r.Method != http.MethodGet {
+			return false
+		}
+		if strings.TrimSpace(r.Header.Get("Range")) == "" {
+			return false
+		}
+		if values := res.Header.Values("Content-Range"); len(values) > 0 {
+			return len(values) == 1 && artifactContentRange.MatchString(strings.TrimSpace(values[0]))
+		}
+		mediaType, params, err := mime.ParseMediaType(res.Header.Get("Content-Type"))
+		if err != nil || mediaType != "multipart/byteranges" || params["boundary"] == "" {
+			return false
+		}
+		// Reuse the standard MIME boundary validator without buffering an RPM.
+		return multipart.NewWriter(io.Discard).SetBoundary(params["boundary"]) == nil
+	default:
+		return false
+	}
 }
