@@ -1,15 +1,15 @@
 {
   "schema_version": "1.0",
   "tests": {
-    "total": 532,
-    "passed": 531,
+    "total": 550,
+    "passed": 549,
     "failed": 0,
     "skipped": 1
   },
   "coverage": {
-    "covered_statements": 4302,
-    "total_statements": 5183,
-    "percentage": 83,
+    "covered_statements": 4827,
+    "total_statements": 5801,
+    "percentage": 83.21,
     "threshold": 80
   },
   "packages": [
@@ -44,16 +44,16 @@
     {
       "name": "internal/cli",
       "status": "pass",
-      "tests": 92,
+      "tests": 93,
       "failed": 0,
-      "coverage": 73.77
+      "coverage": 73.69
     },
     {
       "name": "internal/config",
       "status": "pass",
-      "tests": 50,
+      "tests": 52,
       "failed": 0,
-      "coverage": 74.82
+      "coverage": 75.09
     },
     {
       "name": "internal/distro",
@@ -75,6 +75,13 @@
       "tests": 4,
       "failed": 0,
       "coverage": 96.77
+    },
+    {
+      "name": "internal/metalink",
+      "status": "pass",
+      "tests": 15,
+      "failed": 0,
+      "coverage": 85.02
     },
     {
       "name": "internal/mirrorhealth",
@@ -102,7 +109,7 @@
       "status": "pass",
       "tests": 132,
       "failed": 0,
-      "coverage": 85.94
+      "coverage": 85.65
     },
     {
       "name": "internal/repository",
@@ -123,7 +130,7 @@
       "status": "pass",
       "tests": 18,
       "failed": 0,
-      "coverage": 74.1
+      "coverage": 74.62
     },
     {
       "name": "internal/state",
