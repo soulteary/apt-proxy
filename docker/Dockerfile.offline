@@ -1,5 +1,5 @@
 # Optional repository snapshot image. Includes bounded xz parsing support.
-FROM golang:1.27.2-alpine3.24 AS builder
+FROM golang:1.27.3-alpine3.24 AS builder
 RUN apk add --no-cache ca-certificates git
 WORKDIR /build
 ENV CGO_ENABLED=0
