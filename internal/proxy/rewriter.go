@@ -471,6 +471,10 @@ func CreateNewRewritersAsync(mode int, st *state.AppState, reg *distro.Registry)
 // CreateNewRewritersAsync. A nil engine falls back to benchmarks.Default().
 func CreateNewRewritersAsyncWithEngine(mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriters {
 	rewriters := &URLRewriters{}
+	// A fast benchmark may finish before its initial rewriter is installed.
+	// Publish every initial pointer before allowing callbacks to replace it.
+	rewriters.Mu.Lock()
+	defer rewriters.Mu.Unlock()
 	for _, m := range modesToInit(mode, reg) {
 		if rw := createRewriterAsync(m, st, reg, rewriters, bench); rw != nil {
 			rewriters.set(m, rw)
