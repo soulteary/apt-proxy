@@ -1,15 +1,15 @@
 {
   "schema_version": "1.0",
   "tests": {
-    "total": 550,
-    "passed": 549,
+    "total": 551,
+    "passed": 550,
     "failed": 0,
     "skipped": 1
   },
   "coverage": {
-    "covered_statements": 4827,
-    "total_statements": 5801,
-    "percentage": 83.21,
+    "covered_statements": 4854,
+    "total_statements": 5803,
+    "percentage": 83.65,
     "threshold": 80
   },
   "packages": [
@@ -107,9 +107,9 @@
     {
       "name": "internal/proxy",
       "status": "pass",
-      "tests": 132,
+      "tests": 133,
       "failed": 0,
-      "coverage": 85.65
+      "coverage": 88.34
     },
     {
       "name": "internal/repository",

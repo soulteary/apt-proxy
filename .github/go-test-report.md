@@ -4,11 +4,11 @@
 
 | Metric | Value |
 | --- | --- |
-| Total | 550 |
-| Passed | 549 |
+| Total | 551 |
+| Passed | 550 |
 | Failed | 0 |
 | Skipped | 1 |
-| Coverage | 83.21% |
+| Coverage | 83.65% |
 | Threshold | 80.00% |
 
 ### Packages
@@ -28,7 +28,7 @@
 | internal/mirrorhealth | pass | 24 | 0 | 90.02% |
 | internal/mirrors | pass | 18 | 0 | 97.40% |
 | internal/passthrough | pass | 4 | 0 | 94.44% |
-| internal/proxy | pass | 132 | 0 | 85.65% |
+| internal/proxy | pass | 133 | 0 | 88.34% |
 | internal/repository | pass | 10 | 0 | 80.90% |
 | internal/resource | pass | 7 | 0 | 78.22% |
 | internal/sharedcache | pass | 18 | 0 | 74.62% |
