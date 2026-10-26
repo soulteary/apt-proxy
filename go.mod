@@ -7,7 +7,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/minio/minio-go/v7 v7.4.1
 	github.com/soulteary/cli-kit v1.9.2
-	github.com/soulteary/health-kit/v4 v4.0.2
+	github.com/soulteary/health-kit/v4 v4.0.3
 	github.com/soulteary/http-kit/v2 v2.0.2
 	github.com/soulteary/httpcache-kit/v4 v4.1.1
 	github.com/soulteary/logger-kit/v3 v3.0.3

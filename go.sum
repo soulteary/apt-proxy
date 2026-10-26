@@ -84,8 +84,8 @@ github.com/shamaton/msgpack/v3 v3.2.3 h1:0r0aZtrXDFOPpwWJTEOpFq+Ih/JmMLm0pqLN5mS
 github.com/shamaton/msgpack/v3 v3.2.3/go.mod h1:sgBYvEiyz8JR1NC3yGRoPVME9xXovpnh3l/plW1nfRo=
 github.com/soulteary/cli-kit v1.9.2 h1:lciNt542e/YwV8aTSOLABtA6GTOv6i7iaTV+4w9SAAA=
 github.com/soulteary/cli-kit v1.9.2/go.mod h1:/u1MG5w4C04y2UvjQ2hUgkmFIWX36F26IUzRsBR5qP8=
-github.com/soulteary/health-kit/v4 v4.0.2 h1:x4CTz3OS8aevaCG3BZtwKhNy+vRKZ7lxzBWAZafTRCc=
-github.com/soulteary/health-kit/v4 v4.0.2/go.mod h1:s+/1qkFsM6Cb8XQYBNWqCQUJquPScn6hAJbXDYXlnFc=
+github.com/soulteary/health-kit/v4 v4.0.3 h1:hqr4VVq+dxgiDSyQJMtK4zgZyIPu8YfRyPsEGER4eOI=
+github.com/soulteary/health-kit/v4 v4.0.3/go.mod h1:H8oo+OeAarz41ZPFShmUCVJ0BvE4uK9tIiCDFmu7lSI=
 github.com/soulteary/http-kit/v2 v2.0.2 h1:6cdfM4oOyUvleY4obZgIdEiFReUTZIFc9HyuBFvLggc=
 github.com/soulteary/http-kit/v2 v2.0.2/go.mod h1:bRSSQY7HnhohsmMGHtTKO8ZgW2STgogp1X/D0LVYmWs=
 github.com/soulteary/httpcache-kit/v4 v4.1.1 h1:9LHTn58H2hxMDc2IJN5WB1Av5CfSTGSFfkNb3F78aS4=
