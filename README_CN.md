@@ -35,7 +35,7 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - **Docker 友好**：无缝集成 Docker 容器和构建流程
 - **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景，包括用于 TLS 上游的 `HTTPS///` 重写标记 —— 现有的 `sources.list` 条目无需改写即可迁移（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
 - **第三方软件源**：可通过 `passthrough` 白名单指定要缓存的源站（PPA、厂商源、内部源），默认关闭 —— apt-proxy 不是开放转发代理
-- **域名根仓库**：仓库直接放在域名根目录、路径里没有前缀可匹配时（`security.debian.org`、`apt.armbian.com`），按请求 `Host` 路由，可通过 `host_pattern` 按发行版配置
+- **按源站识别仓库**：同时匹配 `host_pattern` 与 `url_pattern` 的配置优先于通用路径规则，可区分同样使用 `/debian/` 的 Proxmox 仓库；仅匹配域名的后备规则继续支持 `security.debian.org`、`apt.armbian.com` 等域名根仓库
 - **内置仓库路由**：提供 Ubuntu、Ubuntu Ports、Debian、CentOS、Alpine 路由；其他仓库需配置发行版映射或明确的 passthrough 白名单
 - **可观测性**：内置健康检查、Prometheus 指标、结构化日志，并可选启用 OpenTelemetry 链路追踪
 - **缓存管理**：REST API 支持缓存统计、清理与维护，附带 API Key 鉴权与按 IP 限流
@@ -233,6 +233,11 @@ Security 镜像。查询参数会被保留，无法匹配已配置发行版的�
 
 通过外部 YAML 文件可维护发行版和镜像列表，无需改代码或重新编译。
 
+**[#167](https://github.com/soulteary/apt-proxy/issues/167) 的未发布改进：**
+下述域名与路径联合匹配优先级、严格 YAML 校验需要包含该修复的构建，v0.19.1 尚未包含。
+[Proxmox Backup Client 示例](examples/proxmox/)提供保留官方源地址的代理配置，
+以及独立的本地路径别名。
+
 **让 apt-proxy 读到这个文件：** 把它放在查找路径之一，或显式指定路径。未指定路径
 时，按以下顺序取第一个存在的文件：
 
@@ -251,6 +256,11 @@ Security 镜像。查询参数会被保留，无法匹配已配置发行版的�
 
 环境变量 `APT_PROXY_DISTRIBUTIONS_CONFIG` 与该 flag 等价。都找不到时使用内置发行版；
 文件解析失败时会保留内置发行版并打一条 warning，不会导致服务启动失败。
+
+配置必须是单个 YAML 文档，并使用已定义的字段名。未知字段会报出行号和字段名，
+例如应写 `cache_control`，而非 `cache-control`。空文件仍然有效；支持在已定义字段
+内部使用 YAML 锚点与合并，不支持额外的顶层锚点辅助字段。这项校验仅针对
+`distributions.yaml`，不改变服务器主配置的加载方式。
 
 **示例 `config/distributions.yaml`：**
 
@@ -279,20 +289,25 @@ distributions:
 
 修改配置后，发送 **SIGHUP** 或调用 **POST /api/mirrors/refresh** 即可热重载，无需重启。
 
+路由先查找同时匹配域名和路径的条目，再匹配路径，最后按域名匹配根目录仓库。
+每个阶段内仍按既定顺序匹配内置发行版，自定义条目按 `id` 升序匹配。
+选中发行版后使用第一条命中的 `cache_rules[]`；没有命中缓存规则时返回 `404`，
+不会继续尝试其他仓库。配置加载或镜像选优失败时，热重载保留原有路由与缓存规则。
+
 **字段说明：**
 
-- `id` — 唯一标识符，用作 URL 前缀（`/<id>/...`）。
+- `id` — 稳定、唯一的注册标识符，也会出现在 URL 重写调试日志中；实际匹配的 URL 路径由 `url_pattern` 决定。
 - `name` — 显示名。
 - `type` — 整数类型。`1` Ubuntu、`2` UbuntuPorts、`3` Debian、`4` CentOS、`5` Alpine 用于覆盖内置发行版的配置，`0` 保留给 "all"。**填写其它正整数即可注册一个 apt-proxy 未内置的发行版** —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。已被占用的类型在加载时会直接报错，所以请挑一个未使用的数字（`6`、`7`……）并保持稳定：镜像选择与 rewriter 状态都以它为键跨重载保存。
-- `url_pattern` — 用于匹配请求路径的正则；捕获的部分会拼到上游镜像后。
-- `host_pattern` — 可选，用于匹配请求 `Host` 头的正则。适用于仓库直接放在域名根目录、路径里没有前缀可供 `url_pattern` 匹配的情况（例如 `deb http://security.debian.org <suite>-security main`，或 `apt.armbian.com`）。仅在 `url_pattern` 未命中时才会尝试；命中后会把整个请求路径拼到上游镜像后。请使用 `^...$` 锚定，避免相似域名冒充你的发行版。匹配前会把 host 转为小写，因此模式请写成小写。省略该字段时会继承该发行版类型的内置匹配器（Debian 保留 `security.debian.org`），与省略 `mirrors` 时沿用内置镜像列表的行为一致；显式设置则覆盖内置值。只有内置的 Debian security 域名会路由到专用的 Debian Security 镜像 —— 你为 type `3` 自行配置的 `host_pattern` 会解析到该条目自己的镜像。
+- `url_pattern` — 用于匹配请求路径的正则；最后一个捕获组会拼到上游镜像根目录后。
+- `host_pattern` — 可选，用于匹配原始请求域名的正则，匹配前转为小写并保留显式端口。同时命中域名和 `url_pattern` 的条目优先于通用路径规则；没有任何发行版路径命中时，才按域名匹配，并把整个请求路径拼到镜像根目录后，适用于 `security.debian.org`、`apt.armbian.com` 等域名根仓库。请使用 `^...$` 锚定，避免匹配相似域名。它是路由提示，不是域名访问白名单：本地路径别名仍可使用代理自身的域名。省略时继承该类型的内置匹配器（Debian 保留 `security.debian.org`），显式设置则覆盖内置值。只有内置 Debian security 域名会路由到专用的 Debian Security 镜像；为 type `3` 配置的其他域名使用该条目自己的镜像。
 - `benchmark_url` — 镜像测速用的相对路径。
 - `geo_mirror_api` — 可选，返回地理镜像列表（Ubuntu 风格的 `mirrors.txt`）。
 - `cache_rules[]` — 上游没有提供 `Cache-Control` 与 `Expires` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式指令与过期时间（包括过去或无效的 `Expires`）、较短有效期、`private` 和 `no-store` 会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。
 - `mirrors.official` / `mirrors.custom` — 镜像主机列表。基于主机末段会自动生成 `cn:<name>` 形式的别名（如 `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`）。
 - `aliases` — 显式别名映射，可覆盖/补充自动生成的别名。
 
-**添加或修改发行版：** 在 `distributions` 下增加或编辑一项，填写 `id`、`name`、`type`、`url_pattern`、`benchmark_url`、`cache_rules`、`mirrors`、`aliases` 即可（若仓库位于域名根目录，还需 `host_pattern`）。本仓库自带示例 `config/distributions.yaml`，可直接在此基础上增删改。
+**添加或修改发行版：** 在 `distributions` 下增加或编辑一项，填写 `id`、`name`、`type`、`url_pattern`、`benchmark_url`、`cache_rules`、`mirrors`、`aliases` 即可；仓库位于域名根目录，或路径与其他发行版重叠时，再配置 `host_pattern`。可参考本仓库的 `config/distributions.yaml` 和 [Proxmox 示例](examples/proxmox/)。
 
 ### 添加 apt-proxy 未内置的发行版
 

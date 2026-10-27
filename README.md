@@ -35,7 +35,7 @@ This README describes the current main branch. [v0.18.0](https://github.com/soul
 - **Docker-Ready**: Seamlessly integrates with Docker containers and build processes
 - **apt-cacher-ng Friendly**: Compatible with most [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) usage patterns, including the `HTTPS///` rewrite marker for TLS upstreams — so existing `sources.list` entries migrate unchanged (note: advanced features such as the Import/Maint web UI, full `acng.conf` syntax, and cross-distro deb deduplication are not implemented)
 - **Third-Party Archives**: Fetches and caches origins you name in a `passthrough` allowlist (a PPA, a vendor repo, an internal archive) — off by default, because apt-proxy is not an open forward proxy
-- **Host-Root Archives**: Routes by the request `Host` when an archive lives at a domain root with no path prefix to match (`security.debian.org`, `apt.armbian.com`), configurable per distribution with `host_pattern`
+- **Origin-Aware Repository Routes**: A configured `host_pattern` plus `url_pattern` takes priority over generic paths (for example, Proxmox under `/debian/`). Host-only fallback also handles domain-root archives such as `security.debian.org` and `apt.armbian.com`
 - **Built-in Repository Routes**: Ubuntu, Ubuntu Ports, Debian, CentOS and Alpine; configure other archives through distribution mappings or an explicit passthrough allowlist
 - **Observability**: Built-in health checks, Prometheus metrics, structured logging, and optional OpenTelemetry tracing
 - **Cache Management**: REST API for cache statistics, purging, and cleanup, with API-key authentication and per-IP rate limiting
@@ -243,6 +243,12 @@ point those `sources.list` entries at their origin directly.
 
 You can maintain distributions and mirror lists via an external YAML file without changing code or recompiling.
 
+**Unreleased changes for [#167](https://github.com/soulteary/apt-proxy/issues/167):**
+the host-and-path priority and strict YAML validation described below require a
+build containing this fix; they are not present in v0.19.1. See the
+[Proxmox Backup Client example](examples/proxmox/) for original-source proxying
+and a distinct local path alias.
+
 **Pointing apt-proxy at the file:** drop it at one of the search paths, or name
 it explicitly. When no path is given, the first of these that exists wins:
 
@@ -262,6 +268,12 @@ it explicitly. When no path is given, the first of these that exists wins:
 `APT_PROXY_DISTRIBUTIONS_CONFIG` sets the same path as the flag. If nothing is
 found the built-in distributions are used, and a file that fails to parse leaves
 the built-ins in place with a warning rather than taking the server down.
+
+Use a single YAML document and the documented field names. Unknown fields,
+including `cache-control` instead of `cache_control`, are rejected with a line
+number and field name. Empty files remain valid. Anchors and merges within
+recognized fields are supported; extra top-level anchor-helper keys are not.
+This validation applies to `distributions.yaml`, not the main server config.
 
 **Example `config/distributions.yaml`:**
 
@@ -294,24 +306,27 @@ Reload is published only after the configuration loads and all required mirror
 elections succeed. A failed reload keeps the previous routing and cache rules;
 the API returns a structured error (`500` for configuration loading failures,
 `503` for failed mirror election), and SIGHUP logs the failure. Repair the file
-or mirror connectivity and retry. Built-in distributions retain their established
-matching order; overlapping custom distributions are tried in ascending `id`
-order. Within a distribution, the first matching `cache_rules[]` entry wins.
+or mirror connectivity and retry. Routing first tries entries matching both
+host and path, then path-only entries, then host-only fallback. Within each
+phase, built-ins retain their established order and overlapping custom entries
+are tried in ascending `id` order. Within a distribution, the first matching
+`cache_rules[]` entry wins; a selected distribution with no matching cache rule
+returns `404` rather than falling through to another repository.
 
 **Field reference:**
 
-- `id` — unique identifier used in URL paths (`/<id>/...`).
+- `id` — stable, unique registry identifier, also shown in rewrite debug logs. `url_pattern` determines which URL paths it serves.
 - `name` — human-readable display name.
 - `type` — integer distro type. `1` Ubuntu, `2` UbuntuPorts, `3` Debian, `4` CentOS and `5` Alpine reconfigure the built-in distributions; `0` is reserved for "all". **Any other positive integer registers a distribution apt-proxy does not ship** — see [Adding a distribution apt-proxy does not ship](#adding-a-distribution-apt-proxy-does-not-ship). A type already in use is rejected at load time, so pick a free number (`6`, `7`, …) and keep it stable: it is the key the mirror and rewriter state is held under across reloads.
-- `url_pattern` — regex matched against the request path; the captured group is appended to the upstream mirror.
-- `host_pattern` — optional regex matched against the request's `Host` header. Use it for archives served from the host root, where no path prefix exists for `url_pattern` to match (for example `deb http://security.debian.org <suite>-security main`, or `apt.armbian.com`). It is tried only after `url_pattern` fails, and when it matches the whole request path is appended to the upstream mirror. Anchor it (`^...$`) so a lookalike host cannot claim your distribution. The host is lower-cased before matching, so write the pattern in lower case. Omitting the field inherits the built-in matcher for that distro type (Debian keeps `security.debian.org`), the same way omitting `mirrors` keeps the built-in mirror list; setting it replaces the built-in. Only the built-in Debian security host routes to the dedicated Debian Security mirror — a `host_pattern` you configure for type `3` resolves to that entry's own mirror.
+- `url_pattern` — regex matched against the request path; its last captured group is appended to the upstream mirror root.
+- `host_pattern` — optional regex matched against the original request host, lower-cased and including any explicit port. An entry matching both host and `url_pattern` takes priority over generic path-only routes. If no distribution path matches, host-only fallback treats the entire request path as relative to the mirror root (for example `security.debian.org` or `apt.armbian.com`). Anchor it (`^...$`) to avoid matching lookalike hosts. This is a routing hint, not a host allowlist: path aliases still work with the proxy's host name. Omitting it inherits the built-in matcher for that distro type (Debian keeps `security.debian.org`); setting it replaces the built-in. Only the built-in Debian security host routes to the dedicated Debian Security mirror; a custom type `3` host resolves to that entry's own mirror.
 - `benchmark_url` — relative path probed during mirror benchmarking.
 - `geo_mirror_api` — optional URL returning a list of geo-located mirrors (Ubuntu-style `mirrors.txt`).
 - `cache_rules[]` — per-pattern cache directives. `cache_control` supplies a default response `Cache-Control` for matched paths when the upstream omits both `Cache-Control` and `Expires` (`200` uses the configured value; `404` uses `public, max-age=30`). Explicit upstream directives and expiration dates, including past or invalid `Expires` dates, shorter freshness lifetimes, `private`, and `no-store`, are preserved. Defaults are applied before cache storage; `rewrite: true` enables URL rewriting for that pattern.
 - `mirrors.official` / `mirrors.custom` — mirror host lists. Aliases of the form `cn:<name>` are auto-generated from each mirror's host (e.g. `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`).
 - `aliases` — explicit name-to-mirror mapping that overrides/augments the auto-generated aliases.
 
-**Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases` (plus `host_pattern` if the archive lives at a host root). The repo includes an example at `config/distributions.yaml` that you can extend.
+**Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases` (plus `host_pattern` for a host-root archive or a repository whose path overlaps another distribution). The repo includes `config/distributions.yaml` and a [Proxmox example](examples/proxmox/) that you can extend.
 
 ### Adding a distribution apt-proxy does not ship
 

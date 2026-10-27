@@ -1,0 +1,18 @@
+name: apt-cache-proxmox
+
+services:
+  apt-proxy:
+    # Build this checkout: older published images may lack the #167 fix.
+    image: apt-proxy-proxmox:local
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    command:
+      - --mode=all
+      - --distributions-config=/etc/apt-proxy/distributions.yaml
+      - --cachedir=/var/cache/apt-proxy
+    ports:
+      - "3142:3142"
+    volumes:
+      - ./distributions.yaml:/etc/apt-proxy/distributions.yaml:ro

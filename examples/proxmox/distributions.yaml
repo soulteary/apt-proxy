@@ -1,0 +1,26 @@
+# Proxmox Backup Client on Debian Trixie.
+# Original URLs need the host-and-path routing fix for issue #167.
+# The unique /proxmox-pbs-client/ path is also accepted for direct proxy URLs.
+distributions:
+  - id: proxmox-pbs-client
+    name: Proxmox Backup Client
+    # Choose an unused custom type and keep it stable.
+    type: 11
+    # The final capture group is appended to the mirror root below.
+    url_pattern: "/(debian/pbs-client|proxmox-pbs-client)/(.+)$"
+    host_pattern: '^download\.proxmox\.com(:\d+)?$'
+    benchmark_url: "dists/trixie/Release"
+    cache_rules:
+      - pattern: '\.deb$'
+        cache_control: "max-age=100000"
+        rewrite: true
+      - pattern: '(InRelease|Release(\.gpg)?)$'
+        cache_control: "max-age=3600"
+        rewrite: true
+      # Keep indexes, by-hash files and other repository metadata routable.
+      - pattern: ".*"
+        cache_control: "max-age=3600"
+        rewrite: true
+    mirrors:
+      official:
+        - "http://download.proxmox.com/debian/pbs-client/"
