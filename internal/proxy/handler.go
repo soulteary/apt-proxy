@@ -110,8 +110,9 @@ func detachHeader(header http.Header) http.Header {
 type hostPatternEntry struct {
 	repositoryID string
 	pattern      *regexp.Regexp
-	// hostPattern, when set, matches the request's Host header for archives
-	// served from the host root. It is tried only after pattern fails.
+	// hostPattern identifies an origin when its path overlaps another archive.
+	// A host-and-path match takes priority over path-only matches. It also
+	// supports host-root archives when no distribution path matches.
 	hostPattern *regexp.Regexp
 	rules       []distro.Rule
 }
@@ -615,12 +616,24 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 	rt := ap.currentRouting()
 	entries := rt.patterns
 
-	// Path match first: it is the common case and the more specific signal,
-	// so an archive reachable by path keeps its existing routing even when
-	// some other distro claims the same host. matchesDistroPath additionally
-	// rejects a match hiding behind a path prefix that is not a mirror host,
-	// which is what keeps a third-party archive (a PPA, a vendor repo) from
-	// being answered out of the distribution's own mirror -- see hostprefix.go.
+	// An explicit origin and path together are more specific than a generic
+	// distribution path. For example, download.proxmox.com/debian/pbs-client
+	// must use its configured Proxmox mirror instead of the built-in Debian
+	// route. Requiring both matches preserves path routing when a different
+	// archive on the same host has its own path.
+	host := requestHost(r)
+	if host != "" {
+		for _, entry := range entries {
+			if entry.hostPattern != nil && entry.hostPattern.MatchString(host) &&
+				matchesDistroPath(entry.pattern, path) {
+				return ap.processMatchingRule(r, rt, entry)
+			}
+		}
+	}
+
+	// Preserve path-only routes, including local proxy aliases whose Host is
+	// the proxy rather than the original archive. matchesDistroPath rejects
+	// matches hidden behind a prefix that is not a mirror host (hostprefix.go).
 	for _, entry := range entries {
 		if matchesDistroPath(entry.pattern, path) {
 			return ap.processMatchingRule(r, rt, entry)
@@ -629,7 +642,6 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 
 	// Fall back to the Host header for archives served from the host root,
 	// where no path prefix exists for the URL pattern to match.
-	host := requestHost(r)
 	if host == "" {
 		return nil
 	}
@@ -673,7 +685,7 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, entry
 	}
 
 	if rule.Rewrite {
-		ap.rewriteRequest(r, rt, rule)
+		ap.rewriteRequest(r, rt, rule, entry.repositoryID)
 	}
 	return rule
 }
@@ -681,7 +693,7 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, entry
 // rewriteRequest rewrites the request URL to point to the configured mirror
 // for the distribution. This enables transparent proxying to different mirrors
 // while maintaining the original request path structure.
-func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *distro.Rule) {
+func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *distro.Rule, repositoryID string) {
 	if r.URL == nil {
 		ap.log.Error().Msg("request URL is nil, cannot rewrite")
 		return
@@ -692,6 +704,7 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *dist
 	if r.URL != nil {
 		r.Host = r.URL.Host
 		ap.log.Debug().
+			Str("distribution", repositoryID).
 			Str("from", before).
 			Str("to", logsafe.URL(r.URL.String())).
 			Msg("rewrote request URL")

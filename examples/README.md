@@ -9,6 +9,7 @@ target deployment and read its `README.md`.
 | [`specify-mirrors/`](specify-mirrors/) | `docker compose up -d` | Same as `basic/` but pins upstream Ubuntu/Debian mirrors via CLI flags.     |
 | [`s3-otterio/`](s3-otterio/)           | `docker compose up -d` | Production-shaped: cache offloaded to an S3-compatible bucket (OtterIO here). |
 | [`custom-distros/`](custom-distros/)   | `docker compose up -d` | Caches Deepin, Armbian and Arch Linux via `distributions.yaml` — no code change. |
+| [`proxmox/`](proxmox/)                 | `docker compose up --build -d` | PBS Client via the original HTTP source or a unique local path; builds the checkout containing the #167 routing fix. |
 | [`config-template/`](config-template/) | not directly runnable  | Fully-commented `apt-proxy.yaml` reference. Copy & trim to your needs.      |
 
 ## Picking an example
@@ -23,12 +24,15 @@ target deployment and read its `README.md`.
   [shared repository cache](../docs/shared-repository-cache.md).
 - Need a distribution apt-proxy does not ship (Deepin, Armbian, Arch, an
   internal archive)? See [`custom-distros/`](custom-distros/).
+- Need Proxmox Backup Client, whose original path overlaps Debian's
+  `/debian/` route? See [`proxmox/`](proxmox/) for host-and-path selection and
+  the version requirement.
 - Need to know what every config knob does? Read
   [`config-template/apt-proxy.yaml`](config-template/apt-proxy.yaml).
 
 ## Verifying any example
 
-After `docker compose up -d`, all examples expose the proxy on
+After starting one of the Compose examples, it exposes the proxy on
 `http://127.0.0.1:3142`:
 
 ```bash

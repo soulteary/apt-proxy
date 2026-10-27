@@ -42,10 +42,11 @@ type RegisteredDistribution struct {
 	Type       int
 	Builtin    bool
 	URLPattern *regexp.Regexp
-	// HostPattern optionally matches the request's Host header for archives
-	// served from the host root (no distinguishing path prefix, so
-	// URLPattern alone can never match). When it matches, the whole request
-	// path is treated as the mirror-relative suffix.
+	// HostPattern optionally identifies the request's origin. Matching both
+	// host and URLPattern takes priority over path-only routes. When no
+	// distribution path matches, a host match supports root-level archives
+	// by treating the whole request path as the mirror-relative suffix.
+	// It is a routing hint, not a restriction on path-only aliases.
 	HostPattern  *regexp.Regexp
 	BenchmarkURL string
 	GeoMirrorAPI string

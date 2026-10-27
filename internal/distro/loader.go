@@ -16,7 +16,10 @@
 package distro
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -100,8 +103,21 @@ func (l *Loader) Load() (*DistributionsConfig, error) {
 	}
 
 	var config DistributionsConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	// Reject misspelled settings rather than silently dropping routing or
+	// caching policy (for example, cache-control instead of cache_control).
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&config); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("failed to parse distribution config: %w", err)
+	}
+	// Empty files still mean no custom distributions. Additional documents,
+	// including empty ones, must not hide configuration that would be ignored.
+	var trailing yaml.Node
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse distribution config: %w", err)
+		}
+		return nil, fmt.Errorf("failed to parse distribution config: expected a single YAML document")
 	}
 
 	// Validate and compile regex patterns

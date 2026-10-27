@@ -19,6 +19,27 @@ The three entries cover both archive shapes:
 | Arch Linux | archive under a path prefix | `url_pattern` |
 | Armbian | archive at a domain root (`apt.armbian.com`) | `host_pattern` |
 
+### Repositories that share a path prefix
+
+Some third-party archives use a path already recognized by a built-in
+distribution. Proxmox Backup Client, for example, uses
+`download.proxmox.com/debian/pbs-client/`, which also matches Debian's generic
+`/debian/` prefix. For this case, configure both the original host in
+`host_pattern` and the repository path in `url_pattern`.
+
+With the routing fix for [#167](https://github.com/soulteary/apt-proxy/issues/167),
+selection first prefers an entry matching **both host and path**, then the
+existing path-only routes, then host-only fallback for domain-root archives.
+Build a checkout containing that fix; it is unreleased when this documentation
+is added. See the dedicated [Proxmox example](../proxmox/) for a working recipe
+and a unique local path alias usable without the host-and-path fix.
+
+`host_pattern` is a routing hint, not a host allowlist: path aliases remain
+accessible using the proxy's host name. When multiple custom entries overlap,
+use distinct host/path combinations instead of relying on the order of
+entries in YAML. The last capture group of `url_pattern` is appended to the
+mirror root, so preserve the repository-relative suffix there.
+
 ## Run
 
 ```bash
@@ -34,17 +55,20 @@ itself only runs on releases that carry it, so the example does not rely on it.
 Running the binary directly:
 
 ```bash
-./apt-proxy --distributions-config=./distributions.yaml
+./apt-proxy --mode=all --distributions-config=./distributions.yaml
 ```
 
 ## Verifying it loaded
 
-A request for an unregistered path returns `404`; a registered one is routed
-upstream, so it returns whatever the mirror says — anything but `404` means the
-entry took effect:
+A request for an unregistered path returns `404`. A registered path returns
+the upstream response, which can also be `404` when the requested file is
+missing or the request was routed to the wrong mirror. Check the explicit
+configuration path and startup errors, then compare the intended origin with
+the proxied URL and inspect `--debug` logs to verify the selected upstream.
+Neither `404` nor `cache: SKIP` alone proves that loading failed:
 
 ```bash
-# registered -> 200 (or 502/504 if the mirror is unreachable from here)
+# Registered path: the status also depends on upstream availability/content.
 curl -o /dev/null -w '%{http_code}\n' \
   http://127.0.0.1:3142/archlinux/core/os/x86_64/core.db
 
@@ -94,6 +118,11 @@ deb http://apt-proxy.example:3142/armbian bookworm main bookworm-utils bookworm-
 - **Mirrors.** The lists here are CN mirrors, matching apt-proxy's built-in
   defaults. Replace them with mirrors near you.
 - **Keep `type` stable.** Mirror election and rewriter state are keyed by it.
+- **Use the documented YAML keys.** Unknown keys are rejected: write
+  `cache_control`, not `cache-control`. Use one YAML document per file. YAML
+  anchors and merges can be used under recognized fields, but an extra
+  top-level key used only to hold an anchor is still an unknown field. Check
+  the reported load/reload error when a configuration is rejected.
 - **Keep the catch-all cache rule last.** A path matching no rule returns `404`,
   not a pass-through, and `apt update` fetches package indexes (`Packages.xz`,
   `by-hash/…`) as well as `InRelease`.
