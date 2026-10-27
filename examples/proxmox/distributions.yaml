@@ -1,5 +1,5 @@
 # Proxmox Backup Client on Debian Trixie.
-# Original URLs need the host-and-path routing fix for issue #167.
+# Original URLs need v0.19.2 or later for the host-and-path routing fix (#167).
 # The unique /proxmox-pbs-client/ path is also accepted for direct proxy URLs.
 distributions:
   - id: proxmox-pbs-client

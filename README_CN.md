@@ -20,7 +20,7 @@
 
 APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
 
-本文说明当前 main 分支。[v0.18.0](https://github.com/soulteary/apt-proxy/releases/tag/v0.18.0) 已发布，[升级说明](docs/releases/v0.18.0.zh-CN.md)描述该版本。可选 Metalink 端点和扩展的客户端测试是在该版本之后加入的；将相关配置用于已发布的程序或镜像前，请核对[客户端支持与版本可用性](docs/client-support.md)。
+本文说明当前 main 分支。v0.19.2 修复了包括 Proxmox Backup Client 在内的软件源路径重叠问题，并增加发行版 YAML 字段校验。使用自定义配置时，请先阅读 [v0.19.2 升级说明](docs/releases/v0.19.2.zh-CN.md)。已验证的仓库格式与客户端范围见[客户端支持与版本可用性](docs/client-support.md)。
 
 <p align="center">
   <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
@@ -233,8 +233,8 @@ Security 镜像。查询参数会被保留，无法匹配已配置发行版的�
 
 通过外部 YAML 文件可维护发行版和镜像列表，无需改代码或重新编译。
 
-**[#167](https://github.com/soulteary/apt-proxy/issues/167) 的未发布改进：**
-下述域名与路径联合匹配优先级、严格 YAML 校验需要包含该修复的构建，v0.19.1 尚未包含。
+**自 v0.19.2 起提供（[#167](https://github.com/soulteary/apt-proxy/issues/167)）：**
+下述域名与路径联合匹配优先级、严格 YAML 校验已包含在 v0.19.2 及后续版本中。
 [Proxmox Backup Client 示例](examples/proxmox/)提供保留官方源地址的代理配置，
 以及独立的本地路径别名。
 

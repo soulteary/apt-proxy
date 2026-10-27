@@ -2,7 +2,7 @@ name: apt-cache-proxmox
 
 services:
   apt-proxy:
-    # Build this checkout: older published images may lack the #167 fix.
+    # Build this checkout with the routing fix introduced in v0.19.2 for #167.
     image: apt-proxy-proxmox:local
     build:
       context: ../..
