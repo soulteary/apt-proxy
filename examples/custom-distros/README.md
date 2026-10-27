@@ -27,12 +27,12 @@ distribution. Proxmox Backup Client, for example, uses
 `/debian/` prefix. For this case, configure both the original host in
 `host_pattern` and the repository path in `url_pattern`.
 
-With the routing fix for [#167](https://github.com/soulteary/apt-proxy/issues/167),
-selection first prefers an entry matching **both host and path**, then the
-existing path-only routes, then host-only fallback for domain-root archives.
-Build a checkout containing that fix; it is unreleased when this documentation
-is added. See the dedicated [Proxmox example](../proxmox/) for a working recipe
-and a unique local path alias usable without the host-and-path fix.
+Since v0.19.2, the routing fix for
+[#167](https://github.com/soulteary/apt-proxy/issues/167) first prefers an entry
+matching **both host and path**, then the existing path-only routes, then
+host-only fallback for domain-root archives.
+See the dedicated [Proxmox example](../proxmox/) for a working recipe and a
+unique local path alias usable on older releases.
 
 `host_pattern` is a routing hint, not a host allowlist: path aliases remain
 accessible using the proxy's host name. When multiple custom entries overlap,

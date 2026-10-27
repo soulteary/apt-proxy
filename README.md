@@ -20,7 +20,7 @@
 
 APT Proxy is a lightweight, high-performance caching proxy for package managers. It accelerates package downloads by caching frequently used packages locally, dramatically reducing download times for subsequent installations. Whether you're managing multiple servers, building Docker images, or working in bandwidth-constrained environments, APT Proxy helps you save time and bandwidth.
 
-This README describes the current main branch. [v0.18.0](https://github.com/soulteary/apt-proxy/releases/tag/v0.18.0) has been published; its [upgrade notes](docs/releases/v0.18.0.md) describe that release. The optional Metalink endpoint and expanded client test suite were added afterward. See [verified client support and version availability](docs/client-support.md) before applying those instructions to a released binary or image.
+This README describes the current main branch. v0.19.2 fixes overlapping repository routes, including Proxmox Backup Client, and validates distribution YAML fields. Review the [v0.19.2 upgrade notes](docs/releases/v0.19.2.md) before upgrading custom configurations. See [verified client support and version availability](docs/client-support.md) for the tested repository formats and client scope.
 
 <p align="center">
   <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
@@ -243,9 +243,9 @@ point those `sources.list` entries at their origin directly.
 
 You can maintain distributions and mirror lists via an external YAML file without changing code or recompiling.
 
-**Unreleased changes for [#167](https://github.com/soulteary/apt-proxy/issues/167):**
-the host-and-path priority and strict YAML validation described below require a
-build containing this fix; they are not present in v0.19.1. See the
+**Available since v0.19.2 ([#167](https://github.com/soulteary/apt-proxy/issues/167)):**
+the host-and-path routing priority and strict YAML validation described below
+are included in v0.19.2 and later. See the
 [Proxmox Backup Client example](examples/proxmox/) for original-source proxying
 and a distinct local path alias.
 

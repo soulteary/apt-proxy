@@ -4,10 +4,12 @@ Cache the Proxmox Backup Client repository while retaining its official APT
 source URL. This example addresses the `/debian/` path collision reported in
 [issue #167](https://github.com/soulteary/apt-proxy/issues/167).
 
-**Version availability:** the original-source setup below requires the
-host-and-path routing fix for #167. It is unreleased when this example is added;
-build a checkout containing the fix, as the Compose example does. Do not assume
-an older release or an existing `soulteary/apt-proxy` image contains it.
+**Version availability:** the original-source setup below requires v0.19.2
+or later, which includes the host-and-path routing fix for #167. The Compose
+example builds this checkout locally. Older releases do not include this fix;
+use the unique local path alias below when upgrading is not yet possible.
+Review the [upgrade notes](../../docs/releases/v0.19.2.md) for distribution
+configuration validation changes.
 
 ## Run
 
