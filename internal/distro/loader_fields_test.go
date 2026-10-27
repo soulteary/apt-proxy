@@ -45,7 +45,7 @@ func TestLoaderRejectsUnknownFields(t *testing.T) {
 		{"root", "distributions:", "distribution"},
 		{"distribution", "host_pattern:", "host-pattern"},
 		{"cache rule", "cache_control:", "cache-control"},
-		{"mirror list", "official:", "offical"},
+		{"mirror list", "official:", "officials"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := strings.Replace(strictFieldsDistributionYAML, tc.old, tc.key+":", 1)
