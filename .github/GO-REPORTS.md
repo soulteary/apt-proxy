@@ -22,7 +22,9 @@ evidence that the current checkout passed or has the same coverage.
 
 Test directory: `.`. Packages: `./...`.
 Race detector: `true`. Additional args: `-short -count=1`.
-Coverage floor: `80%` (zero records a baseline).
+Coverage floor: `95%` aggregate statement coverage across `./...`, matching
+`scripts/check-coverage.sh`, PR CI and the release quality-report workflow.
+An explicitly configured zero records a baseline; it is not the project gate.
 Per-package floor: `0%`.
 Quality-score floor: `0%`.
 Raw profiles/test logs are artifacts, never committed.

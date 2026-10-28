@@ -32,7 +32,8 @@ Since v0.19.2, the routing fix for
 matching **both host and path**, then the existing path-only routes, then
 host-only fallback for domain-root archives.
 See the dedicated [Proxmox example](../proxmox/) for a working recipe and a
-unique local path alias usable on older releases.
+unique local path alias. Use v0.19.3 or later for the subsequent mirror-root
+URL-joining fix as well.
 
 `host_pattern` is a routing hint, not a host allowlist: path aliases remain
 accessible using the proxy's host name. When multiple custom entries overlap,
@@ -48,9 +49,9 @@ docker compose up -d
 ```
 
 The file is mounted at `/etc/apt-proxy/distributions.yaml` and named with
-`APT_PROXY_DISTRIBUTIONS_CONFIG`. Naming it is what makes this work on every
-release: that path is also one of apt-proxy's search locations, but the search
-itself only runs on releases that carry it, so the example does not rely on it.
+`APT_PROXY_DISTRIBUTIONS_CONFIG`. The explicit path makes the intended file
+unambiguous. It is also one of the automatic search locations in current
+releases; no source build is required for custom distribution mappings.
 
 Running the binary directly:
 
@@ -131,10 +132,12 @@ deb http://apt-proxy.example:3142/armbian bookworm main bookworm-utils bookworm-
 
 ## Reloading
 
-Edit the file, then either send `SIGHUP` or:
+Edit the file, then send `SIGHUP`, or enable API authentication and use the
+configured key (mutating endpoints return 503 while authentication is disabled):
 
 ```bash
-curl -X POST http://127.0.0.1:3142/api/mirrors/refresh
+curl -X POST -H "X-API-Key: YOUR_API_KEY" \
+  http://127.0.0.1:3142/api/mirrors/refresh
 ```
 
 ## A note on scope

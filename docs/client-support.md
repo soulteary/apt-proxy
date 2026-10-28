@@ -7,52 +7,48 @@ configure every distribution's public repositories.
 
 ## Evidence and version availability
 
-On **2026-10-13**, all **18 Linux AMD64 client images** passed the
-[complete Docker end-to-end run](https://github.com/soulteary/apt-proxy/actions/runs/38382735057)
+On **2026-10-29 (Asia/Shanghai)**, all **18 Linux AMD64 client images** passed the
+[v0.19.4 release gate](https://github.com/soulteary/apt-proxy/actions/runs/40728681270)
 against proxy source commit
-[`6a8f683ba7cb5d470329d84676ac5351da5f182f`](https://github.com/soulteary/apt-proxy/commit/6a8f683ba7cb5d470329d84676ac5351da5f182f).
-The suite was merged in [PR #159](https://github.com/soulteary/apt-proxy/pull/159).
-Every client refreshed repository metadata and installed a native package with
-its protocol's signature and hash checks enabled, verified its payload, cleared
-its own cache, and reinstalled. Origin package
-GET counts remained **1 → 1**, demonstrating reuse of apt-proxy's cache.
+[`028d5a49c9ab1a1f338f0c7eca5243e602972651`](https://github.com/soulteary/apt-proxy/commit/028d5a49c9ab1a1f338f0c7eca5243e602972651).
+The run's `client-summary-40728681270-1` artifact records all clients as passed,
+with a successful matrix and overall evidence gate. Every client refreshed
+signed repository metadata, installed and verified a package, cleared its own
+cache and reinstalled without increasing origin package GET counts.
 Family-specific integrity rejection and HTTPS verification checks also passed.
 
 This is a pinned evidence snapshot. The proxy ran inside Linux AMD64 Docker
 containers with the default disk cache and small dependency-free packages;
 `all`, `noarch` or `any` package payloads do not establish native package or
-installer coverage on every CPU architecture. Version tags and rolling images
-can change; the recorded versions below describe this run. A newer manifest
-entry becomes verified only after its own successful run.
+installer coverage on every CPU architecture. Image tags and rolling releases
+can change; exact package-manager versions belong to that run's individual
+client logs, not to the image tag forever. Artifacts are retained for 30 days.
 
-[v0.18.0](https://github.com/soulteary/apt-proxy/releases/tag/v0.18.0) was
-published on 2026-10-13 from commit `1cd3f766f3fddce8eb574c1a7561c50a90abcc3f`.
-The optional Metalink endpoint ([PR #158](https://github.com/soulteary/apt-proxy/pull/158))
-and expanded 18-client acceptance suite were added afterward. The results here
-verify the named main-branch source, not the older v0.18.0 artifacts. Use a build
-or release containing those changes when following Metalink instructions;
-consult the release's own notes and source commit for availability.
+[v0.19.4](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.4) contains
+both the optional Metalink endpoint and the 18-client release gate, introduced
+in v0.19.0. v0.18.0 predates them. Proxmox host/path routing requires v0.19.2;
+its mirror-root URL-joining fix requires v0.19.3. See the
+[v0.19.4 upgrade notes](releases/v0.19.4.md).
 
 ## Clients verified in the complete run
 
-- **APT, 5 images:** Debian 12 Bookworm (`debian:bookworm-slim`, APT 2.6.1),
-  Debian 13 Trixie (`debian:trixie-slim`, APT 3.0.3), Ubuntu 22.04
-  (APT 2.4.14), Ubuntu 24.04 (APT 2.8.3), and Ubuntu 26.04 (APT 3.2.0).
-- **DNF/DNF5, 7 images:** CentOS Stream 9, Rocky Linux 9 and AlmaLinux 9
-  use DNF 4.14.0; CentOS Stream 10, Rocky Linux 10 and AlmaLinux 10 use DNF 4.20.0. Fedora 44
-  uses DNF5 5.4.6.0. The native `yum` command was not exercised separately.
-- **APK, 3 images:** Alpine 3.22 uses APK 2.14.12; Alpine 3.23 and 3.24 use
-  APK 3.0.8-r0. Both client generations consume signed legacy APK packages
-  and `APKINDEX.tar.gz` in this suite; native ADB formats were not tested.
-- **pacman, 1 image:** Arch Linux `archlinux:base`, pacman 7.1.0 and
-  libalpm 16.0.1, with signed repository databases and packages.
-- **zypper, 2 images:** openSUSE Leap 16.0 and Tumbleweed, both zypper
-  1.14.101. The Tumbleweed image reported snapshot `20261011`.
+- **APT, 5 images:** Debian 12 Bookworm and Debian 13 Trixie; Ubuntu 22.04,
+  24.04 and 26.04.
+- **DNF/DNF5, 7 images:** CentOS Stream 9/10, Rocky Linux 9/10, AlmaLinux
+  9/10 and Fedora 44. The native `yum` command was not exercised separately.
+- **APK, 3 images:** Alpine 3.22, 3.23 and 3.24, covering APK2 and APK3
+  clients consuming signed legacy packages and `APKINDEX.tar.gz`.
+  Native ADB formats were not tested.
+- **pacman, 1 image:** Arch Linux `archlinux:base`, with signed repository
+  databases and packages.
+- **zypper, 2 images:** openSUSE Leap 16.0 and Tumbleweed.
 
 Exact image references are maintained in
 [`clients.json`](../tests/client-compatibility/clients.json). Individual client
 logs, `cache-hit.json`, `report.json`, and the workflow summary record the
-source commit, image, run and attempt. Artifacts are retained for 30 days.
+source commit, image, run and attempt. For the earlier 2026-10-13 snapshot,
+see [its original run](https://github.com/soulteary/apt-proxy/actions/runs/38382735057);
+do not transfer its package-manager version numbers to the newer release run.
 
 ## Repository configuration required
 

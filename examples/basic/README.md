@@ -31,7 +31,9 @@ sudo apt-get update
 
 ## Notes
 
-- Cache lives **inside the container** in this example. To persist across
-  restarts, mount a volume at `/var/cache/apt-proxy` or switch to the
+- Cache lives **inside the container** in this example. It survives a stop/start
+  of the same container but is lost when the container is removed or recreated.
+  To retain it across recreation, mount a writable volume at
+  `/var/cache/apt-proxy` or switch to the
   [`../s3-otterio/`](../s3-otterio/) example.
 - Need to pin upstream mirrors? See [`../specify-mirrors/`](../specify-mirrors/).

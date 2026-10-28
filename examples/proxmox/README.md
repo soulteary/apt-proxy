@@ -4,12 +4,11 @@ Cache the Proxmox Backup Client repository while retaining its official APT
 source URL. This example addresses the `/debian/` path collision reported in
 [issue #167](https://github.com/soulteary/apt-proxy/issues/167).
 
-**Version availability:** the original-source setup below requires v0.19.2
-or later, which includes the host-and-path routing fix for #167. The Compose
-example builds this checkout locally. Older releases do not include this fix;
-use the unique local path alias below when upgrading is not yet possible.
-Review the [upgrade notes](../../docs/releases/v0.19.2.md) for distribution
-configuration validation changes.
+**Version availability:** use v0.19.3 or later; v0.19.4 is the current release.
+v0.19.2 introduced the host-and-path routing fix for #167, and v0.19.3 fixed
+URL joining for mirror roots without a trailing slash. The Compose example
+builds this checkout locally. Review the
+[upgrade notes](../../docs/releases/v0.19.4.md) before updating an older deployment.
 
 ## Run
 
@@ -73,8 +72,8 @@ URIs: http://apt-proxy.example:3142/proxmox-pbs-client
 
 Keep the suite, component and signing key unchanged. The dedicated
 `/proxmox-pbs-client/` prefix avoids the generic Debian `/debian/` route. This
-path form is also a workaround for releases that support custom distributions
-but do not yet contain the host-and-path fix.
+path form avoids overlapping repository prefixes. Upgrading remains necessary
+to obtain the URL-joining fix; a local alias does not replace that fix.
 
 ## Verify routing and upstream availability
 
@@ -108,7 +107,12 @@ and `--mode=all`.
 
 ## Repository scope and configuration details
 
-This example defines **PBS Client only**. Proxmox's repositories share a host,
+This runnable example defines **PBS Client only**. Since v0.19.4,
+[`config/distributions.yaml`](../../config/distributions.yaml) also contains
+commented PVE, PBS Server, PBS Client and Ceph Squid entries. Follow its
+instructions to append only the desired entries to the active list; do not
+enable two copies of PBS Client or reuse custom types. Proxmox's repositories
+share a host,
 but their paths and components differ:
 
 | Repository | Official HTTP path | Trixie component |
@@ -116,6 +120,7 @@ but their paths and components differ:
 | PBS Client | `/debian/pbs-client` | `main` |
 | PBS Server without a subscription | `/debian/pbs` | `pbs-no-subscription` |
 | PVE without a subscription | `/debian/pve` | `pve-no-subscription` |
+| Ceph Squid without a subscription | `/debian/ceph-squid` | `no-subscription` |
 
 See the official [PBS repository documentation](https://pbs.proxmox.com/docs/installation.html#debian-package-repositories)
 and [PVE repository documentation](https://pve.proxmox.com/wiki/Package_Repositories)

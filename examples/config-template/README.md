@@ -21,6 +21,11 @@ apt-proxy --config=/path/to/apt-proxy.yaml
 APT_PROXY_CONFIG_FILE=/path/to/apt-proxy.yaml apt-proxy
 ```
 
+Before using this template, set `APT_PROXY_API_KEY` to your own nonempty key
+or replace `security.api_key`. Unset `${VAR}` references are preserved literally
+by the loader; they are not generated secrets. The template enables API
+authentication explicitly.
+
 ## Configuration priority
 
 ```
@@ -58,6 +63,8 @@ settings. See [download limits](../../docs/download-limits.md),
 [upstream access](../../docs/upstream-access.md),
 [resource limits](../../docs/resource-limits.md) and
 [cache integrity](../../docs/cache-integrity.md) for their scope and examples.
-For optional policies absent from this template, see
-[runtime mirror health](../../docs/runtime-mirror-health.md) and
+The template includes disabled `mirror_health` defaults and a commented
+`metalink` example. See [runtime mirror health](../../docs/runtime-mirror-health.md)
+and [CentOS Metalink](../../docs/centos-metalink.md) before enabling them.
+For the `shared_cache` policy, which is not included in this template, see
 [shared repository cache](../../docs/shared-repository-cache.md).

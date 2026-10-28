@@ -20,7 +20,7 @@
 
 APT Proxy is a lightweight, high-performance caching proxy for package managers. It accelerates package downloads by caching frequently used packages locally, dramatically reducing download times for subsequent installations. Whether you're managing multiple servers, building Docker images, or working in bandwidth-constrained environments, APT Proxy helps you save time and bandwidth.
 
-This README describes the current main branch. v0.19.2 fixes overlapping repository routes, including Proxmox Backup Client, and validates distribution YAML fields. Review the [v0.19.2 upgrade notes](docs/releases/v0.19.2.md) before upgrading custom configurations. See [verified client support and version availability](docs/client-support.md) for the tested repository formats and client scope.
+This README describes the current main branch. The latest published release is [v0.19.4](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.4); see its [release and upgrade notes](docs/releases/v0.19.4.md). It includes the Proxmox routing and URL-joining fixes, optional commented repository examples, and a 95% aggregate test-coverage floor. See [verified client support and version availability](docs/client-support.md) for the tested repository formats and client scope.
 
 <p align="center">
   <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
@@ -66,12 +66,12 @@ Multi-arch Docker images (`soulteary/apt-proxy` and `ghcr.io/soulteary/apt-proxy
 - `linux/arm64`
 - `linux/arm/v7`
 
-> Note: ARMv6 is shipped as a standalone binary only; there is no ARMv6 Docker image.
+> Note: ARMv6 is available as a binary archive and Linux packages; there is no ARMv6 Docker image.
 
 ## Verified Client Repository Caching
 
-All 18 client images passed [signed local repository tests](https://github.com/soulteary/apt-proxy/actions/runs/38382735057)
-on Linux AMD64 on 2026-10-13, using proxy source `6a8f683`:
+All 18 client images passed [signed local repository tests](https://github.com/soulteary/apt-proxy/actions/runs/40728681270)
+for v0.19.4 on Linux AMD64 on 2026-10-29 (Asia/Shanghai), using proxy source `028d5a4`:
 
 - **APT:** Debian 12 Bookworm / 13 Trixie; Ubuntu 22.04 / 24.04 / 26.04.
 - **DNF/DNF5:** CentOS Stream 9/10, Rocky Linux 9/10, AlmaLinux 9/10 and Fedora 44.
@@ -109,15 +109,9 @@ Simply run the binary - no configuration required:
 ./apt-proxy
 ```
 
-You should see output similar to:
-
-```
-2024/01/15 10:30:00 INF starting apt-proxy version=1.0.0 listen=0.0.0.0:3142 protocol=http
-2024/01/15 10:30:01 INF Starting benchmark for mirrors
-2024/01/15 10:30:01 INF Finished benchmarking mirrors
-2024/01/15 10:30:01 INF using fastest mirror mirror=https://mirrors.company.ltd/ubuntu/
-2024/01/15 10:30:01 INF server started successfully
-```
+Startup logs report the version, listen address and selected mirrors. Mirror
+benchmarking runs asynchronously: the server starts with configured or default
+mirrors while election completes in the background.
 
 The proxy is now running and ready to cache packages. By default, it listens on `0.0.0.0:3142` and automatically selects the fastest mirror for your location.
 
@@ -245,9 +239,12 @@ You can maintain distributions and mirror lists via an external YAML file withou
 
 **Available since v0.19.2 ([#167](https://github.com/soulteary/apt-proxy/issues/167)):**
 the host-and-path routing priority and strict YAML validation described below
-are included in v0.19.2 and later. See the
+are included in v0.19.2 and later. v0.19.3 additionally fixes mirror-root URL
+joining when a trailing slash is absent; use v0.19.3 or later for Proxmox. See the
 [Proxmox Backup Client example](examples/proxmox/) for original-source proxying
-and a distinct local path alias.
+and a distinct local path alias. v0.19.4 adds commented PVE, PBS Server, PBS Client
+and Ceph Squid entries to [`config/distributions.yaml`](config/distributions.yaml);
+these remain disabled until explicitly added to the active distribution list.
 
 **Pointing apt-proxy at the file:** drop it at one of the search paths, or name
 it explicitly. When no path is given, the first of these that exists wins:
@@ -447,15 +444,8 @@ For convenience, you can use predefined shortcuts instead of full URLs:
 - `cn:huaweicloud` - Huawei Cloud Mirror
 - `cn:tencent` - Tencent Cloud Mirror
 
-Example output:
-
-```
-2024/01/15 10:55:26 INF starting apt-proxy version=1.0.0
-2024/01/15 10:55:26 INF using specified debian mirror mirror=https://mirrors.163.com/debian/
-2024/01/15 10:55:26 INF using specified ubuntu mirror mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
-2024/01/15 10:55:26 INF proxy listening on 0.0.0.0:3142
-2024/01/15 10:55:26 INF server started successfully
-```
+The startup log records each explicitly selected mirror with the
+`using specified mirror` message and its distribution and URL fields.
 
 ### Caching Third-Party Archives (`passthrough`)
 
@@ -1238,7 +1228,7 @@ APT Proxy provides REST API endpoints for monitoring and management:
 
 When an API key is configured and authentication is enabled, all `/api/*` endpoints require authentication. Setting `--api-key` (or `APT_PROXY_API_KEY`) implicitly enables auth unless `--enable-api-auth=false` is explicitly supplied. Enabling authentication without a non-empty key is rejected as an invalid configuration.
 
-The read-only `/api/cache/stats` endpoint remains available when authentication is disabled. Mutating endpoints (`purge`, `cleanup`, and mirror `refresh`) fail closed with HTTP 503 until API authentication is configured; an unauthenticated network listener can therefore not modify proxy state. Provide the API key using one of these methods:
+The read-only `/api/cache/stats` and `/api/mirrors/status` endpoints remain available when authentication is disabled. Mutating endpoints (`purge`, `cleanup`, and mirror `refresh`) fail closed with HTTP 503 until API authentication is configured; an unauthenticated network listener can therefore not modify proxy state. Provide the API key using one of these methods:
 
 1. **X-API-Key Header** (recommended):
    ```bash
@@ -1296,10 +1286,12 @@ To reload distributions and mirrors:
 kill -HUP $(pgrep apt-proxy)
 ```
 
-Or use the API:
+Or use the API with authentication enabled and the configured API key
+(mutating API requests return 503 while authentication is disabled):
 
 ```bash
-curl -X POST http://localhost:3142/api/mirrors/refresh
+curl -X POST -H "X-API-Key: YOUR_API_KEY" \
+  http://localhost:3142/api/mirrors/refresh
 ```
 
 Both paths are equivalent: they reload `distributions.yaml` and re-run mirror selection. SIGHUP signals are debounced (consecutive signals within ~500ms are coalesced) and queued (at most one extra reload is scheduled while a reload is in progress), so it is safe to invoke them rapidly from scripts.
@@ -1342,89 +1334,54 @@ Set `OTEL_EXPORTER_OTLP_ENDPOINT` to your OTLP collector (e.g. `http://otel-coll
 
 ```mermaid
 flowchart LR
-    Client[APT Client] --> Proxy[apt-proxy]
-    Proxy --> Cache[(Local Cache)]
-    Proxy --> Mirror1[Mirror 1]
-    Proxy --> Mirror2[Mirror 2]
-    
-    subgraph aptproxy [apt-proxy internals]
-        Handler[Handler] --> Rewriter[URL Rewriter]
-        Rewriter --> Benchmark[Mirror Benchmark]
-        Handler --> HTTPCache[HTTP Cache]
-        Auth[Auth Middleware] --> Handler
-    end
-    
-    subgraph monitoring [Observability]
-        Metrics[Prometheus /metrics]
-        Health[Health Checks]
-        API[Management API]
-    end
+    Client[Package-manager client] --> DownloadAccess[Download CIDR policy]
+    DownloadAccess --> Proxy[Repository handler and cache]
+    Proxy --> Storage[(Disk or S3 cache)]
+    Proxy --> Upstream[Configured upstream repositories]
+    Operator[Management client] --> APIAuth[API authentication and rate limiting]
+    APIAuth --> API[Management API]
+    API --> Proxy
+    Monitor[Monitoring client] --> Metrics[Health, metrics and version endpoints]
 ```
 
 ### Request Flow
 
-1. **Client Request**: APT client sends package request to apt-proxy
-2. **Cache Check**: Handler checks if package exists in local cache
+1. **Client Request**: A package-manager request passes the configured download CIDR policy before repository handling and cache lookup
+2. **Cache Check**: The cache looks for a representation matching the request and repository identity
 3. **Cache Hit**: Verify the persistent record and complete body by default, then serve the matching fresh representation
-4. **Cache Miss**: Rewrite URL to fastest mirror, fetch from upstream
-5. **Store & Respond**: Cache response and return to client
+4. **Cache Miss**: Apply the repository route or passthrough policy and fetch from the selected upstream
+5. **Deliver & Publish**: Return the response and publish eligible cache data subject to integrity and resource-admission controls
 
 ## Project Structure
 
-```
+```text
 apt-proxy/
-├── cmd/
-│   └── apt-proxy/            # Application entrypoint
-│       └── main.go           # Main entry point
-├── internal/                 # Private application code
-│   ├── api/                  # REST API handlers and middlewares
-│   │   ├── auth.go           # API authentication middleware
-│   │   ├── cache.go          # Cache management endpoints
-│   │   ├── mirrors.go        # Mirror management endpoints
-│   │   ├── ratelimit.go      # Per-IP rate limiting middleware
-│   │   ├── clientip.go       # Client IP extraction (X-Forwarded-For + trusted proxies)
-│   │   └── response.go       # Response utilities
-│   ├── benchmarks/           # Mirror benchmarking (sync & async)
-│   ├── cli/                  # CLI and daemon management
-│   │   ├── cli.go            # Entrypoint, version wiring
-│   │   ├── daemon.go         # Server lifecycle, routing, signal handling
-│   │   └── health.go         # Custom Fiber health handler (race-safe shutdown)
-│   ├── config/               # Configuration management
-│   │   ├── config.go         # Configuration structures
-│   │   ├── defaults.go       # Default values and env var keys
-│   │   ├── loader.go         # Config loading orchestration
-│   │   ├── loader_flags.go   # CLI flag parsing
-│   │   ├── loader_yaml.go    # YAML loading + ${VAR}/${VAR:-default} expansion
-│   │   ├── loader_merge.go   # CLI/ENV/file/defaults merging with explicit-flag tracking
-│   │   ├── loader_search.go  # Config file search paths
-│   │   └── loader_validate.go# Validation (paths, TLS files, cache writability)
-│   ├── distro/               # Distribution definitions and registry
-│   │   ├── distro.go         # Common types and utilities
-│   │   ├── registry.go       # Built-in distro registry
-│   │   ├── loader.go         # distributions.yaml loader and search paths
-│   │   ├── rules.go          # Cache rule helpers
-│   │   ├── ubuntu.go         # Ubuntu configuration
-│   │   ├── ubuntu-ports.go   # Ubuntu Ports configuration
-│   │   ├── debian.go         # Debian configuration
-│   │   ├── centos.go         # CentOS configuration
-│   │   └── alpine.go         # Alpine configuration
-│   ├── errors/               # Unified error handling
-│   │   └── errors.go         # Error codes and types
-│   ├── mirrors/              # Mirror management
-│   │   ├── mirrors.go        # Mirror list resolution
-│   │   ├── ubuntu.go         # Ubuntu geo-mirror discovery
-│   │   └── templates.go      # URL templating helpers
-│   ├── proxy/                # Core proxy functionality
-│   │   ├── handler.go        # HTTP request handling
-│   │   ├── rewriter.go       # URL rewriting
-│   │   ├── transport.go      # Upstream HTTP transport (keep-alive, timeouts)
-│   │   ├── page.go           # Home page rendering
-│   │   └── stats.go          # Statistics
-│   ├── state/                # Per-Server runtime state (proxy mode, mirror URLs)
-│   └── system/               # System utilities (disk, gc, filesize)
-├── tests/                    # Integration tests
-│   └── integration/          # End-to-end tests
-└── config/, docker/, examples/ # Sample configs, deployment, and runnable examples
+├── cmd/apt-proxy/            # Process entry point
+├── internal/
+│   ├── access/                 # Download CIDRs and upstream connection policy
+│   ├── api/                    # Management endpoints, API keys and rate limiting
+│   ├── benchmarks/             # Mirror benchmarking and election
+│   ├── cli/                    # Command dispatch, daemon lifecycle and HTTP adapters
+│   ├── config/                 # Flags, environment, YAML, defaults and validation
+│   ├── distro/                 # Built-in routes and custom distribution registry
+│   ├── errors/                 # Structured application errors
+│   ├── logsafe/                # Credential-safe log rendering
+│   ├── metalink/               # Verified Metalink discovery and snapshot routes
+│   ├── mirrorhealth/           # Runtime APT mirror health and failover
+│   ├── mirrors/                # Mirror lists, aliases and URL templates
+│   ├── passthrough/            # Explicit third-party origin allowlist
+│   ├── proxy/                  # Repository routing, upstream transport and downloads
+│   ├── repository/             # Verified APT snapshots and offline service
+│   ├── resource/               # Shared temporary-copy and download admission budgets
+│   ├── sharedcache/            # Repository identities and Unix disk coordination
+│   ├── state/                  # Per-server runtime state
+│   ├── storage/                # Integrity wrapper and S3 virtual filesystem
+│   └── system/                 # Disk and process utilities
+├── config/                  # Distribution and mirror examples
+├── docs/                    # Feature guides and release notes
+├── docker/                  # Source-build and release images
+├── examples/                # Deployment and configuration examples
+└── tests/                   # Integration and real package-manager clients
 ```
 
 ## Development
@@ -1437,18 +1394,30 @@ cd apt-proxy
 go build -o apt-proxy ./cmd/apt-proxy
 ```
 
+Use Go **1.27.3**, matching `go.mod` and CI, plus Python 3 and Docker for the
+real-client test suite.
+
 When developing alongside [vfs-kit](https://github.com/soulteary/vfs-kit) or [httpcache-kit](https://github.com/soulteary/httpcache-kit), `go.mod` may use `replace` directives (e.g. `../kits/httpcache-kit`); remove them when using published versions.
 
 ### Running Tests
 
 ```bash
-# Run all tests with coverage
-go test -cover ./...
+# Run the CI unit suite: race detector, short mode, fresh run
+make test
 
-# Generate detailed coverage report
-go test -coverprofile=coverage.out ./...
+# Generate the CI-style statement coverage profile and enforce the 95% floor
+make cover
+scripts/check-coverage.sh coverage.out
 go tool cover -html=coverage.out
+
+# Run integration-tagged tests (see tests/integration for service prerequisites)
+make test-integration
 ```
+
+The 95% floor applies to total statement coverage across `./...`, not every
+package or every branch. Checked-in badges are published snapshots; use the
+current run and profile when evaluating changes. See the
+[report workflow](.github/GO-REPORTS.md).
 
 ### Contributing
 
