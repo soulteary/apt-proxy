@@ -32,25 +32,26 @@ var (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// run keeps exit policy at the process boundary so command dispatch can be
+// verified without terminating the caller.
+func run() error {
 	cli.SetBuildInfo(version, commit, date)
 	if len(os.Args) > 1 && os.Args[1] == "repository" {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		err := cli.RunRepository(ctx, os.Args[2:], os.Stdout)
 		cancel()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		return
+		return err
 	}
 
 	flags, err := cli.ParseFlags()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
-	if err := cli.Daemon(flags); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	return cli.Daemon(flags)
 }

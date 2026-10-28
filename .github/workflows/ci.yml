@@ -95,7 +95,7 @@ jobs:
           directory: "."
           packages: "./..."
           race: "true"
-          coverage_threshold: "80"
+          coverage_threshold: "95"
           test_args: "-short -count=1"
           version: "v1.1.2"
           cover_mode: "atomic"
