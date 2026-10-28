@@ -77,6 +77,108 @@
 #       official:
 #         - "mirrors.tuna.tsinghua.edu.cn/armbian/"
 
+# Optional Proxmox public repositories (disabled examples).
+# Requires apt-proxy v0.19.3 or later for host/path routing and URL joining.
+# To enable, remove one leading "# " from the desired entry and append it to
+# the active distributions list below; do not add another distributions key.
+# Keep custom types unique and stable; PBS Client uses the same type as
+# examples/proxmox/distributions.yaml, so do not enable both copies.
+# These examples use Debian Trixie. Match benchmark_url to your release and
+# select the appropriate suite/component in the client's APT sources:
+# PVE: pve-no-subscription; PBS: pbs-no-subscription; PBS Client: main;
+# Ceph Squid: no-subscription (choose the Ceph release supported by your PVE).
+# Enterprise repositories require a subscription and are not covered here.
+# host_pattern selects a repository, not client access permissions. Unique
+# /proxmox-*/ aliases also work in direct proxy URLs using the proxy hostname.
+# References:
+# https://pve.proxmox.com/wiki/Package_Repositories
+# https://pbs.proxmox.com/docs/installation.html#debian-package-repositories
+#
+#   - id: proxmox-pve
+#     name: Proxmox VE
+#     type: 12
+#     url_pattern: "^/(debian/pve|proxmox-pve)/(.+)$"
+#     host_pattern: '^download\.proxmox\.com(:\d+)?$'
+#     benchmark_url: "dists/trixie/Release"
+#     cache_rules:
+#       - pattern: '\.deb$'
+#         cache_control: "max-age=100000"
+#         rewrite: true
+#       - pattern: '(InRelease|Release(\.gpg)?)$'
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#       # Catch-all last: include package indexes and by-hash metadata.
+#       - pattern: ".*"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#     mirrors:
+#       official:
+#         - "http://download.proxmox.com/debian/pve/"
+#
+#   - id: proxmox-pbs
+#     name: Proxmox Backup Server
+#     type: 13
+#     url_pattern: "^/(debian/pbs|proxmox-pbs)/(.+)$"
+#     host_pattern: '^download\.proxmox\.com(:\d+)?$'
+#     benchmark_url: "dists/trixie/Release"
+#     cache_rules:
+#       - pattern: '\.deb$'
+#         cache_control: "max-age=100000"
+#         rewrite: true
+#       - pattern: '(InRelease|Release(\.gpg)?)$'
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#       # Catch-all last: include package indexes and by-hash metadata.
+#       - pattern: ".*"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#     mirrors:
+#       official:
+#         - "http://download.proxmox.com/debian/pbs/"
+#
+#   - id: proxmox-pbs-client
+#     name: Proxmox Backup Client
+#     type: 11
+#     url_pattern: "^/(debian/pbs-client|proxmox-pbs-client)/(.+)$"
+#     host_pattern: '^download\.proxmox\.com(:\d+)?$'
+#     benchmark_url: "dists/trixie/Release"
+#     cache_rules:
+#       - pattern: '\.deb$'
+#         cache_control: "max-age=100000"
+#         rewrite: true
+#       - pattern: '(InRelease|Release(\.gpg)?)$'
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#       # Catch-all last: include package indexes and by-hash metadata.
+#       - pattern: ".*"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#     mirrors:
+#       official:
+#         - "http://download.proxmox.com/debian/pbs-client/"
+#
+#   - id: proxmox-ceph-squid
+#     name: Proxmox Ceph Squid
+#     type: 14
+#     url_pattern: "^/(debian/ceph-squid|proxmox-ceph-squid)/(.+)$"
+#     host_pattern: '^download\.proxmox\.com(:\d+)?$'
+#     benchmark_url: "dists/trixie/Release"
+#     cache_rules:
+#       - pattern: '\.deb$'
+#         cache_control: "max-age=100000"
+#         rewrite: true
+#       - pattern: '(InRelease|Release(\.gpg)?)$'
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#       # Catch-all last: include package indexes and by-hash metadata.
+#       - pattern: ".*"
+#         cache_control: "max-age=3600"
+#         rewrite: true
+#     mirrors:
+#       official:
+#         - "http://download.proxmox.com/debian/ceph-squid/"
+#
+
 distributions:
   - id: ubuntu
     name: Ubuntu
