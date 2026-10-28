@@ -3,14 +3,14 @@
 #
 # Usage: scripts/check-coverage.sh [profile]   (default profile: coverage.out)
 #
-# The floor is read from COVERAGE_THRESHOLD and defaults to 80. Both
+# The floor is read from COVERAGE_THRESHOLD and defaults to 95. Both
 # .github/workflows/ci.yml and .github/workflows/release.yaml call this, so the
 # check stays identical in the two places it runs and there is one number to
 # change when the floor moves.
 set -euo pipefail
 
 PROFILE="${1:-coverage.out}"
-THRESHOLD="${COVERAGE_THRESHOLD:-80}"
+THRESHOLD="${COVERAGE_THRESHOLD:-95}"
 
 if [ ! -f "$PROFILE" ]; then
   echo "coverage profile not found: $PROFILE" >&2

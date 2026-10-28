@@ -653,6 +653,12 @@ func (s *Server) Start() error {
 	signal.Notify(sighupChan, syscall.SIGHUP)
 	defer signal.Stop(sighupChan)
 
+	return s.serve(ctx, sighupChan)
+}
+
+// serve runs the listener and reload loop using caller-owned cancellation and
+// reload events. Start adapts process signals to these per-server inputs.
+func (s *Server) serve(ctx context.Context, sighupChan <-chan os.Signal) error {
 	// Start Fiber in goroutine
 	serverErr := make(chan error, 1)
 	go func() {

@@ -87,3 +87,35 @@ func TestProxyUsesConfiguredDownloadDirectory(t *testing.T) {
 		t.Fatalf("spool files retained: %v", files)
 	}
 }
+
+func TestUnknownLengthMissingSpoolClosesUpstream(t *testing.T) {
+	body := &guardTrackingBody{Reader: strings.NewReader("complete")}
+	transport := &completeUnknownBodyTransport{tempDir: filepath.Join(t.TempDir(), "missing"), RoundTripper: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, ContentLength: -1, Body: body}, nil
+	})}
+	failed, err := transport.RoundTrip(httptest.NewRequest("GET", "http://example/pkg", nil))
+	if failed != nil {
+		defer failed.Body.Close()
+	}
+	if failed != nil || err == nil || !body.closed {
+		t.Fatal("failed spool leaked upstream")
+	}
+	transport = &completeUnknownBodyTransport{tempDir: t.TempDir(), RoundTripper: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, ContentLength: -1, Body: io.NopCloser(strings.NewReader("complete"))}, nil
+	})}
+	res, err := transport.RoundTrip(httptest.NewRequest("GET", "http://example/pkg", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.Header.Get("Content-Length") != "8" {
+		t.Fatal("nil header was not initialized after spool")
+	}
+}
+
+type guardTrackingBody struct {
+	io.Reader
+	closed bool
+}
+
+func (b *guardTrackingBody) Close() error { b.closed = true; return nil }
