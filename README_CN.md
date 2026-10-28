@@ -1469,12 +1469,12 @@ http_proxy=http://192.168.33.1:3142 \
 
 ## 致谢
 
-本项目基于以下优秀项目构建：
+感谢以下项目及其贡献者：
 
-- [lox/apt-proxy](https://github.com/lox/apt-proxy) - 原始 APT 代理实现
-- [lox/httpcache](https://github.com/lox/httpcache) - HTTP 缓存库（MIT License）
-- [djherbis/stream](https://github.com/djherbis/stream) - 流处理库（MIT License）
-- [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) - 虚拟文件系统库（源自 rainycape/vfs，Mozilla Public License 2.0）
+- [lox/apt-proxy](https://github.com/lox/apt-proxy) — 本项目最初源自的 APT 代理实现。
+- [soulteary/httpcache-kit](https://github.com/soulteary/httpcache-kit) — 当前使用的 HTTP 缓存实现，由 [lox/httpcache](https://github.com/lox/httpcache) 演进而来。
+- [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) — 当前使用的虚拟文件系统库，源自 [rainycape/vfs](https://github.com/rainycape/vfs)，采用 MPL-2.0 协议。
+- [djherbis/stream](https://github.com/djherbis/stream) — 项目早期版本使用的流处理库。
 
 ## 支持
 
