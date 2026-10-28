@@ -1594,12 +1594,12 @@ This project is licensed under the [Apache License 2.0](https://github.com/soult
 
 ## Acknowledgments
 
-This project builds upon the excellent work of:
+This project builds on the following projects and their contributors:
 
-- [lox/apt-proxy](https://github.com/lox/apt-proxy) - Original APT proxy implementation
-- [lox/httpcache](https://github.com/lox/httpcache) - HTTP caching library (MIT License)
-- [djherbis/stream](https://github.com/djherbis/stream) - Stream handling library (MIT License)
-- [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) - Virtual filesystem library (from rainycape/vfs, Mozilla Public License 2.0)
+- [lox/apt-proxy](https://github.com/lox/apt-proxy) — The original project from which apt-proxy evolved.
+- [soulteary/httpcache-kit](https://github.com/soulteary/httpcache-kit) — The current HTTP caching implementation, evolved from [lox/httpcache](https://github.com/lox/httpcache).
+- [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) — The current virtual filesystem library, derived from [rainycape/vfs](https://github.com/rainycape/vfs), under MPL-2.0.
+- [djherbis/stream](https://github.com/djherbis/stream) — Used by earlier versions of the project.
 
 ## Support
 
