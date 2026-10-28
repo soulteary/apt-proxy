@@ -17,6 +17,7 @@ package proxy
 import (
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -401,5 +402,35 @@ func TestURLRewriterPattern(t *testing.T) {
 		if matched != tt.match {
 			t.Errorf("pattern.MatchString(%q) = %v, want %v", tt.path, matched, tt.match)
 		}
+	}
+}
+
+// A mirror root is a directory even when configuration omits its final slash.
+func TestRewriteRequestByModeJoinsMirrorDirectory(t *testing.T) {
+	for _, tc := range []struct{ name, mirror, pattern, path, want string }{
+		{"missing separator", "http://mirror.example/debian/pbs-client", `^/debian/pbs-client/(.+)$`, "/debian/pbs-client/dists/trixie/Release", "http://mirror.example/debian/pbs-client/dists/trixie/Release"},
+		{"existing separator", "http://mirror.example/debian/pbs-client/", `^/debian/pbs-client/(.+)$`, "/debian/pbs-client/dists/trixie/InRelease", "http://mirror.example/debian/pbs-client/dists/trixie/InRelease"},
+		{"suffix separator", "http://mirror.example/repo", `^/alias(/.+)$`, "/alias/pool/pkg.deb", "http://mirror.example/repo/pool/pkg.deb"},
+		{"both separators", "http://mirror.example/repo/", `^/alias(/.+)$`, "/alias/pool/pkg.deb", "http://mirror.example/repo/pool/pkg.deb"},
+		{"host root", "http://mirror.example", `^/alias/(.+)$`, "/alias/dists/trixie/Release", "http://mirror.example/dists/trixie/Release"},
+		{"escaped paths", "http://mirror.example/repo%2Froot", `^/alias/(.+)$`, "/alias/pool/Foo%2FBar/pkg+name.deb?key=a&key=b", "http://mirror.example/repo%2Froot/pool/Foo%2FBar/pkg+name.deb?key=a&key=b"},
+		{"encoded leading slash", "http://mirror.example/repo/", `^/alias/(.+)$`, "/alias/%2Fpkg.deb", "http://mirror.example/repo/%2Fpkg.deb"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mirror, err := url.Parse(tc.mirror)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rw := &URLRewriters{}
+			rw.set(11, &URLRewriter{mirror: mirror, pattern: regexp.MustCompile(tc.pattern)})
+			req, err := http.NewRequest(http.MethodGet, "http://proxy.example"+tc.path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			RewriteRequestByMode(req, rw, 11)
+			if got := req.URL.String(); got != tc.want {
+				t.Fatalf("rewritten URL = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

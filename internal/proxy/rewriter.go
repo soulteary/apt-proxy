@@ -571,8 +571,23 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	r.URL.Host = target.Host
 	// Carry the selected mirror's credentials into normalization before cache lookup.
 	r.URL.User = target.User
-	r.URL.Path = target.Path + suffixPath
-	rawPath := target.EscapedPath() + suffixRaw
+	// Mirror roots are directories, including when their configured URL has no
+	// trailing slash. Inspect escaped boundaries so an encoded %2F remains
+	// path data rather than being consumed as a joining separator.
+	separator := ""
+	if suffixRaw != "" {
+		baseSlash := strings.HasSuffix(target.EscapedPath(), "/")
+		suffixSlash := strings.HasPrefix(suffixRaw, "/")
+		switch {
+		case baseSlash && suffixSlash:
+			suffixRaw = suffixRaw[1:]
+			suffixPath = suffixPath[1:]
+		case !baseSlash && !suffixSlash:
+			separator = "/"
+		}
+	}
+	r.URL.Path = target.Path + separator + suffixPath
+	rawPath := target.EscapedPath() + separator + suffixRaw
 	if rawPath != r.URL.Path {
 		r.URL.RawPath = rawPath
 	} else {

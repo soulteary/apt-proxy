@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -208,16 +209,22 @@ func (r Results) Len() int           { return len(r) }
 func (r Results) Less(i, j int) bool { return r[i].Duration < r[j].Duration }
 func (r Results) Swap(i, j int)      { r[i], r[j] = r[j], r[i] }
 
-// Benchmark performs HTTP GET requests against base+query using the engine's
+// Benchmark probes a mirror directory and relative path using the engine's
 // shared HTTP client and reports the average response time.
 func (e *Engine) Benchmark(ctx context.Context, base, query string, times int) (time.Duration, error) {
 	var totalDuration time.Duration
+	// Configuration may omit the root's final slash or include the probe's
+	// leading slash. Keep mirror election consistent with request rewriting.
+	probeURL := base
+	if query != "" {
+		probeURL = strings.TrimSuffix(base, "/") + "/" + strings.TrimPrefix(query, "/")
+	}
 	for i := 0; i < times; i++ {
 		select {
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		default:
-			duration, err := singleBenchmark(ctx, e.client, base+query)
+			duration, err := singleBenchmark(ctx, e.client, probeURL)
 			if err != nil {
 				return 0, err
 			}

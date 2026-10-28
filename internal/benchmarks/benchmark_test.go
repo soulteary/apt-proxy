@@ -531,3 +531,24 @@ func TestEngineAsyncSingleflight(t *testing.T) {
 		t.Errorf("upstream was probed %d times for %d async callers; expected at most %d (singleflight dedup broken)", got, callers, BenchmarkMaxTries)
 	}
 }
+
+func TestBenchmarkMirrorDirectoryBoundary(t *testing.T) {
+	const want = "/debian/pbs-client/dists/trixie/Release"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RequestURI() != want {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	for _, root := range []string{"/debian/pbs-client", "/debian/pbs-client/"} {
+		for _, suffix := range []string{"dists/trixie/Release", "/dists/trixie/Release"} {
+			t.Run(root+"+"+suffix, func(t *testing.T) {
+				if _, err := NewEngine().Benchmark(context.Background(), server.URL+root, suffix, 1); err != nil {
+					t.Fatalf("benchmark of directory root failed: %v", err)
+				}
+			})
+		}
+	}
+}

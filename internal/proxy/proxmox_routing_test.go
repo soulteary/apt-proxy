@@ -203,57 +203,62 @@ distributions:
 // Exercise the shipped example itself so its capture groups, mirror root and
 // cache rules cannot drift from the routing behavior documented for users.
 func TestProxmoxExampleRoutesOriginalAndAliasPaths(t *testing.T) {
-	debian := newRepositoryRoutingOrigin(t, "debian")
-	proxmox := newRepositoryRoutingOrigin(t, "proxmox")
-	reg := distro.NewBuiltinRegistry()
-	if err := reg.Reload("../../examples/proxmox/distributions.yaml"); err != nil {
-		t.Fatalf("Reload shipped example: %v", err)
-	}
-	registered, ok := reg.GetByID("proxmox-pbs-client")
-	if !ok {
-		t.Fatal("shipped example did not register proxmox-pbs-client")
-	}
-	// Replace only its origin before construction: mirror probes and routed
-	// requests must stay local while all example routing fields stay intact.
-	local := *registered
-	local.Mirrors = []distro.URLWithAlias{
-		distro.GenerateBuiltinMirrorItem(proxmox.URL+"/debian/pbs-client/", true),
-	}
-	if err := reg.Register(&local); err != nil {
-		t.Fatalf("register local example mirror: %v", err)
-	}
-	st := newTestState()
-	st.SetMirror(distro.TypeDebian, debian.URL+"/debian/")
-	ps, err := NewPackageStruct(Options{
-		State: st, Registry: reg, CacheDir: t.TempDir(), Mode: distro.TypeAllDistros,
-	})
-	if err != nil {
-		t.Fatalf("NewPackageStruct: %v", err)
-	}
-	for _, source := range []struct {
-		name string
-		base string
-	}{
-		{"original source", "http://download.proxmox.com/debian/pbs-client/"},
-		{"local alias", "http://proxy.example:3142/proxmox-pbs-client/"},
-	} {
-		for _, suffix := range []string{
-			"dists/trixie/Release",
-			"dists/trixie/main/binary-amd64/Packages.xz",
-			"pool/main/p/proxmox-backup-client/proxmox-backup-client_4.0.0-1_amd64.deb",
-		} {
-			t.Run(source.name+"/"+suffix, func(t *testing.T) {
-				rec := httptest.NewRecorder()
-				ps.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, source.base+suffix, nil))
-				if rec.Code != http.StatusOK || rec.Header().Get("X-Test-Origin") != "proxmox" {
-					t.Fatalf("status = %d, origin = %q; want 200 from proxmox", rec.Code, rec.Header().Get("X-Test-Origin"))
-				}
-				want := strings.TrimPrefix(proxmox.URL, "http://") + " /debian/pbs-client/" + suffix + "\n"
-				if got := rec.Body.String(); got != want {
-					t.Errorf("upstream received %q, want %q", got, want)
-				}
+	for _, trailingSlash := range []string{"/", ""} {
+		t.Run("mirror suffix="+trailingSlash, func(t *testing.T) {
+			debian := newRepositoryRoutingOrigin(t, "debian")
+			proxmox := newRepositoryRoutingOrigin(t, "proxmox")
+			reg := distro.NewBuiltinRegistry()
+			if err := reg.Reload("../../examples/proxmox/distributions.yaml"); err != nil {
+				t.Fatalf("Reload shipped example: %v", err)
+			}
+			registered, ok := reg.GetByID("proxmox-pbs-client")
+			if !ok {
+				t.Fatal("shipped example did not register proxmox-pbs-client")
+			}
+			// Replace only its origin before construction: mirror probes and routed
+			// requests must stay local while all example routing fields stay intact.
+			local := *registered
+			local.Mirrors = []distro.URLWithAlias{
+				distro.GenerateBuiltinMirrorItem(proxmox.URL+"/debian/pbs-client"+trailingSlash, true),
+			}
+			if err := reg.Register(&local); err != nil {
+				t.Fatalf("register local example mirror: %v", err)
+			}
+			st := newTestState()
+			st.SetMirror(distro.TypeDebian, debian.URL+"/debian/")
+			ps, err := NewPackageStruct(Options{
+				State: st, Registry: reg, CacheDir: t.TempDir(), Mode: distro.TypeAllDistros,
 			})
-		}
+			if err != nil {
+				t.Fatalf("NewPackageStruct: %v", err)
+			}
+			for _, source := range []struct {
+				name string
+				base string
+			}{
+				{"original source", "http://download.proxmox.com/debian/pbs-client/"},
+				{"local alias", "http://proxy.example:3142/proxmox-pbs-client/"},
+			} {
+				for _, suffix := range []string{
+					"dists/trixie/Release",
+					"dists/trixie/main/binary-amd64/Packages.xz",
+					"pool/main/p/proxmox-backup-client/proxmox-backup-client_4.0.0-1_amd64.deb",
+				} {
+					t.Run(source.name+"/"+suffix, func(t *testing.T) {
+						rec := httptest.NewRecorder()
+						ps.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, source.base+suffix, nil))
+						if rec.Code != http.StatusOK || rec.Header().Get("X-Test-Origin") != "proxmox" {
+							t.Fatalf("status = %d, origin = %q; want 200 from proxmox", rec.Code, rec.Header().Get("X-Test-Origin"))
+						}
+						want := strings.TrimPrefix(proxmox.URL, "http://") + " /debian/pbs-client/" + suffix + "\n"
+						if got := rec.Body.String(); got != want {
+							t.Errorf("upstream received %q, want %q", got, want)
+						}
+					})
+				}
+			}
+
+		})
 	}
 }
 
