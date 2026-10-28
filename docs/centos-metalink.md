@@ -1,8 +1,8 @@
 # CentOS Metalink repositories
 
-This endpoint was added after v0.18.0 in
-[PR #158](https://github.com/soulteary/apt-proxy/pull/158). Use a build or release
-containing that change; v0.18.0 binaries do not expose it. See
+Available in v0.19.0 and later, including the current v0.19.4 release.
+[PR #158](https://github.com/soulteary/apt-proxy/pull/158) introduced the endpoint;
+v0.18.0 binaries do not expose it. See
 [verified support and version availability](client-support.md).
 
 The optional `metalink` YAML configuration exposes a local `/metalink` endpoint.

@@ -20,7 +20,7 @@
 
 APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
 
-本文说明当前 main 分支。v0.19.2 修复了包括 Proxmox Backup Client 在内的软件源路径重叠问题，并增加发行版 YAML 字段校验。使用自定义配置时，请先阅读 [v0.19.2 升级说明](docs/releases/v0.19.2.zh-CN.md)。已验证的仓库格式与客户端范围见[客户端支持与版本可用性](docs/client-support.md)。
+本文说明当前 main 分支。最新发布版本为 [v0.19.4](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.4)，详见[发布与升级说明](docs/releases/v0.19.4.zh-CN.md)。该版本包含 Proxmox 路由与 URL 拼接修复、默认注释的仓库配置示例，以及 95% 的整体测试覆盖率门槛。已验证的仓库格式与客户端范围见[客户端支持与版本可用性](docs/client-support.md)。
 
 <p align="center">
   <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
@@ -65,12 +65,12 @@ APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过�
 - `linux/arm64`
 - `linux/arm/v7`
 
-> 说明：ARMv6 仅以独立二进制形式发布，未提供 ARMv6 的 Docker 镜像。
+> 说明：ARMv6 提供二进制归档与 Linux 安装包，未提供 ARMv6 的 Docker 镜像。
 
 ## 已验证的客户端软件仓库缓存
 
-2026-10-13，[完整签名仓库测试](https://github.com/soulteary/apt-proxy/actions/runs/38382735057)
-在 Linux AMD64 上使用代理提交 `6a8f683`，18 个客户端镜像全部通过：
+2026-10-29（Asia/Shanghai），v0.19.4 的[完整签名仓库测试](https://github.com/soulteary/apt-proxy/actions/runs/40728681270)
+在 Linux AMD64 上使用代理提交 `028d5a4`，18 个客户端镜像全部通过：
 
 - **APT：** Debian 12 Bookworm / 13 Trixie；Ubuntu 22.04 / 24.04 / 26.04。
 - **DNF/DNF5：** CentOS Stream 9/10、Rocky Linux 9/10、AlmaLinux 9/10、Fedora 44。
@@ -105,15 +105,8 @@ docker pull soulteary/apt-proxy
 ./apt-proxy
 ```
 
-你会看到类似以下的输出：
-
-```
-2024/01/15 10:30:00 INF starting apt-proxy version=1.0.0 listen=0.0.0.0:3142 protocol=http
-2024/01/15 10:30:01 INF Starting benchmark for mirrors
-2024/01/15 10:30:01 INF Finished benchmarking mirrors
-2024/01/15 10:30:01 INF using fastest mirror mirror=https://mirrors.company.ltd/ubuntu/
-2024/01/15 10:30:01 INF server started successfully
-```
+启动日志会记录版本、监听地址和所选镜像。镜像测速异步运行：服务先使用已配置
+或默认的镜像启动，再在后台完成选优。
 
 代理已经启动并准备好缓存软件包了。默认监听 `0.0.0.0:3142`，并自动选择最快的镜像源。
 
@@ -235,8 +228,11 @@ Security 镜像。查询参数会被保留，无法匹配已配置发行版的�
 
 **自 v0.19.2 起提供（[#167](https://github.com/soulteary/apt-proxy/issues/167)）：**
 下述域名与路径联合匹配优先级、严格 YAML 校验已包含在 v0.19.2 及后续版本中。
-[Proxmox Backup Client 示例](examples/proxmox/)提供保留官方源地址的代理配置，
-以及独立的本地路径别名。
+v0.19.3 还修复了镜像根地址缺少尾部斜杠时的 URL 拼接；Proxmox 部署请使用
+v0.19.3 或更高版本。[Proxmox Backup Client 示例](examples/proxmox/)提供保留官方源地址的
+代理配置，以及独立的本地路径别名。v0.19.4 在
+[`config/distributions.yaml`](config/distributions.yaml) 中补充了默认注释的 PVE、PBS Server、
+PBS Client 和 Ceph Squid 条目，需要手动加入有效发行版列表才会启用。
 
 **让 apt-proxy 读到这个文件：** 把它放在查找路径之一，或显式指定路径。未指定路径
 时，按以下顺序取第一个存在的文件：
@@ -425,15 +421,8 @@ distributions:
 - `cn:huaweicloud` - 华为云镜像
 - `cn:tencent` - 腾讯云镜像
 
-输出示例：
-
-```
-2024/01/15 10:55:26 INF starting apt-proxy version=1.0.0
-2024/01/15 10:55:26 INF using specified debian mirror mirror=https://mirrors.163.com/debian/
-2024/01/15 10:55:26 INF using specified ubuntu mirror mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
-2024/01/15 10:55:26 INF proxy listening on 0.0.0.0:3142
-2024/01/15 10:55:26 INF server started successfully
-```
+启动日志会通过 `using specified mirror` 消息记录显式选择的镜像，
+并带上发行版和镜像 URL 字段。
 
 ### 缓存第三方软件源（`passthrough`）
 
@@ -1144,12 +1133,13 @@ APT Proxy 提供 REST API 端点用于监控和管理：
 | 端点 | 方法 | 描述 |
 |------|------|------|
 | `/api/mirrors/refresh` | POST | 重载发行版/镜像配置（distributions.yaml）并刷新镜像 |
+| `/api/mirrors/status` | GET | 查看进程内的运行时镜像健康状态与选择结果 |
 
 ### API 认证
 
 配置 API 密钥并启用认证后，所有 `/api/*` 端点都需要认证。设置 `--api-key`（或 `APT_PROXY_API_KEY`）会隐式启用鉴权，除非显式传入 `--enable-api-auth=false`。如果启用认证但没有配置非空密钥，程序会将其视为无效配置并拒绝启动。
 
-认证关闭时，只读的 `/api/cache/stats` 仍可访问；`purge`、`cleanup` 和镜像 `refresh` 等修改类接口默认关闭并返回 HTTP 503，避免未认证的网络监听端口修改代理状态。可通过以下方式提供 API 密钥：
+认证关闭时，只读的 `/api/cache/stats` 与 `/api/mirrors/status` 仍可访问；`purge`、`cleanup` 和镜像 `refresh` 等修改类接口默认关闭并返回 HTTP 503，避免未认证的网络监听端口修改代理状态。可通过以下方式提供 API 密钥：
 
 1. **X-API-Key Header**（推荐）：
    ```bash
@@ -1207,10 +1197,11 @@ APT Proxy 仅支持对**发行版与镜像配置**（含 `distributions.yaml`）
 kill -HUP $(pgrep apt-proxy)
 ```
 
-或使用 API：
+或启用 API 认证，并使用已配置的密钥调用 API（认证关闭时，修改类接口返回 503）：
 
 ```bash
-curl -X POST http://localhost:3142/api/mirrors/refresh
+curl -X POST -H "X-API-Key: YOUR_API_KEY" \
+  http://localhost:3142/api/mirrors/refresh
 ```
 
 两种方式效果等价：都会重载 `distributions.yaml` 并重新选择镜像。SIGHUP 信号会被防抖（约 500ms 内的连续信号合并）并排队（重载进行中最多再调度一次），可以放心从脚本批量发送。
@@ -1253,89 +1244,54 @@ curl -X POST http://localhost:3142/api/mirrors/refresh
 
 ```mermaid
 flowchart LR
-    Client[APT 客户端] --> Proxy[apt-proxy]
-    Proxy --> Cache[(本地缓存)]
-    Proxy --> Mirror1[镜像源 1]
-    Proxy --> Mirror2[镜像源 2]
-    
-    subgraph aptproxy [apt-proxy 内部]
-        Handler[Handler] --> Rewriter[URL 重写器]
-        Rewriter --> Benchmark[镜像测速]
-        Handler --> HTTPCache[HTTP 缓存]
-        Auth[认证中间件] --> Handler
-    end
-    
-    subgraph monitoring [可观测性]
-        Metrics[Prometheus /metrics]
-        Health[健康检查]
-        API[管理 API]
-    end
+    Client[包管理器客户端] --> DownloadAccess[下载 CIDR 策略]
+    DownloadAccess --> Proxy[仓库处理与缓存]
+    Proxy --> Storage[(磁盘或 S3 缓存)]
+    Proxy --> Upstream[已配置的上游仓库]
+    Operator[管理客户端] --> APIAuth[API 认证与限流]
+    APIAuth --> API[管理 API]
+    API --> Proxy
+    Monitor[监控客户端] --> Metrics[健康、指标与版本接口]
 ```
 
 ### 请求流程
 
-1. **客户端请求**：APT 客户端发送包请求到 apt-proxy
-2. **缓存检查**：Handler 检查包是否存在于本地缓存
+1. **客户端请求**：包管理器请求先通过配置的下载 CIDR 策略，再进入仓库处理与缓存查找
+2. **缓存检查**：查找与请求及仓库身份匹配的缓存表示
 3. **缓存命中**：按默认策略校验持久记录与完整响应体，再返回符合请求选择字段和有效期的条目
-4. **缓存未命中**：将 URL 重写到最快镜像，从上游获取
-5. **存储并响应**：缓存响应并返回给客户端
+4. **缓存未命中**：应用仓库路由或 passthrough 策略，从所选上游获取
+5. **响应与发布**：返回响应，并按完整性与资源准入策略发布符合条件的缓存数据
 
 ## 项目结构
 
-```
+```text
 apt-proxy/
-├── cmd/
-│   └── apt-proxy/            # 应用入口
-│       └── main.go           # 主入口
-├── internal/                 # 私有应用代码
-│   ├── api/                  # REST API 处理器与中间件
-│   │   ├── auth.go           # API 认证中间件
-│   │   ├── cache.go          # 缓存管理端点
-│   │   ├── mirrors.go        # 镜像管理端点
-│   │   ├── ratelimit.go      # 按 IP 限流中间件
-│   │   ├── clientip.go       # 客户端 IP 解析（X-Forwarded-For + 受信任代理）
-│   │   └── response.go       # 响应工具
-│   ├── benchmarks/           # 镜像基准测试（同步和异步）
-│   ├── cli/                  # CLI 与守护进程管理
-│   │   ├── cli.go            # 入口与版本注入
-│   │   ├── daemon.go         # 服务生命周期、路由、信号处理
-│   │   └── health.go         # 自定义 Fiber 健康检查（避免关停时 race）
-│   ├── config/               # 配置管理
-│   │   ├── config.go         # 配置结构
-│   │   ├── defaults.go       # 默认值与环境变量名
-│   │   ├── loader.go         # 配置加载入口
-│   │   ├── loader_flags.go   # CLI flag 解析
-│   │   ├── loader_yaml.go    # YAML 加载与 ${VAR}/${VAR:-default} 展开
-│   │   ├── loader_merge.go   # CLI/ENV/文件/默认值合并（含 explicit flag 跟踪）
-│   │   ├── loader_search.go  # 配置文件搜索路径
-│   │   └── loader_validate.go# 校验（路径、TLS 文件、缓存可写性）
-│   ├── distro/               # 发行版定义与注册
-│   │   ├── distro.go         # 通用类型与工具
-│   │   ├── registry.go       # 内置发行版注册表
-│   │   ├── loader.go         # distributions.yaml 加载与搜索路径
-│   │   ├── rules.go          # 缓存规则辅助
-│   │   ├── ubuntu.go         # Ubuntu 配置
-│   │   ├── ubuntu-ports.go   # Ubuntu Ports 配置
-│   │   ├── debian.go         # Debian 配置
-│   │   ├── centos.go         # CentOS 配置
-│   │   └── alpine.go         # Alpine 配置
-│   ├── errors/               # 统一错误处理
-│   │   └── errors.go         # 错误码与类型
-│   ├── mirrors/              # 镜像管理
-│   │   ├── mirrors.go        # 镜像列表解析
-│   │   ├── ubuntu.go         # Ubuntu 地理镜像发现
-│   │   └── templates.go      # URL 模板辅助
-│   ├── proxy/                # 核心代理功能
-│   │   ├── handler.go        # HTTP 请求处理
-│   │   ├── rewriter.go       # URL 重写
-│   │   ├── transport.go      # 上游 HTTP transport（keep-alive、超时）
-│   │   ├── page.go           # 首页渲染
-│   │   └── stats.go          # 统计信息
-│   ├── state/                # 每个 Server 的运行时状态（代理模式、镜像 URL）
-│   └── system/               # 系统工具（磁盘、GC、文件大小）
-├── tests/                    # 集成测试
-│   └── integration/          # 端到端测试
-└── config/, docker/, examples/ # 示例配置、部署与可运行示例
+├── cmd/apt-proxy/            # 进程入口
+├── internal/
+│   ├── access/                 # 下载 CIDR 与上游连接策略
+│   ├── api/                    # 管理接口、API Key 与限流
+│   ├── benchmarks/             # 镜像测速与选优
+│   ├── cli/                    # 命令分发、服务生命周期与 HTTP 适配
+│   ├── config/                 # 命令行、环境变量、YAML、默认值与校验
+│   ├── distro/                 # 内置路由与自定义发行版注册
+│   ├── errors/                 # 结构化应用错误
+│   ├── logsafe/                # 日志中的凭据脱敏
+│   ├── metalink/               # 已验证的 Metalink 发现与快照路由
+│   ├── mirrorhealth/           # 运行时 APT 镜像健康与故障切换
+│   ├── mirrors/                # 镜像列表、别名与 URL 模板
+│   ├── passthrough/            # 显式第三方源站白名单
+│   ├── proxy/                  # 仓库路由、上游传输与下载
+│   ├── repository/             # 已验证的 APT 快照与离线服务
+│   ├── resource/               # 临时副本与下载的共同准入预算
+│   ├── sharedcache/            # 仓库身份与 Unix 磁盘协调
+│   ├── state/                  # 每个服务实例独立的运行状态
+│   ├── storage/                # 完整性封装与 S3 虚拟文件系统
+│   └── system/                 # 磁盘与进程工具
+├── config/                  # 发行版与镜像配置示例
+├── docs/                    # 功能文档与版本说明
+├── docker/                  # 源码构建与发布镜像
+├── examples/                # 部署与配置示例
+└── tests/                   # 集成测试与真实包管理器客户端
 ```
 
 ## 开发
@@ -1350,16 +1306,26 @@ go build -o apt-proxy ./cmd/apt-proxy
 
 与 [vfs-kit](https://github.com/soulteary/vfs-kit) 或 [httpcache-kit](https://github.com/soulteary/httpcache-kit) 联合开发时，`go.mod` 可使用 `replace` 指向本地目录（如 `../kits/httpcache-kit`）；使用已发布版本时请移除对应 replace。
 
+使用与 `go.mod`、CI 一致的 **Go 1.27.3**。真实客户端测试还需要 Python 3 和 Docker。
+
 ### 运行测试
 
 ```bash
-# 运行所有测试并显示覆盖率
-go test -cover ./...
+# 运行与 CI 一致的单元测试：race 检查、short 模式、禁用测试缓存
+make test
 
-# 生成详细的覆盖率报告
-go test -coverprofile=coverage.out ./...
+# 生成与 CI 相同口径的语句覆盖率报告，并检查 95% 门槛
+make cover
+scripts/check-coverage.sh coverage.out
 go tool cover -html=coverage.out
+
+# 运行带 integration 标签的测试，外部服务要求见 tests/integration
+make test-integration
 ```
+
+95% 门槛针对 `./...` 的整体语句覆盖率，不要求每个包或每个分支达到 95%。
+仓库中的徽章是已发布的报告快照，评估改动时应以本次运行和 profile 为准，详见
+[报告工作流](.github/GO-REPORTS.md)。
 
 ### 贡献代码
 

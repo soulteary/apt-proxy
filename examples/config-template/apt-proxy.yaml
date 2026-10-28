@@ -12,7 +12,8 @@
 #
 # This file shows common user-facing YAML fields. Download/resource limits,
 # download CIDR lists and upstream_access are YAML-only and require a restart.
-# Optional mirror_health and shared_cache policies are documented in docs/.
+# Disabled mirror_health defaults and a commented metalink example are below.
+# The optional shared_cache policy is documented in docs/shared-repository-cache.md.
 # See README "Configuration Options" for the available flags and ENV equivalents.
 
 # Server configuration
@@ -208,7 +209,6 @@ mirror_health:
 # in front mishandles persistent connections.
 upstream_keep_alive: true
 
-# Distribution mode
 # Optional CentOS Metalink discovery. Client repository definitions must point
 # their metalink URL at public_url/metalink while preserving repo/arch/protocol.
 # See docs/centos-metalink.md. Only explicitly named returned mirror hosts are used.
@@ -219,5 +219,6 @@ upstream_keep_alive: true
 #   refresh_seconds: 600
 #   timeout_seconds: 15
 
+# Distribution mode
 # Options: all, ubuntu, ubuntu-ports, debian, centos, alpine
 mode: all

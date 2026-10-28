@@ -24,9 +24,10 @@ target deployment and read its `README.md`.
   [shared repository cache](../docs/shared-repository-cache.md).
 - Need a distribution apt-proxy does not ship (Deepin, Armbian, Arch, an
   internal archive)? See [`custom-distros/`](custom-distros/).
-- Need Proxmox Backup Client, whose original path overlaps Debian's
-  `/debian/` route? See [`proxmox/`](proxmox/) for host-and-path selection and
-  the version requirement.
+- Need Proxmox repositories under Debian's `/debian/` route? See
+  [`proxmox/`](proxmox/) for the runnable PBS Client setup and v0.19.3+
+  requirement. [`config/distributions.yaml`](../config/distributions.yaml)
+  also provides disabled PVE, PBS Server, PBS Client and Ceph Squid examples.
 - Need to know what every config knob does? Read
   [`config-template/apt-proxy.yaml`](config-template/apt-proxy.yaml).
 

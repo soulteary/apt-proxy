@@ -101,4 +101,4 @@ roots must therefore be operator-approved equivalents. Enabling runtime health
 itself requires no cache migration, and fingerprints are not recovered from
 cached bodies. The separate default integrity and released Vary-key migrations
 can cause lazy rewarming when upgrading the daemon; see the
-[v0.18.0 candidate notes](releases/v0.18.0.md).
+[v0.18.0 upgrade notes](releases/v0.18.0.md).

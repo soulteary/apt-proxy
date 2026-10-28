@@ -2,20 +2,15 @@
 
 ## Supported Versions
 
-We provide security updates for the following versions:
+The project currently publishes 0.x releases; v0.19.4 is the current release.
+Use the [latest published release](https://github.com/soulteary/apt-proxy/releases/latest)
+and review its upgrade notes when applying fixes. There is no published 1.x
+release to upgrade to.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.x     | :white_check_mark: |
-| < 1.0   | :x:                |
-
-- **Supported**: Security fixes and critical bug fixes are backported.
-- **Unsupported**: No new fixes; please upgrade to a supported version.
-
-## End of Life Policy
-
-- **Stopping support**: When a version line reaches end of life, we will announce it in the release notes and this document. After EOL, that version will not receive security or bug fixes.
-- **Upgrade**: We recommend staying on a supported version and upgrading before your current version goes out of support.
+This repository does not define a separate backport or long-term-support
+schedule for older releases. When reporting a vulnerability, include the
+installed version and whether it also affects the latest release. A historical
+release tag alone does not establish an ongoing maintenance commitment.
 
 ## Reporting a Vulnerability (Disclosure Process)
 

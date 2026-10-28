@@ -53,7 +53,7 @@ Persisted variants from an older namespace safely become misses and are lazily
 refetched; ordinary non-Vary base keys are unchanged by that library migration.
 This is additional to the daemon's required-digest and private-isolation checks
 above. No manual purge is required, but plan for temporary extra upstream
-traffic. See the [v0.18.0 candidate upgrade notes](releases/v0.18.0.md).
+traffic. See the [v0.18.0 upgrade notes](releases/v0.18.0.md).
 
 Native disk retrieval retains an open header descriptor until the corresponding
 cache resource closes, allowing generation checks to distinguish a peer's

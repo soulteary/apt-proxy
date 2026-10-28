@@ -6,10 +6,8 @@ services:
     restart: always
     environment:
       - TZ=Asia/Shanghai
-      # Name the file explicitly. /etc/apt-proxy/distributions.yaml is one of
-      # the paths apt-proxy searches, but the search only runs on releases that
-      # carry it, and naming the path works on every release. It also keeps
-      # `docker compose config` honest about where the file comes from.
+      # Name the mounted file explicitly instead of relying on search order.
+      # /etc/apt-proxy/distributions.yaml is also a current search location.
       - APT_PROXY_DISTRIBUTIONS_CONFIG=/etc/apt-proxy/distributions.yaml
     ports:
       - "3142:3142"
