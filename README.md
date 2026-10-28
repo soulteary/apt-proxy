@@ -5,14 +5,16 @@
 [English](README.md) · [中文](README_CN.md)
 
 <p align="center">
+  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
+</p>
+
+<p align="center">
   <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
 </p>
 
 ## Overview
 
-APT Proxy caches package downloads for multiple machines, containers and repeat
-installations. It selects repository mirrors, keeps verified cache entries on
-disk or S3-compatible storage, and can maintain complete offline APT snapshots.
+APT Proxy is a lightweight, high-performance caching proxy for package managers. It accelerates package downloads by caching frequently used packages locally, dramatically reducing download times for subsequent installations. Whether you're managing multiple servers, building Docker images, or working in bandwidth-constrained environments, APT Proxy helps you save time and bandwidth.
 
 This README is the project entry point. The latest documented release is
 [v0.19.4](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.4);
@@ -328,7 +330,6 @@ This project builds on the following projects and their contributors:
 - [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) — The current virtual filesystem library, derived from [rainycape/vfs](https://github.com/rainycape/vfs), under MPL-2.0.
 - [djherbis/stream](https://github.com/djherbis/stream) — Used by earlier versions of the project.
 
-### Support
+## Support
 
-[Issues](https://github.com/soulteary/apt-proxy/issues) ·
-[Discussions](https://github.com/soulteary/apt-proxy/discussions).
+Made with ❤️ by the APT Proxy community

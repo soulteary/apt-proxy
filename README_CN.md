@@ -5,13 +5,16 @@
 [English](README.md) · [中文](README_CN.md)
 
 <p align="center">
+  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
+</p>
+
+<p align="center">
   <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
 </p>
 
 ## 概述
 
-APT Proxy 为多台机器、容器和重复安装缓存软件包下载。它支持镜像选优，将带完整性
-校验的缓存保存在磁盘或 S3 兼容存储中，也能维护完整的离线 APT 仓库快照。
+APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
 
 本文是项目入口。最新记录的发布版本为
 [v0.19.4](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.4)，
@@ -308,7 +311,6 @@ scripts/check-coverage.sh coverage.out
 - [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) — 当前使用的虚拟文件系统库，源自 [rainycape/vfs](https://github.com/rainycape/vfs)，采用 MPL-2.0 协议。
 - [djherbis/stream](https://github.com/djherbis/stream) — 项目早期版本使用的流处理库。
 
-### 支持
+## 支持
 
-[问题反馈](https://github.com/soulteary/apt-proxy/issues) ·
-[讨论交流](https://github.com/soulteary/apt-proxy/discussions)。
+由 APT Proxy 社区用 ❤️ 打造
