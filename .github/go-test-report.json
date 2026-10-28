@@ -1,24 +1,24 @@
 {
   "schema_version": "1.0",
   "tests": {
-    "total": 561,
-    "passed": 560,
+    "total": 658,
+    "passed": 657,
     "failed": 0,
     "skipped": 1
   },
   "coverage": {
-    "covered_statements": 4876,
-    "total_statements": 5825,
-    "percentage": 83.71,
-    "threshold": 80
+    "covered_statements": 5609,
+    "total_statements": 5823,
+    "percentage": 96.32,
+    "threshold": 95
   },
   "packages": [
     {
       "name": "cmd/apt-proxy",
-      "status": "no_tests",
-      "tests": 0,
+      "status": "pass",
+      "tests": 3,
       "failed": 0,
-      "coverage": 0
+      "coverage": 84.62
     },
     {
       "name": "internal/access",
@@ -30,65 +30,65 @@
     {
       "name": "internal/api",
       "status": "pass",
-      "tests": 34,
+      "tests": 38,
       "failed": 0,
-      "coverage": 88.24
+      "coverage": 100
     },
     {
       "name": "internal/benchmarks",
       "status": "pass",
-      "tests": 27,
+      "tests": 29,
       "failed": 0,
-      "coverage": 93.33
+      "coverage": 97.58
     },
     {
       "name": "internal/cli",
       "status": "pass",
-      "tests": 93,
+      "tests": 104,
       "failed": 0,
-      "coverage": 73.69
+      "coverage": 92.09
     },
     {
       "name": "internal/config",
       "status": "pass",
-      "tests": 52,
+      "tests": 60,
       "failed": 0,
-      "coverage": 75.09
+      "coverage": 98.4
     },
     {
       "name": "internal/distro",
       "status": "pass",
-      "tests": 38,
+      "tests": 42,
       "failed": 0,
-      "coverage": 94.63
+      "coverage": 99.51
     },
     {
       "name": "internal/errors",
       "status": "pass",
-      "tests": 15,
+      "tests": 16,
       "failed": 0,
-      "coverage": 94.29
+      "coverage": 98.57
     },
     {
       "name": "internal/logsafe",
       "status": "pass",
-      "tests": 4,
+      "tests": 5,
       "failed": 0,
-      "coverage": 96.77
+      "coverage": 100
     },
     {
       "name": "internal/metalink",
       "status": "pass",
-      "tests": 15,
+      "tests": 21,
       "failed": 0,
-      "coverage": 85.02
+      "coverage": 98.17
     },
     {
       "name": "internal/mirrorhealth",
       "status": "pass",
-      "tests": 24,
+      "tests": 29,
       "failed": 0,
-      "coverage": 90.02
+      "coverage": 96.67
     },
     {
       "name": "internal/mirrors",
@@ -100,37 +100,37 @@
     {
       "name": "internal/passthrough",
       "status": "pass",
-      "tests": 4,
+      "tests": 6,
       "failed": 0,
-      "coverage": 94.44
+      "coverage": 100
     },
     {
       "name": "internal/proxy",
       "status": "pass",
-      "tests": 137,
+      "tests": 149,
       "failed": 0,
-      "coverage": 88.69
+      "coverage": 94.97
     },
     {
       "name": "internal/repository",
       "status": "pass",
-      "tests": 10,
+      "tests": 23,
       "failed": 0,
-      "coverage": 80.9
+      "coverage": 95.37
     },
     {
       "name": "internal/resource",
       "status": "pass",
-      "tests": 7,
+      "tests": 10,
       "failed": 0,
-      "coverage": 78.22
+      "coverage": 98.02
     },
     {
       "name": "internal/sharedcache",
       "status": "pass",
-      "tests": 18,
+      "tests": 30,
       "failed": 0,
-      "coverage": 74.1
+      "coverage": 96.15
     },
     {
       "name": "internal/state",
@@ -142,23 +142,23 @@
     {
       "name": "internal/storage",
       "status": "pass",
-      "tests": 11,
+      "tests": 14,
       "failed": 0,
-      "coverage": 78.13
+      "coverage": 100
     },
     {
       "name": "internal/storage/s3vfs",
       "status": "pass",
-      "tests": 20,
+      "tests": 24,
       "failed": 0,
-      "coverage": 83.93
+      "coverage": 95.74
     },
     {
       "name": "internal/system",
       "status": "pass",
-      "tests": 6,
+      "tests": 9,
       "failed": 0,
-      "coverage": 81.03
+      "coverage": 94.83
     }
   ],
   "failures": null
