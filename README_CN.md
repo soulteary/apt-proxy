@@ -2,15 +2,7 @@
 
 [![Go Test Coverage](./.github/coverage.svg)](./.github/go-test-report.md "最近一次发布的覆盖率报告快照") [![Go Report Card](./.github/goreportcard.svg)](./.github/goreportcard-report.md "最近一次发布的代码质量报告快照") [![Security Scan](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/scan.yml) [![Release](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml/badge.svg)](https://github.com/soulteary/apt-proxy/actions/workflows/release.yaml) [![Docker Image](https://img.shields.io/docker/pulls/soulteary/apt-proxy.svg)](https://hub.docker.com/r/soulteary/apt-proxy)
 
-<p style="text-align: center;">
-  <a href="README.md" target="_blank">ENGLISH</a> | <a href="README_CN.md">中文文档</a>
-</p>
-
-<p align="center">
-  <img src=".github/assets/apt-proxy-logo.png" alt="APT Proxy Logo" width="160"/>
-</p>
-
-> 一个支持镜像选择、本地缓存与离线仓库的 APT 代理。
+[English](README.md) · [中文](README_CN.md)
 
 <p align="center">
   <img src=".github/assets/apt-proxy-banner.jpg" alt="APT Proxy Banner" width="720"/>
@@ -18,1456 +10,296 @@
 
 ## 概述
 
-APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
+APT Proxy 为多台机器、容器和重复安装缓存软件包下载。它支持镜像选优，将带完整性
+校验的缓存保存在磁盘或 S3 兼容存储中，也能维护完整的离线 APT 仓库快照。
 
-本文说明当前 main 分支。最新发布版本为 [v0.19.4](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.4)，详见[发布与升级说明](docs/releases/v0.19.4.zh-CN.md)。该版本包含 Proxmox 路由与 URL 拼接修复、默认注释的仓库配置示例，以及 95% 的整体测试覆盖率门槛。已验证的仓库格式与客户端范围见[客户端支持与版本可用性](docs/client-support.md)。
-
-<p align="center">
-  <img src=".github/assets/apt-proxy-webui-preview.jpg" alt="APT Proxy WebUI Preview" width="720"/>
-</p>
+本文是项目入口。最新记录的发布版本为
+[v0.19.4](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.4)，
+升级旧部署时请阅读[升级说明](docs/releases/v0.19.4.zh-CN.md)。
 
 ### 核心特性
 
-- **客户端软件仓库缓存**：已实测 APT、DNF/DNF5、APK、pacman 和 zypper，仓库路由与配置要求见[支持说明](docs/client-support.md)
-- **单文件部署**：提供独立二进制和容器镜像，文件大小随平台与构建方式变化
-- **智能镜像选择**：自动测试并选择最快的镜像源
-- **前置代理**：主机无法直连镜像站时，可经由已有的 `HTTP_PROXY` / `HTTPS_PROXY` 前置代理访问（支持 SOCKS5）；镜像测速走同一条链路，因此选出来的镜像一定是真正连得上的
-- **Docker 友好**：无缝集成 Docker 容器和构建流程
-- **apt-cacher-ng 友好**：兼容大多数 [apt-cacher-ng](https://www.unix-ag.uni-kl.de/~bloch/acng/) 使用场景，包括用于 TLS 上游的 `HTTPS///` 重写标记 —— 现有的 `sources.list` 条目无需改写即可迁移（注：暂未实现 Import/Maint 管理界面、完整的 `acng.conf` 语法、以及跨发行版 deb 去重缓存等高级特性）
-- **第三方软件源**：可通过 `passthrough` 白名单指定要缓存的源站（PPA、厂商源、内部源），默认关闭 —— apt-proxy 不是开放转发代理
-- **按源站识别仓库**：同时匹配 `host_pattern` 与 `url_pattern` 的配置优先于通用路径规则，可区分同样使用 `/debian/` 的 Proxmox 仓库；仅匹配域名的后备规则继续支持 `security.debian.org`、`apt.armbian.com` 等域名根仓库
-- **内置仓库路由**：提供 Ubuntu、Ubuntu Ports、Debian、CentOS、Alpine 路由；其他仓库需配置发行版映射或明确的 passthrough 白名单
-- **可观测性**：内置健康检查、Prometheus 指标、结构化日志，并可选启用 OpenTelemetry 链路追踪
-- **缓存管理**：REST API 支持缓存统计、清理与维护，附带 API Key 鉴权与按 IP 限流
+- 已验证 APT、DNF/DNF5、APK、pacman、zypper 的仓库缓存。
+- 自动镜像测速、自定义仓库映射，以及显式第三方源站白名单。
+- 磁盘或 S3 兼容缓存，默认使用私有 SHA256 完整性记录。
+- 可选完整 APT 快照、运行时镜像故障切换和共享 Unix 磁盘缓存协调。
+- 下载并发与临时存储预算，以及独立的客户端和上游访问策略。
+- 单二进制与容器部署，配备健康检查、指标和管理 API。
 
-- **完整 APT 仓库快照**：预取所选二进制包与源码索引引用的全部对象，支持校验、修复、导入导出及离线服务
-- **APT 运行时镜像故障切换**：可选启用，仅在公共仓库已观察的 Release/InRelease 元数据完全一致时切换
-- **持久缓存完整性**：默认校验私有 SHA256 记录，损坏或未验证的旧条目按未命中处理
-- **资源限制**：上游下载、缓存副本和 S3 缓冲共同受暂存预算与并发限制
-- **显式共享 APT 仓库缓存**：可选按仓库身份共享经 SHA256 验证的 by-hash 索引；跨进程协调限 Unix 磁盘后端
-- **真实客户端缓存验证**：手动和发布前运行 APT、DNF/DNF5、APK、pacman、zypper 的 Docker 测试，验证签名下载、安装与缓存复用
+**从这里开始：**[快速开始](#快速开始) · [常见任务](#常见任务) ·
+[配置](#配置) · [运维](#运维) · [开发](#开发)。
 
+<!-- Preserve previously published README section links. -->
 <a id="支持的平台"></a>
+<a id="代理服务端运行平台"></a>
+<a id="已验证的客户端软件仓库缓存"></a>
 
-## 代理服务端运行平台
+## 支持的平台与客户端
 
-以下是代理程序的运行平台。客户端软件仓库的缓存能力在下一节单独说明；
-提供 macOS 服务端二进制，不代表已验证 Homebrew 客户端。
+**代理服务端**支持 Linux（`amd64`、`386`、`arm64`、ARMv6/ARMv7）和
+macOS（`amd64`、`arm64`）。发布产物包括二进制归档、Linux `.deb`/`.rpm`/`.apk`
+安装包，以及归档 SBOM 和校验和。
 
-预编译二进制（[releases 页面](https://github.com/soulteary/apt-proxy/releases) 上的 tar.gz 以及 `.deb` / `.rpm` / `.apk` 安装包）：
+Docker Hub 与 GHCR 提供 `linux/amd64`、`linux/arm64`、`linux/arm/v7` 镜像。
+ARMv6 提供二进制归档和 Linux 安装包，未提供容器镜像。
 
-- Linux：`amd64`（x86_64）、`386`（i386）、`arm64`（ARMv8）、`arm`（ARMv6 与 ARMv7）
-- macOS：`amd64`（Intel）与 `arm64`（Apple Silicon）
+v0.19.4 的[发布验证](https://github.com/soulteary/apt-proxy/actions/runs/40728681270)
+通过了 **Linux AMD64 上的 18 个真实包管理器客户端**：
 
-多架构 Docker 镜像（`soulteary/apt-proxy` 与 `ghcr.io/soulteary/apt-proxy`）：
+- APT：Debian 12/13，Ubuntu 22.04/24.04/26.04。
+- DNF/DNF5：CentOS Stream、Rocky Linux、AlmaLinux 9/10，以及 Fedora 44。
+- APK：Alpine 3.22/3.23/3.24，使用传统签名包与索引。
+- pacman：Arch Linux，需显式配置仓库映射。
+- zypper：openSUSE Leap 16.0、Tumbleweed，需显式配置 rpm-md 映射。
 
-- `linux/amd64`
-- `linux/arm64`
-- `linux/arm/v7`
+这些测试使用本地签名仓库，不代表每个公共镜像、客户端 CPU 架构、原生 YUM、APK ADB
+格式或 Homebrew/Winget/Chocolatey/FreeBSD `pkg` 均已验证。支持某种协议仍需要配置
+仓库路由。版本、配置要求和边界见[客户端支持说明](docs/client-support.md)。
 
-> 说明：ARMv6 提供二进制归档与 Linux 安装包，未提供 ARMv6 的 Docker 镜像。
-
-## 已验证的客户端软件仓库缓存
-
-2026-10-29（Asia/Shanghai），v0.19.4 的[完整签名仓库测试](https://github.com/soulteary/apt-proxy/actions/runs/40728681270)
-在 Linux AMD64 上使用代理提交 `028d5a4`，18 个客户端镜像全部通过：
-
-- **APT：** Debian 12 Bookworm / 13 Trixie；Ubuntu 22.04 / 24.04 / 26.04。
-- **DNF/DNF5：** CentOS Stream 9/10、Rocky Linux 9/10、AlmaLinux 9/10、Fedora 44。
-- **APK：** Alpine 3.22 / 3.23 / 3.24，覆盖 APK2、APK3 读取传统签名包与索引的场景。
-- **pacman：** Arch Linux，需要显式配置自定义仓库映射。
-- **zypper：** openSUSE Leap 16.0、Tumbleweed，需要显式配置 rpm-md 仓库映射。
-
-每个客户端都完成索引刷新、安装与载荷核对，清空自身缓存后重装，源站软件包 GET
-请求数均保持 **1 → 1**，证明命中代理缓存。协议对应的完整性拒绝检查，以及 HTTPS
-阶段的证书验证也均通过。完整矩阵由手动触发，或在版本发布前执行。
-
-这验证了明确配置的本地仓库与对应客户端版本，各发行版默认仓库仍需匹配配置。
-它不等于所有公共镜像、原生 YUM、APK ADB 格式、全部 CPU 架构，或
-Homebrew/Winget/Chocolatey/FreeBSD pkg 都已验证；离线快照、镜像健康切换另有
-APT 范围限制。具体版本、配置要求和未验证范围见[客户端支持说明](docs/client-support.md)。
+<!-- Preserve previously published README section links. -->
+<a id="安装"></a>
+<a id="运行-apt-proxy"></a>
+<a id="docker-集成"></a>
+<a id="在-docker-中运行-apt-proxy"></a>
+<a id="在-docker-构建中使用-apt-proxy"></a>
+<a id="docker-compose-示例"></a>
 
 ## 快速开始
 
-### 安装
+### Docker
 
-从 [releases 页面](https://github.com/soulteary/apt-proxy/releases) 下载适合你平台的最新版本，或使用 Docker：
-
-```bash
-docker pull soulteary/apt-proxy
-```
-
-### 运行 APT Proxy
-
-直接运行二进制文件，无需配置：
-
-```bash
-./apt-proxy
-```
-
-启动日志会记录版本、监听地址和所选镜像。镜像测速异步运行：服务先使用已配置
-或默认的镜像启动，再在后台完成选优。
-
-代理已经启动并准备好缓存软件包了。默认监听 `0.0.0.0:3142`，并自动选择最快的镜像源。
-
-## 使用示例
-
-### Ubuntu / Debian
-
-通过设置 `http_proxy` 环境变量来配置系统使用代理：
-
-```bash
-# 更新软件包列表（首次运行会下载并缓存）
-http_proxy=http://your-domain-or-ip-address:3142 \
-  apt-get -o pkgProblemResolver=true -o Acquire::http=true update
-
-# 安装软件包（后续安装将使用缓存的软件包）
-http_proxy=http://your-domain-or-ip-address:3142 \
-  apt-get -o pkgProblemResolver=true -o Acquire::http=true install vim -y
-```
-
-**提示**：为了方便，你可以在 shell 中导出代理设置：
-
-```bash
-export http_proxy=http://your-domain-or-ip-address:3142
-apt-get update
-apt-get install vim -y
-```
-
-首次下载后，所有后续的包操作都会显著加快，因为软件包从本地缓存提供。
-
-### CentOS
-
-APT Proxy 支持 DNF/YUM 仓库。CentOS Stream 9 和 10 使用
-[CentOS Stream 镜像](https://mirror.stream.centos.org/)和基于 metalink 的仓库定义。
-要保留 metalink 发现与 DNF 的元数据摘要校验，可启用可选的 `metalink`
-配置，将仓库文件中的 metalink 服务地址改为 apt-proxy。返回 XML 中的下载链接
-会指向代理，并按仓库快照共享缓存。详见
-[CentOS Metalink 配置](docs/centos-metalink.md)和
-[真实 DNF 客户端测试](docs/dnf-client-tests.md)。
-
-[Docker 客户端兼容性测试](docs/client-compatibility.md)使用 APT、DNF/DNF5、APK、
-pacman 和 zypper 验证签名仓库下载、安装和代理缓存复用。可在 GitHub Actions
-手动运行；完整矩阵也会在版本发布前运行，全部通过后才能发布。
-
-如果使用固定 base URL，先为 apt-proxy 指定 Stream 镜像：
-
-```bash
-./apt-proxy \
-  --mode=centos \
-  --centos=https://mirror.stream.centos.org/
-```
-
-在每台 CentOS Stream 9 或 10 客户端上，禁用 metalink，并通过 apt-proxy
-启用对应的 base URL。原有的 `$stream` 和 `$basearch` 变量会选择当前系统的
-Stream 版本和架构：
-
-```bash
-sudo sed -i \
-  -e '/^metalink=/s/^/#/' \
-  -e 's|^#baseurl=http://mirror.stream.centos.org|baseurl=http://your-domain-or-ip-address:3142/centos|' \
-  -e 's|^#baseurl=https://mirror.stream.centos.org|baseurl=http://your-domain-or-ip-address:3142/centos|' \
-  /etc/yum.repos.d/centos*.repo
-
-sudo dnf clean all
-sudo dnf makecache
-```
-
-如果镜像提供方已经修改过仓库文件，请在执行命令前先检查文件内容。
-这套固定 base URL 配置不使用 metalink；可选的 metalink 入口需要明确配置允许的镜像主机。
-客户端使用 HTTP
-访问 apt-proxy，apt-proxy 再从配置好的 HTTPS 上游获取内容。
-
-### Alpine Linux
-
-配置 Alpine 的 APK 包管理器使用代理：
-
-```bash
-# 更新仓库使用代理
-cat /etc/apk/repositories | \
-  sed -e s#https://.*.alpinelinux.org#http://your-domain-or-ip-address:3142# | \
-  tee /etc/apk/repositories
-
-# 验证配置
-apk update
-```
-
-## 高级配置
-
-### apt-cacher-ng 风格的主机名前缀路径
-
-对于已知发行版，apt-proxy 兼容 apt-cacher-ng 常用的主机名前缀路径形式。例如：
-
-```text
-deb http://apt-proxy.example:3142/ftp.uni-kl.de/debian bookworm main
-```
-
-路径中的主机名仅作为兼容前缀。
-`/ftp.uni-kl.de/debian/dists/bookworm/InRelease` 这类请求仍会被路由到
-apt-proxy 中配置的 Debian 镜像；它不会授权访问 `ftp.uni-kl.de`，也不会将服务
-变成不受限制的来源代理。带主机名前缀的
-`/security.debian.org/debian-security/...` 路径会使用单独配置的 Debian
-Security 镜像。查询参数会被保留，无法匹配已配置发行版的路径返回 `404`。
-
-前缀必须是单个主机名：要么没有前缀（`/debian/dists/...`），要么在发行版路径段
-前恰好只有一段形如主机名的内容（`/ftp.uni-kl.de/debian/dists/...`，可带
-`:端口`，也可以是 IP 字面量或 `localhost`）。层级更深的路径一律返回 `404`，
-因为那是第三方软件源，而不是该发行版的镜像：
-
-```text
-/ppa.launchpad.net/deadsnakes/ppa/ubuntu/dists/jammy/InRelease   404
-/download.docker.com/linux/ubuntu/dists/jammy/InRelease          404
-```
-
-这类软件源并不是它所嵌套的发行版的副本，若用该发行版的镜像来应答，客户端拿到的
-就是另一个仓库的内容。apt-proxy 没有 PPA 或厂商源的镜像，请在 `sources.list`
-中直接指向它们的源站。
-### 发行版与镜像配置文件（distributions.yaml）
-
-通过外部 YAML 文件可维护发行版和镜像列表，无需改代码或重新编译。
-
-**自 v0.19.2 起提供（[#167](https://github.com/soulteary/apt-proxy/issues/167)）：**
-下述域名与路径联合匹配优先级、严格 YAML 校验已包含在 v0.19.2 及后续版本中。
-v0.19.3 还修复了镜像根地址缺少尾部斜杠时的 URL 拼接；Proxmox 部署请使用
-v0.19.3 或更高版本。[Proxmox Backup Client 示例](examples/proxmox/)提供保留官方源地址的
-代理配置，以及独立的本地路径别名。v0.19.4 在
-[`config/distributions.yaml`](config/distributions.yaml) 中补充了默认注释的 PVE、PBS Server、
-PBS Client 和 Ceph Squid 条目，需要手动加入有效发行版列表才会启用。
-
-**让 apt-proxy 读到这个文件：** 把它放在查找路径之一，或显式指定路径。未指定路径
-时，按以下顺序取第一个存在的文件：
-
-1. `./config/distributions.yaml`
-2. `./distributions.yaml`
-3. `/etc/apt-proxy/distributions.yaml`
-4. `~/.config/apt-proxy/distributions.yaml`
-
-```bash
-# 放在查找路径上，自动发现
-./apt-proxy
-
-# 或显式指定，位置不受限制
-./apt-proxy --distributions-config=/srv/apt-proxy/distributions.yaml
-```
-
-环境变量 `APT_PROXY_DISTRIBUTIONS_CONFIG` 与该 flag 等价。都找不到时使用内置发行版；
-文件解析失败时会保留内置发行版并打一条 warning，不会导致服务启动失败。
-
-配置必须是单个 YAML 文档，并使用已定义的字段名。未知字段会报出行号和字段名，
-例如应写 `cache_control`，而非 `cache-control`。空文件仍然有效；支持在已定义字段
-内部使用 YAML 锚点与合并，不支持额外的顶层锚点辅助字段。这项校验仅针对
-`distributions.yaml`，不改变服务器主配置的加载方式。
-
-**示例 `config/distributions.yaml`：**
-
-```yaml
-distributions:
-  - id: ubuntu
-    name: Ubuntu
-    type: 1
-    url_pattern: "/ubuntu/(.+)$"
-    benchmark_url: "dists/noble/main/binary-amd64/Release"
-    geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
-    cache_rules:
-      - pattern: "deb$"
-        cache_control: "max-age=100000"
-        rewrite: true
-    mirrors:
-      official:
-        - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-        - "mirrors.ustc.edu.cn/ubuntu/"
-      custom:
-        - "mirrors.163.com/ubuntu/"
-    aliases:
-      tsinghua: "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-      ustc: "mirrors.ustc.edu.cn/ubuntu/"
-```
-
-修改配置后，发送 **SIGHUP** 或调用 **POST /api/mirrors/refresh** 即可热重载，无需重启。
-
-路由先查找同时匹配域名和路径的条目，再匹配路径，最后按域名匹配根目录仓库。
-每个阶段内仍按既定顺序匹配内置发行版，自定义条目按 `id` 升序匹配。
-选中发行版后使用第一条命中的 `cache_rules[]`；没有命中缓存规则时返回 `404`，
-不会继续尝试其他仓库。配置加载或镜像选优失败时，热重载保留原有路由与缓存规则。
-
-**字段说明：**
-
-- `id` — 稳定、唯一的注册标识符，也会出现在 URL 重写调试日志中；实际匹配的 URL 路径由 `url_pattern` 决定。
-- `name` — 显示名。
-- `type` — 整数类型。`1` Ubuntu、`2` UbuntuPorts、`3` Debian、`4` CentOS、`5` Alpine 用于覆盖内置发行版的配置，`0` 保留给 "all"。**填写其它正整数即可注册一个 apt-proxy 未内置的发行版** —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。已被占用的类型在加载时会直接报错，所以请挑一个未使用的数字（`6`、`7`……）并保持稳定：镜像选择与 rewriter 状态都以它为键跨重载保存。
-- `url_pattern` — 用于匹配请求路径的正则；最后一个捕获组会拼到上游镜像根目录后。
-- `host_pattern` — 可选，用于匹配原始请求域名的正则，匹配前转为小写并保留显式端口。同时命中域名和 `url_pattern` 的条目优先于通用路径规则；没有任何发行版路径命中时，才按域名匹配，并把整个请求路径拼到镜像根目录后，适用于 `security.debian.org`、`apt.armbian.com` 等域名根仓库。请使用 `^...$` 锚定，避免匹配相似域名。它是路由提示，不是域名访问白名单：本地路径别名仍可使用代理自身的域名。省略时继承该类型的内置匹配器（Debian 保留 `security.debian.org`），显式设置则覆盖内置值。只有内置 Debian security 域名会路由到专用的 Debian Security 镜像；为 type `3` 配置的其他域名使用该条目自己的镜像。
-- `benchmark_url` — 镜像测速用的相对路径。
-- `geo_mirror_api` — 可选，返回地理镜像列表（Ubuntu 风格的 `mirrors.txt`）。
-- `cache_rules[]` — 上游没有提供 `Cache-Control` 与 `Expires` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式指令与过期时间（包括过去或无效的 `Expires`）、较短有效期、`private` 和 `no-store` 会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。
-- `mirrors.official` / `mirrors.custom` — 镜像主机列表。基于主机末段会自动生成 `cn:<name>` 形式的别名（如 `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`）。
-- `aliases` — 显式别名映射，可覆盖/补充自动生成的别名。
-
-**添加或修改发行版：** 在 `distributions` 下增加或编辑一项，填写 `id`、`name`、`type`、`url_pattern`、`benchmark_url`、`cache_rules`、`mirrors`、`aliases` 即可；仓库位于域名根目录，或路径与其他发行版重叠时，再配置 `host_pattern`。可参考本仓库的 `config/distributions.yaml` 和 [Proxmox 示例](examples/proxmox/)。
-
-### 添加 apt-proxy 未内置的发行版
-
-内置的五个发行版并不是上限。只要把某一项的 `type` 填成 `1`–`5` 之外的数字，它就
-会被注册成一个新的发行版：拥有独立的镜像列表、独立的测速与独立的 rewriter，和内置
-发行版完全一样。全程不需要改代码或重新编译。
-
-以 Deepin 为例，缓存在 `/deepin/...` 下：
-
-```yaml
-distributions:
-  - id: deepin
-    name: Deepin
-    type: 6
-    url_pattern: "/deepin/(.+)$"
-    benchmark_url: "dists/apricot/main/binary-amd64/Release"
-    cache_rules:
-      - pattern: "deb$"
-        cache_control: "max-age=100000"
-        rewrite: true
-      - pattern: "(InRelease|Release(\\.gpg)?)$"
-        cache_control: "max-age=3600"
-        rewrite: true
-      # 兜底规则必须放最后：apt 还会拉取软件包索引
-      # （Packages.xz、by-hash/... 等），未命中任何规则的路径会返回 404。
-      - pattern: ".*"
-        cache_control: "max-age=3600"
-        rewrite: true
-    mirrors:
-      official:
-        - "community-packages.deepin.com/deepin/"
-```
-
-```text
-deb http://apt-proxy.example:3142/deepin apricot main contrib non-free
-```
-
-如果仓库直接位于域名根目录，路径里没有前缀供 `url_pattern` 匹配，就改用
-`host_pattern` 来识别。以 Armbian 为例，它的 `sources.list` 写法是
-`deb http://apt.armbian.com <suite> main`：
-
-```yaml
-distributions:
-  - id: armbian
-    name: Armbian
-    type: 7
-    url_pattern: "/armbian/(.+)$"
-    host_pattern: "^apt\\.armbian\\.com(:\\d+)?$"
-    benchmark_url: "dists/bookworm/main/binary-arm64/Release"
-    cache_rules:
-      - pattern: "deb$"
-        cache_control: "max-age=100000"
-        rewrite: true
-      - pattern: "(InRelease|Release(\\.gpg)?)$"
-        cache_control: "max-age=3600"
-        rewrite: true
-      # 兜底规则必须放最后：apt 还会拉取软件包索引
-      # （Packages.xz、by-hash/... 等），未命中任何规则的路径会返回 404。
-      - pattern: ".*"
-        cache_control: "max-age=3600"
-        rewrite: true
-    mirrors:
-      official:
-        - "mirrors.tuna.tsinghua.edu.cn/armbian/"
-```
-
-只要客户端带着 `Host: apt.armbian.com` 访问 apt-proxy（设置 `http_proxy` 即可
-自动做到），`/dists/<suite>/...` 这类请求就会落到配置好的镜像上。
-
-上面三种形态（Deepin、Armbian、Arch Linux）合在一个文件里的可运行版本，连同各自的
-客户端配置，见 [`examples/custom-distros/`](examples/custom-distros/)。
-
-几条能省掉一轮排查的提示：
-
-- `type` 请跨重载保持稳定 —— 镜像选择与 rewriter 状态都以它为键。
-- `benchmark_url` 必须是镜像列表里每个站点都存在的小文件，测速时会实际请求它。
-- `cache_rules` 按顺序匹配，命中第一条即停，而且**未命中任何规则的路径会直接返回 `404`**，不会透传。`apt update` 除了 `InRelease` 还会拉取软件包索引（`Packages.xz`、`by-hash/...`），所以除非你刻意只想代理特定类型的文件，否则请以兜底规则 `".*"` 结尾。
-- 以 `--mode=all`（默认值）运行。`--mode` 只接受内置发行版的名字，自定义发行版在 `all` 模式下才会启用。
-- 只有匹配 `url_pattern`（或 `host_pattern`）的请求才会被代理，其余仍然返回 `404`。
-- 文件必须放在 apt-proxy 会去找的位置：上面列出的查找路径之一，或用 `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG` 指定。服务端根本没加载的文件，等于这条配置静默失效。启动日志会打印实际生效的文件和所有已注册的发行版（`distributions registered config=... distributions=[...]`），是确认配置是否生效最快的方式。
-
-### 自定义镜像选择
-
-默认情况下，APT Proxy 会自动测试可用镜像并选择最快的一个。但如果需要，你可以指定自定义镜像。
-
-**使用完整 URL：**
-
-```bash
-# 同时缓存多个发行版
-./apt-proxy \
-  --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ \
-  --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
-
-# 仅缓存 Ubuntu 软件包（减少内存占用）
-./apt-proxy --mode=ubuntu --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
-
-# 仅缓存 Debian 软件包
-./apt-proxy --mode=debian --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
-```
-
-**使用镜像快捷方式：**
-
-为了方便，你可以使用预定义的快捷方式代替完整 URL：
-
-```bash
-./apt-proxy --ubuntu=cn:tsinghua --debian=cn:163
-```
-
-**可用的快捷方式：**
-
-- `cn:tsinghua` - 清华大学镜像
-- `cn:ustc` - 中科大镜像
-- `cn:163` - 网易镜像
-- `cn:aliyun` - 阿里云镜像
-- `cn:huaweicloud` - 华为云镜像
-- `cn:tencent` - 腾讯云镜像
-
-启动日志会通过 `using specified mirror` 消息记录显式选择的镜像，
-并带上发行版和镜像 URL 字段。
-
-### 缓存第三方软件源（`passthrough`）
-
-apt-proxy 只代理它配置过的发行版，其余一律 `404` —— 这是刻意的，它不是开放转发
-代理。但人们实际安装软件的来源不止发行版：Launchpad PPA、厂商源、内部源。把这些
-源站写进白名单，apt-proxy 就会原样抓取并缓存，不做任何改写：
-
-```bash
-./apt-proxy --passthrough=ppa.launchpad.net,https://download.docker.com
-```
-
-```yaml
-# apt-proxy.yaml
-passthrough:
-  - ppa.launchpad.net
-  - https://download.docker.com
-  - archive.internal.example:8080
-```
-
-环境变量 `APT_PROXY_PASSTHROUGH` 使用同样的逗号分隔格式。
-
-**客户端配置。** 直通只对「把 apt-proxy 当作 HTTP 代理」的客户端生效，因为只有这种
-方式才会在请求里点名源站：
-
-```bash
-http_proxy=http://apt-proxy.example:3142 apt-get update
-```
-
-`sources.list` 条目保持指向源站即可。URL 前缀形式
-（`deb http://apt-proxy.example:3142/<host>/...`）寻址的是 apt-proxy 自己，没有
-点名任何源站，因此不会触发直通。
-
-**即使软件源本身只提供 HTTPS，条目也必须写成 `http://`：**
-
-```text
-deb http://download.docker.com/linux/ubuntu jammy stable
-```
-
-```yaml
-passthrough:
-  - https://download.docker.com   # 由 apt-proxy 负责把上游那一跳升级为 TLS
-```
-
-如果 `sources.list` 里写 `https://`，apt 会向代理发 `CONNECT host:443` 建立隧道。
-隧道是端到端加密的，apt-proxy 只能转发字节，既读不到也缓存不了 —— 而缓存正是它存在
-的全部意义。因此 apt-proxy 不响应 `CONNECT`：请把源写成 `http://`，让白名单里的
-`https://` 条目（或 [`HTTPS///` 标记](#https-形式的-url-返回-403)）来承担 TLS 上游。
-客户端到 apt-proxy 这一跳是你自己网络内的明文 HTTP，而 apt 无论走什么传输都会校验
-软件源签名。
-
-**条目写法：**
-
-| 写法 | 含义 |
-|------|------|
-| `ppa.launchpad.net` | 沿用客户端的协议，仅匹配默认端口 |
-| `https://download.docker.com` | 上游请求强制升级为 TLS |
-| `archive.example:8080` | 只匹配该端口 |
-
-不带端口的条目只匹配 80 和 443 —— 被放行的软件源主机，不应该顺带把那台机器上其它
-监听的服务也暴露出去。
-
-**它不做的事：**
-
-- 不支持通配符。请逐个写明源站；写错的条目会在启动时直接报错，而不是悄悄放行多于
-  或少于你所写的范围。
-- 环回地址、私有地址、链路本地地址和 `localhost` 不允许作为条目。但**域名**即使
-  解析到内网也会被接受 —— 白名单是安全边界，不是网络层管控。只把你愿意让这个代理
-  的任意客户端访问的源站写进去。
-- 只放行 `GET` 和 `HEAD`。apt 只读取，不写入。
-- 缓存时长由源站决定：apt-proxy 清楚发行版的索引和软件包该缓存多久，但对第三方源
-  一无所知，因此原样沿用它的 `Cache-Control`。
-- 发行版路由优先。若白名单里的主机同时也被某个已配置的发行版覆盖，则按该发行版的
-  镜像和缓存规则处理。
-
-启动日志会打印生效的白名单（`passthrough enabled for third-party origins`），
-空列表或写错的条目因此是可见的，不会静默。
-
-**apt-cacher-ng 的 `HTTPS///` 标记**是访问白名单源站的另一种方式，适合本来就按这种
-写法配置的客户端：
-
-```text
-deb http://HTTPS///get.docker.com/linux/ubuntu jammy stable
-```
-
-两种写法都支持，源站同样走这份白名单，且上游请求一律走 TLS。参见
-[`HTTPS///` 形式的 URL 返回 `403`](#https-形式的-url-返回-403)。
-
-### 通过前置代理访问镜像站
-
-apt-proxy 的出站连接遵循标准的代理环境变量。若机器无法直连镜像站，可以让它
-通过已有的前置代理访问：
-
-```bash
-HTTP_PROXY=http://proxy.internal:3128 \
-HTTPS_PROXY=http://proxy.internal:3128 \
-NO_PROXY=10.0.0.0/8,.internal \
-  ./apt-proxy
-```
-
-| 变量名 | 作用 |
-|--------|------|
-| `HTTP_PROXY` / `http_proxy` | 访问上游的 `http://` 请求所用的代理 |
-| `HTTPS_PROXY` / `https_proxy` | 访问上游的 `https://` 请求所用的代理 |
-| `NO_PROXY` / `no_proxy` | 逗号分隔的主机名、域名后缀（`.example.com`）和 CIDR，命中则不走代理 |
-
-SOCKS5 前置代理同样可用，直接写成代理 URL 即可：
-
-```bash
-HTTPS_PROXY=socks5h://127.0.0.1:1080 ./apt-proxy
-```
-
-这些变量对软件包下载和镜像测速选优都生效，因此选出来的镜像与实际下载走的是同一
-条链路。它们只影响 apt-proxy 自身到镜像站的连接；客户端仍然直连 apt-proxy，所以
-不要把 apt-proxy 自己的地址写进 `HTTP_PROXY`。在 Docker 中用 `-e` 传入即可。
-
-启用 `upstream_access.enabled: true` 后，仓库下载、镜像测速与 Ubuntu 镜像发现
-会直接连接目标并忽略上述代理变量；需要前置代理时应关闭该策略。
-具体检查范围与配置见[上游访问策略](docs/upstream-access.md)。
-
-## 仓库操作与下载策略
-
-### 下载资源限制
-
-未知长度下载默认限制单个暂存文件为 1 GiB，每个实例共享暂存预算为 4 GiB；上游获取总超时默认为 20 分钟。可在 YAML 中配置 `download.max_spool_mb`、`download.total_spool_mb` 和 `download.timeout_seconds`，零值使用默认限制。这组旧式限制只约束未知长度落盘；它同时计入下面的共享资源预算。详见[下载限制说明](docs/download-limits.md)。
-
-### 私有仓库请求
-
-携带 `Authorization` 或 `Cookie` 的请求绕过共享缓存，带 `Set-Cookie` 的响应不会存储。认证请求指定仅使用缓存时返回 504，不访问上游。本版本启用新的缓存键命名空间，以隔离升级前可能包含私有内容的条目；升级后会有一次冷缓存，旧文件不会直接删除。详见[私有仓库隔离说明](docs/private-repositories.md)。
-
-### 软件包下载客户端访问控制
-
-可在 YAML 中设置 `security.download_allow_cidrs` 和
-`security.download_deny_cidrs`，按直接连接来源的 IPv4/IPv6 网段限制下载。
-拒绝规则优先，检查在缓存读取和上游请求之前执行；默认两个列表均为空。
-转发头不能授予下载权限。部署在反向代理之后时，需要在反向代理限制最终客户端。
-运维和管理 API 路由沿用原有策略；修改下载规则后需要重启。
-配置示例和适用范围见 [下载访问控制说明](docs/download-access.md)。
-
-### 下载上游连接防护
-
-可在 YAML 中启用 `upstream_access.enabled: true`，限制软件下载、镜像测速和 Ubuntu
-地理镜像发现的上游主机、
-端口和解析地址。新连接检查全部 DNS 结果后直接连接已允许的 IP，保留 TLS 主机名
-验证。私有仓库需要明确的 CIDR 例外；启用后的仓库连接不使用环境变量中的转发代理。
-测速和发现请求的重定向及 HEAD→GET 回退同样受保护；启动和镜像刷新沿用实例策略。
-修改后需要重启。配置示例及镜像测速等后台请求的适用边界见
-[上游访问说明](docs/upstream-access.md)。
-
-### Debian 系源码包覆盖
-
-Ubuntu、Ubuntu Ports 和 Debian 的源码池文件现可经配置的镜像代理并缓存，
-包括 `.dsc`、原始/附加/原生源码归档、Debian 补丁归档、旧式 `.diff.gz`
-及原始归档的 `.asc` 签名。规则仅匹配 Debian 风格源码池中的带版本文件，
-保留上游缓存指令。已有自定义发行版 YAML 需要明确加入新规则。
-支持范围和客户端验证职责见 [源码包覆盖说明](docs/apt-source-packages.md)。
-
-### Debian 系安装器文件
-
-常用 netboot、hd-media、cdrom 启动文件及安装器校验清单现可经配置的镜像
-代理并缓存。规则限定到 Debian 风格安装器 `images/` 或 `legacy-images/` 目录中的具体文件名，默认缓存
-3600 秒；自定义 YAML 需显式补充新规则。支持范围及客户端校验职责见
-[安装器文件覆盖说明](docs/apt-installer-files.md)。
-
-安装器目录中的常用 PXE/UEFI 资源也可代理并缓存：EFI 加载器、默认 PXELINUX
-配置、启动菜单及 GRUB 模块。范围限定在安装器 netboot 目录内，不提供
-DHCP/TFTP 服务或启动配置内容改写。
-
-### Debian 系 AppStream 元数据
-
-DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可使用镜像和缓存，
-包括从 by-hash 回退到直接 URL 的客户端。规则限定在
-`dists/<suite>/<component>/dep11/`，不开放任意 YAML、JSON 或归档下载。
-支持范围见[AppStream 元数据](docs/apt-appstream.md)。
-
-### 完整仓库快照和离线访问
-
-`apt-proxy repository` 可预取指定 suite、component、架构的 Packages 索引、
-可选 Sources 索引及其全部引用对象，校验大小和 SHA256 后发布完整快照。
-提供 verify、repair、export、import，以及无上游回退的离线 HTTP serve 命令。
-原始签名由 APT 验证；选定的 xz 索引需要系统 xz，另有包含 xz 的可选容器镜像。
-命令、支持范围和限制见[仓库快照说明](docs/repository-offline.md)。
-
-显式公共仓库身份与 Unix 共享磁盘协调：[配置和运行边界](docs/shared-repository-cache.md)。
-
-### 临时资源与缓存完整性
-
-仓库下载默认限制单对象 1 GiB、每实例暂存总量 4 GiB、32 个上游活跃下载，
-并为磁盘保留 128 MiB 可用空间。已声明长度的响应、HTTP 缓存副本和 S3 内存/落盘副本
-同样参与准入；共享预算拒绝时返回 `503` 与 `Retry-After: 1`。
-缓存副本在响应已成功送达后超出预算时跳过缓存发布。配置与边界见[资源限制](docs/resource-limits.md)。
-
-持久缓存默认使用 `cache.integrity: sha256`，命中前读取并校验完整响应体；
-旧的未验证记录会被惰性重新下载，S3 命中也可能先传输整个对象。
-可明确设置 `cache.integrity: none` 接受旧格式的性能权衡；启用 `shared_cache` 时仍强制完整性校验。
-迁移与 I/O 成本见[缓存完整性](docs/cache-integrity.md)。
-
-### 运行时镜像健康与客户端验证
-
-`mirror_health.enabled: true` 可为显式等价的公共 Debian 系仓库启用有界故障切换。
-替代镜像必须与当前镜像已完整观察到的 Release/InRelease 指纹相同；未知、过期或不同的
-快照以及私有请求不会切换。无自动回切或后台轮询，状态可在受现有管理 API 策略保护的
-`GET /api/mirrors/status` 查看。配置见[运行时镜像健康](docs/runtime-mirror-health.md)。
-
-运行 `bash tests/apt-client/matrix.sh` 可执行五个真实 APT 客户端的本地签名仓库测试，
-覆盖安装、源码、SHA256 by-hash、gzip 回退、范围请求、故障恢复和离线导入后的访问。
-这些测试不表示所有公共镜像均已验证，详见[客户端测试](docs/apt-client-tests.md)。
-
-## Docker 集成
-
-### 在 Docker 中运行 APT Proxy
-
-将 APT Proxy 部署为 Docker 容器：
+启动代理，并将磁盘缓存持久化：
 
 ```bash
 docker run -d \
-  --name=apt-proxy \
+  --name apt-proxy \
   -p 3142:3142 \
-  -v apt-proxy-cache:/app/.aptcache \
-  soulteary/apt-proxy
+  -v apt-proxy-cache:/var/cache/apt-proxy \
+  soulteary/apt-proxy:v0.19.4
 ```
 
-`-v apt-proxy-cache:/app/.aptcache` 选项可以在容器重启后保留缓存。
+命名卷挂载到镜像实际使用的 `/var/cache/apt-proxy`，容器删除或重建后仍保留缓存。
+bind mount 权限、Docker 构建及 Compose 用法见[部署文档](docs/deployment.zh-CN.md)。
 
-### 在 Docker 构建中使用 APT Proxy
+### 二进制
 
-加速 Docker 容器中的软件包安装：
+从 [Releases](https://github.com/soulteary/apt-proxy/releases) 下载并解压对应平台归档，再运行：
 
 ```bash
-# 启动容器（Ubuntu 或 Debian）
-docker run --rm -it ubuntu
-
-# 在容器内使用代理
-http_proxy=http://host.docker.internal:3142 \
-  apt-get -o Debug::pkgProblemResolver=true -o Acquire::http=true update
-
-http_proxy=http://host.docker.internal:3142 \
-  apt-get -o Debug::pkgProblemResolver=true -o Acquire::http=true install vim -y
+./apt-proxy
 ```
 
-**注意**：`host.docker.internal` 在 Docker Desktop 上有效。对于 Linux，请使用主机的 IP 地址或适当配置 Docker 网络。
+二进制默认监听 `0.0.0.0:3142`，磁盘缓存位于 `./.aptcache`。
+镜像测速异步运行，选优完成前可使用已配置或默认的镜像。
 
-### Docker Compose 示例
+### 配置 APT 客户端
 
-查看 [examples 目录](examples/) 获取完整的 Docker Compose 配置。其中包含四个自包含的子示例：[`basic/`](examples/basic/)（最小部署）、[`specify-mirrors/`](examples/specify-mirrors/)（指定上游镜像）、[`s3-otterio/`](examples/s3-otterio/)（缓存落到 S3 兼容对象存储，使用 [OtterIO](https://github.com/soulteary/otterio)——MinIO 的 Apache-2.0 衍生项目）、[`config-template/`](examples/config-template/)（带详尽注释的 `apt-proxy.yaml` 参考）。
+对于 HTTP 仓库源，在客户端的 `/etc/apt/apt.conf.d/01proxy` 中设置：
 
-## 配置选项
+```text
+Acquire::http::Proxy "http://APT_PROXY_HOST:3142";
+```
 
-查看所有可用选项：
+将 `APT_PROXY_HOST` 替换为客户端能访问的代理主机名或 IP，再执行：
 
 ```bash
-./apt-proxy -h
+sudo apt-get update
+sudo apt-get install vim
 ```
 
-**可用选项：** 下表按主题分组，每个 flag 都对应同名的环境变量与 YAML 字段（参见 [环境变量](#环境变量) 与 [YAML 配置文件](#yaml-配置文件)）。
+HTTPS 源请使用支持的仓库映射或
+[`HTTPS///` 重写标记](docs/repository-configuration.zh-CN.md#apt-cacher-ng-风格的主机名前缀路径)。
+仅设置通用 HTTPS 代理，并不能证明软件包会被缓存。
 
-| 选项 | 描述 | 默认值 |
-|------|------|--------|
-| `-host` | 绑定的网络接口 | `0.0.0.0` |
-| `-port` | 监听端口 | `3142` |
-| `-mode` | 发行版模式：`all`、`ubuntu`、`ubuntu-ports`、`debian`、`centos`、`alpine` | `all` |
-| `-cachedir` | 缓存目录 | `./.aptcache` |
-| `-ubuntu` | Ubuntu 镜像 URL 或快捷方式 | （自动选择） |
-| `-ubuntu-ports` | Ubuntu Ports 镜像 URL 或快捷方式 | （自动选择） |
-| `-debian` | Debian 镜像 URL 或快捷方式 | （自动选择） |
-| `-debian-security` | 独立的 Debian Security 镜像 URL 或快捷方式 | （从 `-debian` 推导） |
-| `-centos` | CentOS 镜像 URL 或快捷方式 | （自动选择） |
-| `-alpine` | Alpine 镜像 URL 或快捷方式 | （自动选择） |
-| `-distributions-config` | 发行版/镜像配置文件路径（distributions.yaml） | （可选） |
-| `-passthrough` | 逗号分隔的第三方源站白名单，原样抓取并缓存 | （空） |
-| `-cache-max-size` | 最大缓存大小（GB，0 表示禁用） | `10` |
-| `-cache-ttl` | 缓存 TTL（小时，0 表示禁用） | `168`（7 天） |
-| `-cache-cleanup-interval` | 缓存清理间隔（分钟，0 表示禁用） | `60` |
-| `-tls` | 启用 TLS/HTTPS（需同时提供 `-tls-cert` 与 `-tls-key`） | `false` |
-| `-tls-cert` | TLS 证书文件路径 | |
-| `-tls-key` | TLS 私钥文件路径 | |
-| `-api-key` | 受保护端点的 API 密钥（设置后自动启用鉴权） | |
-| `-enable-api-auth` | 显式开/关 API 鉴权中间件 | `false`（设置 `-api-key` 时自动变为 `true`） |
-| `-api-rate-limit` | 每 IP 每分钟的 API 请求数（`0` 关闭） | `60` |
-| `-trusted-proxies` | 受信任代理 CIDR 列表（逗号分隔），仅对其匹配的请求解析 `X-Forwarded-For` | |
-| `-upstream-keep-alive` | 上游 HTTP keep-alive | `true` |
-| `-storage-backend` | 缓存存储后端：`disk` 或 `s3` | `disk` |
-| `-s3-endpoint` | S3 endpoint（`host[:port]`，不含协议前缀） | |
-| `-s3-region` | S3 region（AWS 必填，多数 MinIO 服务可留空） | |
-| `-s3-bucket` | S3 bucket 名称 | |
-| `-s3-prefix` | bucket 内 key 前缀 | `apt-proxy/` |
-| `-s3-access-key` | S3 access key（建议改用 ENV） | |
-| `-s3-secret-key` | S3 secret key（建议改用 ENV） | |
-| `-s3-session-token` | 临时凭证 session token（可选） | |
-| `-s3-use-ssl` | 与 S3 通信使用 HTTPS | `true` |
-| `-s3-use-path-style` | 强制 path-style 寻址（MinIO/Ceph 必须开启） | `false` |
-| `-s3-inline-max-mb` | 内存缓冲上传阈值（MiB），超过则落盘后再 PUT | `32` |
-| `-s3-temp-dir` | 大对象上传时使用的临时目录 | （`os.TempDir()`） |
-| `-config` | YAML 配置文件路径 | |
-| `-debug` | 启用详细调试日志（同时把请求 header/body 打印到日志） | `false` |
+### 验证代理
 
-**自定义配置示例：**
+在代理主机上执行：
 
 ```bash
-./apt-proxy \
-  --host=0.0.0.0 \
-  --port=3142 \
-  --cachedir=/var/cache/apt-proxy \
-  --mode=ubuntu \
-  --ubuntu=cn:tsinghua \
-  --cache-max-size=20 \
-  --debug
+curl -fsS http://127.0.0.1:3142/healthz
+curl --noproxy '' --proxy http://127.0.0.1:3142 -fsS -D - -o /dev/null \
+  http://archive.ubuntu.com/ubuntu/dists/noble/Release
 ```
 
-### 环境变量
+重复下载并查看 `X-Cache`。响应符合缓存条件且发布完成后会显示 `HIT`；单独出现 `MISS`
+或 `SKIP` 不代表故障。缓存与暂存状态的含义见[响应头说明](docs/operations.zh-CN.md#响应头)。
 
-每个 CLI 参数都有等价的环境变量。此外还有几个仅环境变量提供的开关，用于日志与链路追踪。
+<!-- Preserve previously published README section links. -->
+<a id="使用示例"></a>
+<a id="ubuntu--debian"></a>
+<a id="centos"></a>
+<a id="alpine-linux"></a>
+<a id="高级配置"></a>
+<a id="apt-cacher-ng-风格的主机名前缀路径"></a>
+<a id="发行版与镜像配置文件distributionsyaml"></a>
+<a id="添加-apt-proxy-未内置的发行版"></a>
+<a id="自定义镜像选择"></a>
+<a id="缓存第三方软件源passthrough"></a>
+<a id="通过前置代理访问镜像站"></a>
+<a id="仓库操作与下载策略"></a>
+<a id="下载资源限制"></a>
+<a id="私有仓库请求"></a>
+<a id="软件包下载客户端访问控制"></a>
+<a id="下载上游连接防护"></a>
+<a id="debian-系源码包覆盖"></a>
+<a id="debian-系安装器文件"></a>
+<a id="debian-系-appstream-元数据"></a>
+<a id="完整仓库快照和离线访问"></a>
+<a id="临时资源与缓存完整性"></a>
+<a id="运行时镜像健康与客户端验证"></a>
 
-**服务/模式**
+## 常见任务
 
-| 变量名 | 等价 CLI 参数 | 说明 |
-|--------|--------------|------|
-| `APT_PROXY_HOST` | `-host` | 监听的网络接口 |
-| `APT_PROXY_PORT` | `-port` | 监听端口 |
-| `APT_PROXY_MODE` | `-mode` | 发行版模式（`all`/`ubuntu`/`ubuntu-ports`/`debian`/`centos`/`alpine`） |
-| `APT_PROXY_DEBUG` | `-debug` | 启用详细调试日志 |
-| `APT_PROXY_UBUNTU` | `-ubuntu` | Ubuntu 镜像 URL 或快捷方式 |
-| `APT_PROXY_UBUNTU_PORTS` | `-ubuntu-ports` | Ubuntu Ports 镜像 |
-| `APT_PROXY_DEBIAN` | `-debian` | Debian 镜像 |
-| `APT_PROXY_DEBIAN_SECURITY` | `-debian-security` | 独立的 Debian Security 镜像 |
-| `APT_PROXY_CENTOS` | `-centos` | CentOS 镜像 |
-| `APT_PROXY_ALPINE` | `-alpine` | Alpine 镜像 |
-| `APT_PROXY_UPSTREAM_KEEP_ALIVE` | `-upstream-keep-alive` | 上游 HTTP keep-alive |
+按任务选择配置，避免混用无关的配置块：
 
-**缓存**
+- **指定镜像或添加发行版：**[仓库配置](docs/repository-configuration.zh-CN.md)、
+  [指定镜像示例](examples/specify-mirrors/)与[自定义发行版](examples/custom-distros/)。
+- **缓存厂商源或私有仓库：**[第三方白名单](docs/repository-configuration.zh-CN.md#缓存第三方软件源passthrough)、
+  [前置代理](docs/repository-configuration.zh-CN.md#通过前置代理访问镜像站)与[私有请求隔离](docs/private-repositories.md)。
+- **使用 Proxmox：**[PBS Client 示例](examples/proxmox/)，请使用 v0.19.3 或更高版本。
+  [默认配置](config/distributions.yaml)还提供默认注释的 PVE、PBS Server、PBS Client、Ceph Squid 条目。
+- **使用 CentOS/Fedora 类发现流程：**[Metalink 配置](docs/centos-metalink.md)。
+  其他包管理器用法见[客户端支持说明](docs/client-support.md)。
+- **使用 S3 或共享磁盘缓存：**[缓存与存储参考](docs/cache-storage.zh-CN.md)、
+  [OtterIO 示例](examples/s3-otterio/)与[共享仓库缓存](docs/shared-repository-cache.md)。
+- **维护离线 APT 仓库：**[预取、校验、修复、导入导出与服务](docs/repository-offline.md)。
+- **启用受限的 APT 镜像故障切换：**[运行时镜像健康](docs/runtime-mirror-health.md)。
+- **设置下载边界：**[资源准入](docs/resource-limits.md)、[下载期限与暂存](docs/download-limits.md)、
+  [客户端 CIDR](docs/download-access.md)与[上游连接策略](docs/upstream-access.md)。
+- **了解 APT 文件支持范围：**[源码包](docs/apt-source-packages.md)、
+  [安装器文件](docs/apt-installer-files.md)与[AppStream](docs/apt-appstream.md)。
 
-| 变量名 | 等价 CLI 参数 | 说明 |
-|--------|--------------|------|
-| `APT_PROXY_CACHEDIR` | `-cachedir` | 缓存目录 |
-| `APT_PROXY_CACHE_MAX_SIZE` | `-cache-max-size` | 最大缓存大小（GB，`0` 禁用） |
-| `APT_PROXY_CACHE_TTL` | `-cache-ttl` | 缓存 TTL（小时，`0` 禁用） |
-| `APT_PROXY_CACHE_CLEANUP_INTERVAL` | `-cache-cleanup-interval` | 缓存清理间隔（分钟，`0` 禁用） |
+[examples 目录](examples/)包含 **六个**示例：
+[`basic`](examples/basic/)、[`specify-mirrors`](examples/specify-mirrors/)、
+[`s3-otterio`](examples/s3-otterio/)、[`custom-distros`](examples/custom-distros/)、
+[`proxmox`](examples/proxmox/)、[`config-template`](examples/config-template/)。
+最后一个是配置参考，非可直接运行的 Compose 部署。
 
-**存储后端 / S3**
+<!-- Preserve previously published README section links. -->
+<a id="配置选项"></a>
+<a id="环境变量"></a>
+<a id="yaml-配置文件"></a>
+<a id="缓存容量与淘汰策略"></a>
+<a id="缓存目录结构"></a>
+<a id="缓存键与镜像选择"></a>
+<a id="s3-存储后端"></a>
 
-| 变量名 | 等价 CLI 参数 | 说明 |
-|--------|--------------|------|
-| `APT_PROXY_STORAGE_BACKEND` | `-storage-backend` | `disk` 或 `s3` |
-| `APT_PROXY_S3_ENDPOINT` | `-s3-endpoint` | S3 endpoint，如 `s3.amazonaws.com` 或 `minio:9000` |
-| `APT_PROXY_S3_REGION` | `-s3-region` | S3 region |
-| `APT_PROXY_S3_BUCKET` | `-s3-bucket` | bucket 名称 |
-| `APT_PROXY_S3_PREFIX` | `-s3-prefix` | key 前缀（默认 `apt-proxy/`） |
-| `APT_PROXY_S3_ACCESS_KEY` | `-s3-access-key` | access key（**推荐**通过 ENV 注入） |
-| `APT_PROXY_S3_SECRET_KEY` | `-s3-secret-key` | secret key（**推荐**通过 ENV 注入） |
-| `APT_PROXY_S3_SESSION_TOKEN` | `-s3-session-token` | STS 临时 session token |
-| `APT_PROXY_S3_USE_SSL` | `-s3-use-ssl` | 是否使用 HTTPS |
-| `APT_PROXY_S3_USE_PATH_STYLE` | `-s3-use-path-style` | path-style 寻址（MinIO/Ceph 必须） |
-| `APT_PROXY_S3_INLINE_MAX_MB` | `-s3-inline-max-mb` | 内存缓冲阈值（MiB） |
-| `APT_PROXY_S3_TEMP_DIR` | `-s3-temp-dir` | 大对象临时目录 |
+## 配置
 
-**上游网络**（标准变量，无对应 CLI 参数）
+配置优先级为 **CLI 参数 > 环境变量 > YAML > 默认值**。
+使用 `./apt-proxy --help` 查看当前参数，或从[带注释的 YAML 模板](examples/config-template/apt-proxy.yaml)开始。
 
-| 变量名 | 说明 |
-|--------|------|
-| `HTTP_PROXY` / `http_proxy` | 访问镜像站的 `http://` 请求所用的前置代理 |
-| `HTTPS_PROXY` / `https_proxy` | 访问镜像站的 `https://` 请求所用的前置代理（支持 `socks5h://`） |
-| `NO_PROXY` / `no_proxy` | 不走前置代理的主机名、域名后缀与 CIDR |
-
-**TLS**
-
-| 变量名 | 等价 CLI 参数 | 说明 |
-|--------|--------------|------|
-| `APT_PROXY_TLS_ENABLED` | `-tls` | 启用 TLS/HTTPS |
-| `APT_PROXY_TLS_CERT` | `-tls-cert` | TLS 证书文件路径 |
-| `APT_PROXY_TLS_KEY` | `-tls-key` | TLS 私钥文件路径 |
-
-**安全 / API**
-
-| 变量名 | 等价 CLI 参数 | 说明 |
-|--------|--------------|------|
-| `APT_PROXY_API_KEY` | `-api-key` | 受保护端点的 API 密钥 |
-| `APT_PROXY_ENABLE_API_AUTH` | `-enable-api-auth` | 显式开关 API 鉴权 |
-| `APT_PROXY_API_RATE_LIMIT_PER_MINUTE` | `-api-rate-limit` | 每 IP 每分钟 API 请求数（`0` 禁用） |
-| `APT_PROXY_TRUSTED_PROXIES` | `-trusted-proxies` | 受信任代理 CIDR 列表 |
-
-**配置文件**
-
-| 变量名 | 等价 CLI 参数 | 说明 |
-|--------|--------------|------|
-| `APT_PROXY_CONFIG_FILE` | `-config` | `apt-proxy.yaml` 路径 |
-| `APT_PROXY_DISTRIBUTIONS_CONFIG` | `-distributions-config` | `distributions.yaml` 路径 |
-| `APT_PROXY_PASSTHROUGH` | `-passthrough` | 第三方源站白名单 |
-
-**日志与链路追踪**（无对应 CLI 参数）
-
-| 变量名 | 说明 |
-|--------|------|
-| `APT_PROXY_LOG_LEVEL` | 日志级别：`debug` / `info` / `warn` / `error`。`--debug` 会强制为 `debug` |
-| `APT_PROXY_LOG_FORMAT` | 日志格式：`json` / `console` / `auto`（auto 根据 stdout 是否为 TTY 自动选择） |
-| `LOG_LEVEL` | 旧版别名；仅在未设置 `APT_PROXY_LOG_LEVEL` 时使用 |
-| `LOG_FORMAT` | 旧版别名；仅在未设置 `APT_PROXY_LOG_FORMAT` 时使用 |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | 设置后启用 OpenTelemetry 链路追踪并通过 OTLP 上报；优雅退出时自动 flush |
-
-**配置优先级：** CLI 参数 > 环境变量 > 配置文件 > 默认值
-
-### YAML 配置文件
-
-APT Proxy 支持 YAML 配置文件，适用于更复杂的配置场景。创建名为 `apt-proxy.yaml` 的文件：
+下面的最小配置可以指定镜像并启用管理 API 认证：
 
 ```yaml
 server:
   host: 0.0.0.0
   port: 3142
-  debug: false
-
 cache:
   dir: /var/cache/apt-proxy
-  max_size_gb: 20
-  ttl_hours: 168
-  cleanup_interval_min: 60
-  integrity: sha256          # 默认；可选 none，见缓存完整性说明
-
-# 所有下载与暂存副本共用；仅支持 YAML，0 选择默认值。
-resources:
-  max_object_mb: 1024
-  total_temp_mb: 4096
-  max_active_downloads: 32
-  min_free_mb: 128
-
-# 仅支持 YAML；0 选择以下默认值，不表示无限制。
-download:
-  max_spool_mb: 1024        # 每个未知长度响应的落盘上限，MiB
-  total_spool_mb: 4096      # 实例共享的未知长度落盘预算，MiB
-  timeout_seconds: 1200     # 上游下载总时限
-
-# 可选：将缓存改为 S3 兼容对象存储；backend 为 "disk" 时下面的 s3 字段被忽略
-storage:
-  backend: disk        # "disk"（默认）或 "s3"
-  s3:
-    endpoint: ""
-    region: ""
-    bucket: ""
-    prefix: apt-proxy/
-    access_key: ""
-    secret_key: ""
-    use_ssl: true
-    use_path_style: false
-    inline_max_mb: 32
-    temp_dir: ""
-
 mirrors:
   ubuntu: cn:tsinghua
-  ubuntu_ports: ""
-  debian: cn:ustc
-  debian_security: https://mirrors.ustc.edu.cn/debian-security/
-  centos: ""
-  alpine: ""
-
-tls:
-  enabled: false
-  cert_file: /etc/ssl/certs/apt-proxy.crt
-  key_file: /etc/ssl/private/apt-proxy.key
-
 security:
-  download_allow_cidrs: []             # 连接对端 CIDR，仅支持 YAML
-  download_deny_cidrs: []              # 拒绝优先；两项为空时允许所有客户端
-  api_key: ${APT_PROXY_API_KEY}        # 支持 ${VAR} 与 ${VAR:-default} 展开
+  api_key: ${APT_PROXY_API_KEY}
   enable_api_auth: true
-  api_rate_limit_per_minute: 60        # 0 禁用；默认 60
-  trusted_proxies:                     # 受信任代理 CIDR 列表，仅其匹配请求会解析 X-Forwarded-For
-    - 10.0.0.0/8
-    - 192.168.0.0/16
-
-mode: all
-
-# 可选仓库连接策略：仅支持 YAML，变更后重启。
-# 关闭时限制列表必须为空；启用后忽略前置代理环境变量。
-upstream_access:
-  enabled: false
-  allowed_hosts: []
-  allowed_ports: []       # 启用时为空表示允许 80/443
-  allow_cidrs: []         # 显式允许受信任私网范围
-
-# 上游传输
-upstream_keep_alive: true
-
-# 可选：外部 distributions/mirrors 配置文件（可热重载）
-distributions_config: ./config/distributions.yaml
 ```
 
-**YAML 中的环境变量展开：** 仅识别 `${VAR}` 与 `${VAR:-default}` 两种形式；裸 `$VAR` **不会**被展开。未定义的 `${VAR}` 会**保持原样**（而不是替换为空），便于及时发现拼写错误。
+启动 `./apt-proxy --config=apt-proxy.yaml` 前，请将 `APT_PROXY_API_KEY` 设为自己的非空密钥，
+并确保缓存目录可写。未设置的 `${VAR}` 引用会保留为字面值，加载器不会自动生成密钥。
 
-**说明：** 缓存识别上述人类可读字段（`dir`、`max_size_gb`、`ttl_hours`、`cleanup_interval_min`、`integrity`）；原始字节 / Duration 字段（`max_size`、`ttl`、`cleanup_interval`）属于内部表示，不会从 YAML 读入。
+- [CLI 参数、环境变量映射、YAML 字段与配置文件发现](docs/configuration-reference.zh-CN.md)。
+- [发行版 YAML、域名与路径匹配、镜像别名和自定义类型](docs/repository-configuration.zh-CN.md)。
+- [缓存容量、目录布局、键与 S3 预算](docs/cache-storage.zh-CN.md)。
+- [默认完整性校验与旧缓存迁移](docs/cache-integrity.md)。
 
-缓存大小、TTL 与清理间隔这三个 YAML 字段省略或非正值时，保留普通默认值
-（10 GiB、168 小时、60 分钟）；通过 CLI 或环境变量显式设置 `0` 才会关闭对应后端控制。
-这与仅支持 YAML 的 `download` / `resources` 限制不同，后者的 `0` 始终选择有界默认值。
+下载与资源策略、客户端 CIDR、上游访问策略仅支持 YAML。
+主配置修改后需要重启。SIGHUP 与镜像刷新只会重载发行版/镜像定义，并重新选优。
 
-**配置文件搜索路径（按顺序）：**
-1. 通过 `-config` 参数或 `APT_PROXY_CONFIG_FILE` 环境变量指定的路径
-2. `./apt-proxy.yaml`（当前目录）
-3. `/etc/apt-proxy/apt-proxy.yaml`（系统配置）
-4. `~/.config/apt-proxy/apt-proxy.yaml`（用户配置）
-5. `~/.apt-proxy.yaml`（用户配置）
+<!-- Preserve previously published README section links. -->
+<a id="api-端点"></a>
+<a id="健康检查与监控"></a>
+<a id="缓存管理受保护"></a>
+<a id="镜像管理受保护"></a>
+<a id="api-认证"></a>
+<a id="api-限流"></a>
+<a id="响应头"></a>
+<a id="热重载"></a>
+<a id="可观测性"></a>
+<a id="指标"></a>
+<a id="日志"></a>
+<a id="分布式追踪opentelemetry"></a>
+<a id="故障排除"></a>
+<a id="https-形式的-url-返回-403"></a>
+<a id="升级到-v0170-后路由发生变化"></a>
+<a id="ppa-或厂商软件源返回-404"></a>
+<a id="调试模式"></a>
+<a id="调试包操作"></a>
+<a id="常见问题"></a>
+<a id="升级到-v0180"></a>
 
-### 缓存容量与淘汰策略
+## 运维
 
-缓存支持通过 `max_size_gb`（YAML）、`--cache-max-size`（CLI）或 `APT_PROXY_CACHE_MAX_SIZE`（环境变量）设置容量上限。当总缓存大小超过该限制时，代理会按 **最久未访问**（LRU）自动删除文件，直至总容量保持在限制以内。淘汰会在写入新条目时以及定期清理时执行。
+管理控制与软件下载控制分别配置：
 
-- 设置为正整数（如 `20` 表示 20 GB）可启用容量限制与 LRU 淘汰。
-- 设置 `--cache-max-size=0` 或 `APT_PROXY_CACHE_MAX_SIZE=0` 可关闭容量限制，不进行按容量淘汰；YAML 的 `max_size_gb: 0` 保留默认值。
+- 启用认证后，`security.api_key` 保护管理 API；API 认证关闭时，修改类接口返回 503。
+- 下载 CIDR 在访问缓存前匹配连接对端。API Key 和转发头不会授予软件下载权限。
+- 健康、版本和指标接口保持各自的运维范围。
 
-同理，`--cache-ttl=0` / `APT_PROXY_CACHE_TTL=0` 关闭后端过期淘汰，
-`--cache-cleanup-interval=0` / `APT_PROXY_CACHE_CLEANUP_INTERVAL=0` 关闭定期清理。
-关闭后端 TTL 不改变 HTTP 新鲜度或上游缓存指令；仍为正值的容量限制可以在写入时执行淘汰。
+常用接口包括 `/healthz`、`/livez`、`/readyz`、`/version`、`/metrics`、
+`/api/cache/stats` 和 `/api/mirrors/status`。认证、限流、缓存管理、响应头、日志和链路追踪
+详见[运维参考](docs/operations.zh-CN.md)。
 
-进程重启后，在尚未有新访问之前，LRU 顺序按文件修改时间近似。
-
-启用 `shared_cache.coordination_dir` 后，实例间共享磁盘缓存会关闭容量/TTL 淘汰、后台清理和启动暂存扫描；全局在线 purge 被拒绝。维护前必须停止所有共享实例，详见[共享仓库缓存](docs/shared-repository-cache.md)。
-
-### 缓存目录结构
-
-磁盘后端在缓存目录下放四样东西。它们在第一次写入时出现，不是启动时就创建：
-
-```
-body/v1/<hashed-key>      响应体
-header/v1/<hashed-key>    状态行、header，以及写入时间戳
-staging/v1/               正在写入的条目，空闲时为空
-stale-markers.json        失效状态
-```
-
-一个条目由 body 和 header 共同构成，两者作为一步发布：字节先写进 `staging/v1`，再 rename 到位，因此重复写入一个已缓存的文件，不会让并发的读者看到截断或空的条目。`staging/v1` 下的东西都不是缓存条目 —— **做容量统计、备份或 rsync 时请排除它。** 普通单实例模式会在下次启动时清理进程被杀留下的暂存文件；共享磁盘协调模式要求所有实例停止后离线清理。
-
-普通模式下，`body/v1` 和 `header/v1` 计入 `max_size_gb`；暂存文件与失效标记不计入。Header 文件含私有完整性和代际元数据，其大小随响应字段变化。暂存文件由独立的 `resources.total_temp_mb` 预算约束。
-
-S3 后端没有 `staging/` 前缀，对象写入直接落到最终 key —— 暂存依赖 rename，而 VFS 接口里没有。
-
-### 缓存键与镜像选择
-
-默认缓存条目以**改写后**的上游 URL 为基础，并区分 HTTP 方法和 Vary 选择字段，而不是只使用客户端请求的地址。改写发生在缓存
-层之前，因此客户端请求 `/ubuntu/dists/noble/InRelease` 实际会被存在所选镜像的 URL
-下 —— `http://mirrors.example.com/ubuntu/dists/noble/InRelease`。
-
-由此带来一个实际影响：**换了镜像就等于换了一份新缓存。** 同一个客户端请求此时对应
-不同的键，会被重新下载；而旧镜像下的条目仍然占着磁盘，直到 TTL 或 LRU 淘汰把它们
-清掉。实测单个对象：
-
-```
-同一镜像，第二次请求   -> 上游只被访问了一次   （缓存命中）
-切换镜像之后           -> 从新镜像重新拉取
-```
-
-镜像测速选优在启动时和显式刷新时执行。可选的[运行时镜像健康](docs/runtime-mirror-health.md)
-还能基于已观察到的仓库元数据执行有界故障切换。测速结果不会持久化，因此**重启会重选**，
-`SIGHUP` 和 `POST /api/mirrors/refresh` 也会重新选优。刷新失败时保留完整的原有路由与缓存规则。
-
-默认不会跨镜像共享条目，因为镜像内容未必相同。显式的 [shared_cache 映射](docs/shared-repository-cache.md)
-可让经过内容校验的 SHA256 by-hash 索引跨等价镜像复用，普通软件包和可变元数据不会因此获得共享身份。
-启用跨进程协调后，非共享请求按进程隔离，重启会使这部分缓存重新预热。
-希望默认模式下缓存能跨重启保持热度时，可**直接指定镜像**：
+无需重启即可重载发行版/镜像定义：
 
 ```bash
-./apt-proxy --ubuntu=https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ \
-            --debian=https://mirrors.tuna.tsinghua.edu.cn/debian/
+# 向目标服务进程的 PID 发送信号：
+kill -HUP "$APT_PROXY_PID"
+
+# 或启用管理 API 认证，并使用已配置的密钥：
+curl -fsS -X POST -H "X-API-Key: $APT_PROXY_API_KEY" \
+  http://127.0.0.1:3142/api/mirrors/refresh
 ```
 
-显式指定的镜像会被直接使用、不做测速，因此在整个部署周期内缓存键都是稳定的。
-
-### S3 存储后端
-
-除了写到本地目录，`apt-proxy` 也可以把所有缓存的 body / header 直接落到任何 **S3
-兼容**的对象存储里。适合缓存需要跨容器/节点持久化、或本地磁盘空间吃紧的场景。
-同一桶和前缀上的多实例并发写入不提供分布式代际发布与 miss 协调保证；
-需使用独立前缀隔离实例。`shared_cache.coordination_dir` 仅支持 Unix 磁盘后端。
-
-通过 `--storage-backend=s3`（或 `APT_PROXY_STORAGE_BACKEND=s3`、YAML 中的
-`storage.backend: s3`）启用。最少配置只需要 `endpoint`、`bucket`、`access_key`、
-`secret_key`，其它字段都有合理默认值。
-
-**YAML 示例：**
-
-```yaml
-storage:
-  backend: s3
-  s3:
-    endpoint: minio.example.com:9000     # host[:port]，不要带 scheme
-    region: us-east-1                    # AWS S3 必填；多数 MinIO 服务忽略
-    bucket: apt-proxy
-    prefix: apt-proxy/                   # 可选，默认 "apt-proxy/"
-    access_key: ${APT_PROXY_S3_ACCESS_KEY}
-    secret_key: ${APT_PROXY_S3_SECRET_KEY}
-    use_ssl: true
-    use_path_style: false                # MinIO/Ceph 需为 true；AWS/R2/B2 用 false
-    inline_max_mb: 32                    # ≤32 MiB 走内存缓冲；超过则落盘临时文件
-                                         # 注意：是每个写入的上限；内存峰值 ≈ 并发数 × inline_max_mb（见"资源容量规划"）
-    temp_dir: ""                         # 留空使用 os.TempDir()
-```
-
-**ENV 示例**（适合 Kubernetes / Docker）：
-
-```bash
-APT_PROXY_STORAGE_BACKEND=s3
-APT_PROXY_S3_ENDPOINT=minio:9000
-APT_PROXY_S3_BUCKET=apt-proxy
-APT_PROXY_S3_ACCESS_KEY=...
-APT_PROXY_S3_SECRET_KEY=...
-APT_PROXY_S3_USE_SSL=false
-APT_PROXY_S3_USE_PATH_STYLE=true
-```
-
-**CLI 示例：**
-
-```bash
-./apt-proxy \
-  --storage-backend=s3 \
-  --s3-endpoint=s3.us-west-2.amazonaws.com \
-  --s3-region=us-west-2 \
-  --s3-bucket=apt-proxy \
-  --s3-access-key=$AWS_ACCESS_KEY_ID \
-  --s3-secret-key=$AWS_SECRET_ACCESS_KEY
-```
-
-**兼容性矩阵：**
-
-| 厂商 / 实现        | `endpoint`                                          | `use_ssl` | `use_path_style` | 备注                                   |
-| ------------------ | ---------------------------------------------------- | --------- | ---------------- | -------------------------------------- |
-| AWS S3             | `s3.<region>.amazonaws.com`                          | `true`    | `false`          | 必须显式设置 `region`                  |
-| MinIO              | `minio.local:9000` / `<host>:9000`                   | 视部署    | `true`           | 必须 path-style                        |
-| OtterIO            | `otterio:9000` / `<host>:9000`                       | 视部署    | `true`           | MinIO 的 Apache-2.0 衍生项目；配置相同 |
-| Ceph RGW           | `rgw.example.com`                                    | 视部署    | `true`           | 必须 path-style                        |
-| Cloudflare R2      | `<account>.r2.cloudflarestorage.com`                 | `true`    | `false`          | region 固定为 `auto`                   |
-| Backblaze B2       | `s3.<region>.backblazeb2.com`                        | `true`    | `false`          | App Key 需对 bucket 有读写权限         |
-| 阿里云 OSS         | `oss-cn-hangzhou.aliyuncs.com`                       | `true`    | `false`          | RAM 用户需 `oss:GetObject/PutObject`   |
-| 腾讯云 COS         | `cos.ap-shanghai.myqcloud.com`                       | `true`    | `false`          | 使用 SecretId / SecretKey              |
-| Garage / SeaweedFS | 视部署                                               | 视部署    | `true`           | 按 MinIO 风格配置                      |
-
-**运维注意事项：**
-
-- bucket 必须**预先存在**。`apt-proxy` 启动时会做一次 `BucketExists` 校验，配错
-  立即报错退出，不会等到第一次 cache miss 才发现。
-- `/healthz` 健康检查会感知存储后端：`s3` 模式做一次 HeadBucket，`disk` 模式做
-  `os.Stat`。
-- `s3vfs` 内置 8192 条元数据 LRU，用于吸收 `httpcache-kit` 频繁的 `Header()`
-  访问。默认完整性校验仍须在命中前读取完整响应体，不能依赖元数据 LRU 跳过校验。
-- 写入采用"智能"上传策略：≤ `inline_max_mb` 的对象在内存中累积后一次 PUT；超过
-  阈值则落盘到临时文件再 `PutObject`。可根据典型包大小调整。
-- S3 模式下 `cache.dir` / `--cachedir` / `APT_PROXY_CACHEDIR` 不作为持久缓存目录；
-  大对象上传和未知长度下载仍需可写的本地暂存目录，TLS 证书也需要本地文件。当 `storage.backend=s3` 同时显式设置了非默认
-  cache.dir 时，启动会输出一行警告，避免该特例被静默吞掉。
-
-**资源容量规划（S3 后端）：**
-
-S3 内联响应体与落盘副本都计入 `resources.total_temp_mb`（默认 4096 MiB）；
-从内存切换到磁盘时，重叠的两份副本同时计费。`inline_max_mb`（默认 32 MiB）是
-单次写入的阈值，不能把 `并发写入数 × inline_max_mb` 当作整个进程的 RSS 上限。
-缓存异步发布可以在上游下载槽释放后继续持有预算。HTTP 缓冲、元数据和 Go 运行时
-仍需要额外内存余量；可按典型包大小将内联阈值调到 4–8 MiB。
-
-超过阈值后使用匿名暂存文件：文件名立即 unlink，描述符关闭或进程退出才回收空间。
-`storage.s3.temp_dir` 留空时使用系统临时目录，必须可写；只读根文件系统应单独挂载可写卷。
-磁盘检查同时考虑已保留暂存字节和 `resources.min_free_mb`（默认 128 MiB），失败时拒绝准入。
-全局预算按实例计算，多个实例共享卷时必须分别分配额度。
-
-在 Kubernetes 中，将暂存目录挂到 `emptyDir`，并显式设置 Pod 的内存与
-`ephemeral-storage` 请求和上限。卷应能容纳所选暂存预算、磁盘保留空间及其他写入。
-下面是应用配置示例，Pod 额度仍需根据实际负载验证：
-
-```yaml
-resources:
-  max_object_mb: 1024
-  total_temp_mb: 4096
-  max_active_downloads: 32
-  min_free_mb: 128
-storage:
-  backend: s3
-  s3:
-    inline_max_mb: 8
-    temp_dir: /var/cache/apt-proxy/tmp
-    # endpoint、bucket 和凭据见上方完整示例
-```
-
-S3 上传使用单次流式 PUT；`resources.max_object_mb` 不得超过 5120 MiB。
-更多拒绝行为、超时与预算边界见[资源限制](docs/resource-limits.md)。
-
-完整可运行的示例（含 OtterIO + 自动建桶 + 接好的 apt-proxy）见
-[`examples/s3-otterio/`](examples/s3-otterio/)。
-
-## API 端点
-
-APT Proxy 提供 REST API 端点用于监控和管理：
-
-### 健康检查与监控
-
-| 端点 | 描述 |
-|------|------|
-| `GET /healthz` | 综合健康检查（缓存与依赖） |
-| `GET /livez` | Kubernetes 存活探针（轻量、不依赖外部组件） |
-| `GET /readyz` | Kubernetes 就绪探针（当前与 `/healthz` 共用同一聚合器） |
-| `GET /version` | 版本信息（每个响应也会带 `X-Version` 头） |
-| `GET /metrics` | Prometheus 指标 |
-| `ALL /_/ping`、`ALL /_/ping/*` | 极简可达性探测，固定返回 `pong` |
-| `GET /` | 内部状态页面（HTML），展示路由、镜像与缓存统计 |
-
-### 缓存管理（受保护）
-
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/cache/stats` | GET | 缓存统计（大小、命中率、条目数） |
-| `/api/cache/purge` | POST | 清除所有缓存 |
-| `/api/cache/cleanup` | POST | 移除过期缓存条目 |
-
-### 镜像管理（受保护）
-
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/api/mirrors/refresh` | POST | 重载发行版/镜像配置（distributions.yaml）并刷新镜像 |
-| `/api/mirrors/status` | GET | 查看进程内的运行时镜像健康状态与选择结果 |
-
-### API 认证
-
-配置 API 密钥并启用认证后，所有 `/api/*` 端点都需要认证。设置 `--api-key`（或 `APT_PROXY_API_KEY`）会隐式启用鉴权，除非显式传入 `--enable-api-auth=false`。如果启用认证但没有配置非空密钥，程序会将其视为无效配置并拒绝启动。
-
-认证关闭时，只读的 `/api/cache/stats` 与 `/api/mirrors/status` 仍可访问；`purge`、`cleanup` 和镜像 `refresh` 等修改类接口默认关闭并返回 HTTP 503，避免未认证的网络监听端口修改代理状态。可通过以下方式提供 API 密钥：
-
-1. **X-API-Key Header**（推荐）：
-   ```bash
-   curl -H "X-API-Key: your-api-key" http://localhost:3142/api/cache/stats
-   ```
-
-2. **Authorization Bearer Token**：
-   ```bash
-   curl -H "Authorization: Bearer your-api-key" http://localhost:3142/api/cache/stats
-   ```
-
-### API 限流
-
-所有 `/api/*` 端点都受**按 IP 限流**保护。默认配额是 **每 IP 每分钟 60 次**（1 分钟滑动窗口）；通过 `--api-rate-limit=0` 可关闭限流。当超出限制时，服务返回 HTTP `429 Too Many Requests`，错误码为 `ErrRateLimited`。
-
-默认情况下客户端 IP 取自 `RemoteAddr`。如部署在 nginx、ALB 或云负载均衡之后，需要解析 `X-Forwarded-For` 时，请用 `--trusted-proxies=10.0.0.0/8,192.168.0.0/16`（或 `APT_PROXY_TRUSTED_PROXIES`）指定**受信任代理 CIDR 列表**。只有来源匹配该列表的请求才会解析 `X-Forwarded-For`，否则忽略以防伪造。
-
-### 响应头
-
-服务在所有响应上自动追加以下头：
-
-- `X-Version`、`X-Build-*` — 版本与构建元信息（也可在 `GET /version` 查询）。
-- 标准安全响应头（如 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`，启用 TLS 时还有 `Strict-Transport-Security`）。
-- 代理响应附带 `X-Cache: HIT`/`MISS`/`SKIP`，用于访问日志按命中类型分类。
-- 预算控制的可缓存 GET 可附带 `X-Cache-Staging` HTTP trailer：`ADMITTED` 表示响应暂存准入，`SKIP` 表示暂存被跳过。必须读完整响应体才能看到 trailer；`ADMITTED` 不承诺异步缓存已提交。HEAD、HTTP/1.0 等不支持该 trailer 的情况跳过预算控制的发布。
-
-**示例：获取缓存统计（带认证）**
-
-```bash
-curl -H "X-API-Key: your-api-key" http://localhost:3142/api/cache/stats
-```
-
-响应：
-
-```json
-{
-  "total_size_bytes": 1073741824,
-  "total_size_human": "1.00 GB",
-  "item_count": 150,
-  "stale_count": 5,
-  "hit_count": 1250,
-  "miss_count": 150,
-  "hit_rate": 0.893
-}
-```
-
-## 热重载
-
-APT Proxy 仅支持对**发行版与镜像配置**（含 `distributions.yaml`）热重载，无需重启。**主配置**（如 `apt-proxy.yaml`：服务 host/port、缓存限制、TLS、安全、API Key 等）**不会**热重载，修改后需重启进程。
-
-重载发行版与镜像：
-
-```bash
-# 发送 SIGHUP 信号重载配置并刷新镜像
-kill -HUP $(pgrep apt-proxy)
-```
-
-或启用 API 认证，并使用已配置的密钥调用 API（认证关闭时，修改类接口返回 503）：
-
-```bash
-curl -X POST -H "X-API-Key: YOUR_API_KEY" \
-  http://localhost:3142/api/mirrors/refresh
-```
-
-两种方式效果等价：都会重载 `distributions.yaml` 并重新选择镜像。SIGHUP 信号会被防抖（约 500ms 内的连续信号合并）并排队（重载进行中最多再调度一次），可以放心从脚本批量发送。
-
-重载不会中断服务。镜像重新选举受网络影响、耗时可能较长，在整个窗口期内请求仍由重载前的配置响应；新的发行版及其镜像会在选举完成后**一并**生效，而不是分两步。在此之前，本次重载新增的发行版只是暂不可路由，而不会匹配到一条镜像尚未就绪的规则。
-
-## 可观测性
-
-### 指标
-
-`/metrics` 端点暴露 Prometheus 指标。主要指标与建议告警：
-
-| 指标 / 范围 | 说明 | 建议告警 |
-|------------|------|----------|
-| `apt_proxy_cache_hits_total` / `apt_proxy_cache_misses_total` | 缓存命中与未命中 | 命中率骤降 |
-| `apt_proxy_cache_size_bytes` / `apt_proxy_cache_items` | 当前缓存容量 / 条目数 | 接近 `--cache-max-size` 上限 |
-| `apt_proxy_cache_evictions_total` | 因容量限制触发的 LRU 驱逐数 | 持续高频驱逐（缓存过小） |
-| `apt_proxy_cache_cleanup_duration_seconds` | 周期清理耗时 | 清理耗时过长 |
-| `apt_proxy_cache_upstream_request_duration_seconds{method,status}` | 上游请求耗时（按 method/status） | P99 超阈值 |
-| `apt_proxy_cache_upstream_errors_total` | 上游获取错误数 | 错误率突增 |
-| 健康检查（`/healthz`、`/readyz`） | 服务与依赖健康 | 探针失败 |
-
-具体的标签集合与额外序列由依赖库 [httpcache-kit](https://github.com/soulteary/httpcache-kit) 暴露；可直接抓取 `/metrics` 查看完整列表。
-
-### 日志
-
-日志为结构化（JSON 或 console），仅通过环境变量配置：
-
-- `APT_PROXY_LOG_LEVEL` — `debug` / `info` / `warn` / `error`（默认 `info`）。`LOG_LEVEL` 作为旧版别名兜底。
-- `APT_PROXY_LOG_FORMAT` — `json` / `console` / `auto`（默认 `auto`，stdout 是 TTY 时使用 `console`）。`LOG_FORMAT` 作为旧版别名兜底。
-- `--debug` / `APT_PROXY_DEBUG=true` 强制 `debug` 级别，**并**会把请求 header 与 body 打入访问日志，仅排障时使用。
-
-每条请求日志都带有 `request_id`、`cache`（`HIT`/`MISS`/`SKIP`/空）以及响应 `size`。`/healthz`、`/livez`、`/readyz` 这三个探针路径默认从访问日志中跳过，避免噪音。
-
-### 分布式追踪（OpenTelemetry）
-
-设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向 OTLP 收集器（如 `http://otel-collector:4317`），即可启用 OpenTelemetry 追踪。导出器会自动接入；优雅退出时 spans 会被 flush。未设置时不启用追踪。
-
-## 架构
-
-```mermaid
-flowchart LR
-    Client[包管理器客户端] --> DownloadAccess[下载 CIDR 策略]
-    DownloadAccess --> Proxy[仓库处理与缓存]
-    Proxy --> Storage[(磁盘或 S3 缓存)]
-    Proxy --> Upstream[已配置的上游仓库]
-    Operator[管理客户端] --> APIAuth[API 认证与限流]
-    APIAuth --> API[管理 API]
-    API --> Proxy
-    Monitor[监控客户端] --> Metrics[健康、指标与版本接口]
-```
-
-### 请求流程
-
-1. **客户端请求**：包管理器请求先通过配置的下载 CIDR 策略，再进入仓库处理与缓存查找
-2. **缓存检查**：查找与请求及仓库身份匹配的缓存表示
-3. **缓存命中**：按默认策略校验持久记录与完整响应体，再返回符合请求选择字段和有效期的条目
-4. **缓存未命中**：应用仓库路由或 passthrough 策略，从所选上游获取
-5. **响应与发布**：返回响应，并按完整性与资源准入策略发布符合条件的缓存数据
-
-## 项目结构
-
-```text
-apt-proxy/
-├── cmd/apt-proxy/            # 进程入口
-├── internal/
-│   ├── access/                 # 下载 CIDR 与上游连接策略
-│   ├── api/                    # 管理接口、API Key 与限流
-│   ├── benchmarks/             # 镜像测速与选优
-│   ├── cli/                    # 命令分发、服务生命周期与 HTTP 适配
-│   ├── config/                 # 命令行、环境变量、YAML、默认值与校验
-│   ├── distro/                 # 内置路由与自定义发行版注册
-│   ├── errors/                 # 结构化应用错误
-│   ├── logsafe/                # 日志中的凭据脱敏
-│   ├── metalink/               # 已验证的 Metalink 发现与快照路由
-│   ├── mirrorhealth/           # 运行时 APT 镜像健康与故障切换
-│   ├── mirrors/                # 镜像列表、别名与 URL 模板
-│   ├── passthrough/            # 显式第三方源站白名单
-│   ├── proxy/                  # 仓库路由、上游传输与下载
-│   ├── repository/             # 已验证的 APT 快照与离线服务
-│   ├── resource/               # 临时副本与下载的共同准入预算
-│   ├── sharedcache/            # 仓库身份与 Unix 磁盘协调
-│   ├── state/                  # 每个服务实例独立的运行状态
-│   ├── storage/                # 完整性封装与 S3 虚拟文件系统
-│   └── system/                 # 磁盘与进程工具
-├── config/                  # 发行版与镜像配置示例
-├── docs/                    # 功能文档与版本说明
-├── docker/                  # 源码构建与发布镜像
-├── examples/                # 部署与配置示例
-└── tests/                   # 集成测试与真实包管理器客户端
-```
+遇到 `403`/`404`、路由变化或缓存未命中时，请先查看[故障排查](docs/troubleshooting.zh-CN.md)。
+历史迁移细节保留在该文档和[版本说明](docs/releases/v0.19.4.zh-CN.md)中。
+
+<!-- Preserve previously published README section links. -->
+<a id="架构"></a>
+<a id="请求流程"></a>
+<a id="项目结构"></a>
+<a id="从源码构建"></a>
+<a id="运行测试"></a>
 
 ## 开发
 
-### 从源码构建
+使用与 `go.mod`、CI 一致的 **Go 1.27.3**。真实客户端测试还需要 Python 3 与 Docker；
+离线快照选择 xz 索引时，需要系统提供 `xz` 程序。
 
 ```bash
 git clone https://github.com/soulteary/apt-proxy.git
 cd apt-proxy
-go build -o apt-proxy ./cmd/apt-proxy
-```
-
-与 [vfs-kit](https://github.com/soulteary/vfs-kit) 或 [httpcache-kit](https://github.com/soulteary/httpcache-kit) 联合开发时，`go.mod` 可使用 `replace` 指向本地目录（如 `../kits/httpcache-kit`）；使用已发布版本时请移除对应 replace。
-
-使用与 `go.mod`、CI 一致的 **Go 1.27.3**。真实客户端测试还需要 Python 3 和 Docker。
-
-### 运行测试
-
-```bash
-# 运行与 CI 一致的单元测试：race 检查、short 模式、禁用测试缓存
+make build
 make test
-
-# 生成与 CI 相同口径的语句覆盖率报告，并检查 95% 门槛
 make cover
 scripts/check-coverage.sh coverage.out
-go tool cover -html=coverage.out
-
-# 运行带 integration 标签的测试，外部服务要求见 tests/integration
-make test-integration
 ```
 
-95% 门槛针对 `./...` 的整体语句覆盖率，不要求每个包或每个分支达到 95%。
-仓库中的徽章是已发布的报告快照，评估改动时应以本次运行和 profile 为准，详见
-[报告工作流](.github/GO-REPORTS.md)。
+门槛为 **`./...` 的整体语句覆盖率 95%**，不代表每个包或分支覆盖率。
+仓库中的报告是快照，评估改动时应以本次 CI 为准，详见[报告发布流程](.github/GO-REPORTS.md)。
 
 ### 贡献代码
 
-欢迎贡献！请随时提交 Pull Request。
+[架构、项目结构、构建和集成测试](docs/development.zh-CN.md)，以及
+[真实客户端验证](docs/client-compatibility.md)记录了开发流程。欢迎提交 PR；
+修改仓库路由或缓存保证时，请补充行为测试。
 
-## 故障排除
+## 项目信息
 
-### `HTTPS///` 形式的 URL 返回 `403`
+### 开源协议
 
-apt-proxy 支持 apt-cacher-ng 的 `HTTPS///` 重写标记（`deb http://HTTPS///example.com/repo ...`）：它会抓取 `https://example.com/repo` 并缓存。前提是该源站已在[直通白名单](#缓存第三方软件源passthrough)中 —— 返回 `403` 正是表示还没加：
+本项目采用 [Apache License 2.0](LICENSE)，漏洞报告与版本说明见[安全策略](SECURITY.md)。
 
-```bash
-./apt-proxy --passthrough=get.docker.com
-```
-
-拒绝信息里会带上源站名和对应的配置项，照着加一条即可。标记 URL 的其它状态码：
-
-| 状态码 | 含义 |
-|--------|------|
-| `403` | 源站不在白名单中 |
-| `400` | 标记后面没有写源站（`.../HTTPS///` 后面是空的） |
-| `405` | 不是 `GET` 或 `HEAD` |
-
-apt-cacher-ng 文档里的两种写法都支持 —— `Host: HTTPS` 加路径里的源站，以及把标记嵌在指向 apt-proxy 自身地址的路径里 —— 且大小写不敏感。
-
-### 升级到 v0.17.0 后路由发生变化
-
-v0.17.0 之前，`distributions.yaml` **只有**在通过 `--distributions-config` /
-`APT_PROXY_DISTRIBUTIONS_CONFIG` 显式指定路径时才会被读取。放在搜索路径上的文件
-会被静默忽略，这类部署发送 SIGHUP 也不会重载任何东西。现在两者的行为与本文档
-的描述一致 —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。
-
-这是一个修复，但升级时可见。放在 `./config/`、`./`、`/etc/apt-proxy/` 或
-`~/.config/apt-proxy/` 的 `distributions.yaml` —— 可能是一次实验、从本仓库复制
-的模板、或旧部署遗留的文件 —— 会在第一次以 v0.17.0 启动时生效，而你的命令行
-没有任何改动。其中 `type` 为 `1`–`5` 的条目会**重新配置对应的内置发行版**，
-镜像和 `url_pattern` 都可能随之改变。
-
-启动日志会写明实际生效的文件以及注册了哪些发行版：
-
-```text
-config="config/distributions.yaml" distributions=["alpine","centos","debian","deepin","ubuntu","ubuntu-ports"]
-```
-
-`config="(built-in defaults)"` 表示没有任何外部配置生效 —— 这**不等于**没有
-找到文件。文件存在但读取、解析或校验失败时会被整体拒绝，启动同样回退到内置
-配置并打印这一行。区分两者要看紧挨着它上面的那条警告：
-
-```text
-failed to load distributions config; using built-in defaults  error="invalid distribution config for x: ..."
-```
-
-这条警告**只有**在「找到了文件但被拒绝」时才会出现，所以它在不在就是答案：
-没有警告说明确实没找到文件；有警告说明你的文件就在那里但有问题，`error`
-字段会说明原因。（当文件来自搜索路径而非显式指定时，这条警告不会写出文件名
-—— 请按上面的顺序检查那四个路径。）
-
-如果 `config=` 里出现了你没有预期的文件，把它移走或删除，或者显式指定你真正
-想用的那一个。
-
-### PPA 或厂商软件源返回 `404`
-
-apt-proxy 只代理已配置的发行版。路径里**碰巧含有**发行版路径段，并不代表它是该发行版的镜像 —— 那是另一个仓库，会返回 `404`：
-
-```text
-/ppa.launchpad.net/deadsnakes/ppa/ubuntu/dists/jammy/InRelease   404
-/download.docker.com/linux/ubuntu/dists/jammy/InRelease          404
-```
-
-更早的版本会匹配这类路径，并用该发行版自己的镜像来应答，于是一个 PPA 请求拿回来的是 **Ubuntu 主仓**同名套件的索引 —— `200`、看起来完全正常、内容却来自另一个仓库。现在的 `404` 取代了这种静默替换。
-
-具体怎么处理，取决于客户端是以哪种方式接入 apt-proxy 的。
-
-**把 apt-proxy 当作 APT 的代理**（`http_proxy=...` 或 `Acquire::http::Proxy`，也就是快速开始里的用法）：这时**所有**请求都会经过 apt-proxy，改 `sources.list` 条目没有任何作用 —— 请求照样会到达这里（只靠 `Host` 标识），照样返回 `404`。正确做法是让该主机绕过 apt-proxy：
-
-```text
-# /etc/apt/apt.conf.d/99-apt-proxy-bypass
-Acquire::http::Proxy::ppa.launchpad.net "DIRECT";
-Acquire::https::Proxy::ppa.launchpad.net "DIRECT";
-```
-
-**使用 URL 前缀形式**（`deb http://apt-proxy.example:3142/<host>/...`）：把该条目直接指向它的源站即可。
-
-**两种方式都适用**：如果你希望 apt-proxy 缓存这个仓库而不是跳过它，把源站加进 `passthrough` 白名单即可 —— 参见[缓存第三方软件源](#缓存第三方软件源passthrough)：
-
-```bash
-./apt-proxy --passthrough=ppa.launchpad.net
-```
-
-只想原样缓存的话，这是最短路径。如果你还想让 apt-proxy 用自己的缓存规则、镜像列表和测速来管理它，则应建模成一个发行版 —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)；客户端处于代理模式时，该条目需要配上匹配源站域名的 `host_pattern`（`host_pattern: "^ppa\\.launchpad\\.net$"`），因为这类请求路径里没有前缀可匹配。
-
-apt-cacher-ng 风格的主机名前缀不受影响：发行版路径段前只有单独一段主机名时（`/ftp.uni-kl.de/debian/...`）依然正常路由。
-
-### 调试模式
-
-启用调试日志来排查问题：
-
-```bash
-./apt-proxy --debug
-```
-
-### 调试包操作
-
-对于 Ubuntu/Debian 包管理器操作的详细调试：
-
-```bash
-# 启用详细调试
-http_proxy=http://192.168.33.1:3142 \
-  apt-get -o Debug::pkgProblemResolver=true \
-          -o Debug::Acquire::http=true \
-          update
-
-http_proxy=http://192.168.33.1:3142 \
-  apt-get -o Debug::pkgProblemResolver=true \
-          -o Debug::Acquire::http=true \
-          install apache2
-```
-
-### 常见问题
-
-**问题**：软件包没有被缓存
-**解决方案**：确保代理 URL 配置正确，并且客户端机器可以访问。
-
-**问题**：首次下载很慢
-**解决方案**：这是预期行为 - 首次下载会填充缓存。后续下载会更快。
-
-**问题**：重启之后缓存像是空的，所有东西又重新下载了一遍
-**解决方案**：缓存条目以所选镜像的 URL 为键，而镜像选优在重启时会重新执行。用 `--ubuntu=…`、`--debian=…` 显式指定镜像即可让缓存键保持稳定。参见「缓存键与镜像选择」。
-
-**问题**：缓存目录过大
-**解决方案**：使用 `--cache-max-size` 配置缓存限制，或使用清理 API 端点。
-
-### 升级到 v0.18.0
-
-检查默认完整性校验、Vary 缓存迁移、下载额度、S3 暂存空间和共享磁盘维护方式后再升级。
-详见[中文发布与升级说明](docs/releases/v0.18.0.zh-CN.md)。
-
-## 开源协议
-
-本项目基于 [Apache License 2.0](https://github.com/soulteary/apt-proxy/blob/master/LICENSE) 协议。
-
-## 致谢
+### 致谢
 
 感谢以下项目及其贡献者：
 
@@ -1476,11 +308,7 @@ http_proxy=http://192.168.33.1:3142 \
 - [soulteary/vfs-kit](https://github.com/soulteary/vfs-kit) — 当前使用的虚拟文件系统库，源自 [rainycape/vfs](https://github.com/rainycape/vfs)，采用 MPL-2.0 协议。
 - [djherbis/stream](https://github.com/djherbis/stream) — 项目早期版本使用的流处理库。
 
-## 支持
+### 支持
 
-- **问题反馈**：[GitHub Issues](https://github.com/soulteary/apt-proxy/issues)
-- **讨论交流**：[GitHub Discussions](https://github.com/soulteary/apt-proxy/discussions)
-
----
-
-由 APT Proxy 社区用 ❤️ 打造
+[问题反馈](https://github.com/soulteary/apt-proxy/issues) ·
+[讨论交流](https://github.com/soulteary/apt-proxy/discussions)。
