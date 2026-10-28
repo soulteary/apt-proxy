@@ -1,14 +1,14 @@
 {
   "schema_version": "1.0",
   "tests": {
-    "total": 559,
-    "passed": 558,
+    "total": 561,
+    "passed": 560,
     "failed": 0,
     "skipped": 1
   },
   "coverage": {
-    "covered_statements": 4867,
-    "total_statements": 5814,
+    "covered_statements": 4876,
+    "total_statements": 5825,
     "percentage": 83.71,
     "threshold": 80
   },
@@ -37,9 +37,9 @@
     {
       "name": "internal/benchmarks",
       "status": "pass",
-      "tests": 26,
+      "tests": 27,
       "failed": 0,
-      "coverage": 93.21
+      "coverage": 93.33
     },
     {
       "name": "internal/cli",
@@ -107,9 +107,9 @@
     {
       "name": "internal/proxy",
       "status": "pass",
-      "tests": 136,
+      "tests": 137,
       "failed": 0,
-      "coverage": 88.6
+      "coverage": 88.69
     },
     {
       "name": "internal/repository",
@@ -130,7 +130,7 @@
       "status": "pass",
       "tests": 18,
       "failed": 0,
-      "coverage": 74.62
+      "coverage": 74.1
     },
     {
       "name": "internal/state",
