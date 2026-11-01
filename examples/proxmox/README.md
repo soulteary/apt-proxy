@@ -107,7 +107,7 @@ and `--mode=all`.
 
 ## Repository scope and configuration details
 
-This runnable example defines **PBS Client only**. Since v0.19.5,
+This runnable example defines **PBS Client only**. Since v0.19.4,
 [`config/distributions.yaml`](../../config/distributions.yaml) also contains
 commented PVE, PBS Server, PBS Client and Ceph Squid entries. Follow its
 instructions to append only the desired entries to the active list; do not

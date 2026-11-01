@@ -122,7 +122,7 @@ Security 镜像。查询参数会被保留，无法匹配已配置发行版的�
 下述域名与路径联合匹配优先级、严格 YAML 校验已包含在 v0.19.2 及后续版本中。
 v0.19.3 还修复了镜像根地址缺少尾部斜杠时的 URL 拼接；Proxmox 部署请使用
 v0.19.3 或更高版本。[Proxmox Backup Client 示例](../examples/proxmox)提供保留官方源地址的
-代理配置，以及独立的本地路径别名。v0.19.5 在
+代理配置，以及独立的本地路径别名。v0.19.4 在
 [`config/distributions.yaml`](../config/distributions.yaml) 中补充了默认注释的 PVE、PBS Server、
 PBS Client 和 Ceph Squid 条目，需要手动加入有效发行版列表才会启用。
 
