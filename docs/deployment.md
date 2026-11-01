@@ -13,7 +13,7 @@ docker run -d \
   --name=apt-proxy \
   -p 3142:3142 \
   -v apt-proxy-cache:/var/cache/apt-proxy \
-  soulteary/apt-proxy:v0.19.4
+  soulteary/apt-proxy:v0.19.5
 ```
 
 The named volume mounts the cache at the path used by both current images.
