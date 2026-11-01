@@ -4,11 +4,11 @@ Cache the Proxmox Backup Client repository while retaining its official APT
 source URL. This example addresses the `/debian/` path collision reported in
 [issue #167](https://github.com/soulteary/apt-proxy/issues/167).
 
-**Version availability:** use v0.19.3 or later; v0.19.4 is the current release.
+**Version availability:** use v0.19.3 or later; v0.19.5 is the current release.
 v0.19.2 introduced the host-and-path routing fix for #167, and v0.19.3 fixed
 URL joining for mirror roots without a trailing slash. The Compose example
 builds this checkout locally. Review the
-[upgrade notes](../../docs/releases/v0.19.4.md) before updating an older deployment.
+[upgrade notes](../../docs/releases/v0.19.5.md) before updating an older deployment.
 
 ## Run
 
@@ -107,7 +107,7 @@ and `--mode=all`.
 
 ## Repository scope and configuration details
 
-This runnable example defines **PBS Client only**. Since v0.19.4,
+This runnable example defines **PBS Client only**. Since v0.19.5,
 [`config/distributions.yaml`](../../config/distributions.yaml) also contains
 commented PVE, PBS Server, PBS Client and Ceph Squid entries. Follow its
 instructions to append only the desired entries to the active list; do not

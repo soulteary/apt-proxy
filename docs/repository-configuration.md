@@ -129,7 +129,7 @@ the host-and-path routing priority and strict YAML validation described below
 are included in v0.19.2 and later. v0.19.3 additionally fixes mirror-root URL
 joining when a trailing slash is absent; use v0.19.3 or later for Proxmox. See the
 [Proxmox Backup Client example](../examples/proxmox) for original-source proxying
-and a distinct local path alias. v0.19.4 adds commented PVE, PBS Server, PBS Client
+and a distinct local path alias. v0.19.5 adds commented PVE, PBS Server, PBS Client
 and Ceph Squid entries to [`config/distributions.yaml`](../config/distributions.yaml);
 these remain disabled until explicitly added to the active distribution list.
 

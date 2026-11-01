@@ -17,8 +17,8 @@
 APT Proxy is a lightweight, high-performance caching proxy for package managers. It accelerates package downloads by caching frequently used packages locally, dramatically reducing download times for subsequent installations. Whether you're managing multiple servers, building Docker images, or working in bandwidth-constrained environments, APT Proxy helps you save time and bandwidth.
 
 This README is the project entry point. The latest documented release is
-[v0.19.4](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.4);
-read its [upgrade notes](docs/releases/v0.19.4.md) when updating an older deployment.
+[v0.19.5](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.5);
+read its [upgrade notes](docs/releases/v0.19.5.md) when updating an older deployment.
 
 ### Key Features
 
@@ -79,7 +79,7 @@ docker run -d \
   --name apt-proxy \
   -p 3142:3142 \
   -v apt-proxy-cache:/var/cache/apt-proxy \
-  soulteary/apt-proxy:v0.19.4
+  soulteary/apt-proxy:v0.19.5
 ```
 
 The named volume is mounted at the image's actual cache path,
@@ -280,7 +280,7 @@ curl -fsS -X POST -H "X-API-Key: $APT_PROXY_API_KEY" \
 
 For `403`/`404`, routing changes or cache misses, start with
 [troubleshooting](docs/troubleshooting.md). Historical migrations stay in that
-guide and the [release notes](docs/releases/v0.19.4.md), rather than in the startup recipe.
+guide and the [release notes](docs/releases/v0.19.5.md), rather than in the startup recipe.
 
 <!-- Preserve previously published README section links. -->
 <a id="architecture"></a>
