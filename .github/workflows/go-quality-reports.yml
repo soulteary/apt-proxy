@@ -183,7 +183,7 @@ jobs:
       - name: Go quality report (v1.1.3)
         if: "!cancelled() && steps.report_cleanup.outcome == 'success'"
         id: go_report_card
-        uses: soulteary/goreportcard-action@d4669a9fbea514f5995d749177630ebfee755789  # v1.1.4
+        uses: soulteary/goreportcard-action@9744d0297ca0116cd4ef83e4ff6f3ba42a65a24d  # v1.1.7
         with:
           directory: "."
           version: "v1.1.3"
