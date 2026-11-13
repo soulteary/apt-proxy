@@ -63,6 +63,9 @@ type hostPatternEntry struct {
 	// A host-and-path match takes priority over path-only matches. It also
 	// supports host-root archives when no distribution path matches.
 	hostPattern *regexp.Regexp
+	// mirrorHosts holds the hostnames of the distribution's listed mirrors.
+	// An allowlisted origin among them keeps distribution routing.
+	mirrorHosts map[string]struct{}
 	rules       []distro.Rule
 }
 
@@ -92,7 +95,7 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 			if d.Type != mode || d.URLPattern == nil || len(d.CacheRules) == 0 {
 				continue
 			}
-			out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
+			out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, mirrorHosts: mirrorHostSet(d.Mirrors), rules: d.CacheRules})
 			seen[id] = struct{}{}
 		}
 	}
@@ -111,7 +114,7 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 		if d.URLPattern == nil || len(d.CacheRules) == 0 {
 			continue
 		}
-		out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
+		out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, mirrorHosts: mirrorHostSet(d.Mirrors), rules: d.CacheRules})
 	}
 	return out
 }
@@ -583,6 +586,18 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 		}
 	}
 
+	// An origin the operator allowlisted is fetched from that origin. The
+	// path-only match below ignores the host, so without this check an
+	// archive such as packages.microsoft.com/ubuntu/... would be rewritten
+	// onto the Ubuntu mirror and its allowlist entry could never take effect.
+	// A host that belongs to a distribution keeps that distribution's routing
+	// and cache rules.
+	if host != "" && !ap.passthrough.Empty() && !distributionHost(rt, host, path) {
+		if rule := ap.matchPassthrough(r); rule != nil {
+			return rule
+		}
+	}
+
 	// Preserve path-only routes, including local proxy aliases whose Host is
 	// the proxy rather than the original archive. matchesDistroPath rejects
 	// matches hidden behind a prefix that is not a mirror host (hostprefix.go).
@@ -603,9 +618,8 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 		}
 	}
 
-	// Last: a third-party origin the operator allowlisted. Deliberately after
-	// both distribution checks, so an archive apt-proxy mirrors keeps its own
-	// routing and cache rules.
+	// Last: an allowlisted origin that also belongs to a distribution, for the
+	// paths no distribution route claimed.
 	return ap.matchPassthrough(r)
 }
 

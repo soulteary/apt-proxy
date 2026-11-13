@@ -86,9 +86,10 @@ func stripDefaultPort(authority string) string {
 // matchPassthrough reports whether r addresses an allowlisted third-party
 // origin, and if so points the request at it.
 //
-// This runs only after distribution matching has failed, so an archive
-// apt-proxy mirrors keeps its existing routing and its own cache rules; the
-// allowlist covers what would otherwise be a 404.
+// For a host that belongs to a distribution this runs only after distribution
+// matching has failed, so an archive apt-proxy mirrors keeps its routing and
+// its own cache rules. Any other allowlisted origin is matched ahead of
+// path-only distribution routing; see handleExternalURLs.
 //
 // The origin is taken from the request authority rather than the path: a
 // client reaches a third-party archive by using apt-proxy as its HTTP proxy
