@@ -17,11 +17,13 @@ package benchmarks
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -94,7 +96,9 @@ func TestGuardedBenchmarkRedirectAndAsync(t *testing.T) {
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, http.StatusFound) }))
 	defer source.Close()
 	engine := NewEngineWithPolicy(benchmarkPolicy(t, source.URL, true))
-	if _, err := engine.Benchmark(context.Background(), source.URL, "/probe", 1); !errors.Is(err, access.ErrUpstreamDenied) {
+	// A probe fails on the redirect itself: it does not ask the transport for
+	// the target, so the failure is not a policy denial.
+	if _, err := engine.Benchmark(context.Background(), source.URL, "/probe", 1); err == nil || errors.Is(err, access.ErrUpstreamDenied) {
 		t.Fatalf("redirect error=%v", err)
 	}
 	if targetHits.Load() != 0 {
@@ -104,17 +108,28 @@ func TestGuardedBenchmarkRedirectAndAsync(t *testing.T) {
 	engine.GetTheFastestMirrorAsync(3, []string{source.URL}, "/probe", func(r AsyncBenchmarkResult) { done <- r })
 	select {
 	case result := <-done:
-		if !errors.Is(result.Error, access.ErrUpstreamDenied) {
+		if result.Error == nil || errors.Is(result.Error, access.ErrUpstreamDenied) {
 			t.Fatalf("async result=%+v", result)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("async benchmark did not stop")
 	}
 	if _, ok := engine.Cache().GetCachedResult(3); ok {
-		t.Fatal("denied election cached")
+		t.Fatal("failed election cached")
 	}
 	if targetHits.Load() != 0 {
 		t.Fatal("async redirect escaped policy")
+	}
+	// Discovery follows the redirect, so the policy has to stop it at the target.
+	resp, err := engine.discovery.Get(source.URL)
+	if err == nil {
+		_ = resp.Body.Close()
+	}
+	if !errors.Is(err, access.ErrUpstreamDenied) {
+		t.Fatalf("discovery redirect error=%v", err)
+	}
+	if targetHits.Load() != 0 {
+		t.Fatal("discovery redirect escaped policy")
 	}
 }
 func TestGuardedGeoDiscoveryFallbackAndRegistry(t *testing.T) {
@@ -161,11 +176,40 @@ func TestGuardedGeoUsesEngineClientWithoutUnguardedRetry(t *testing.T) {
 	}
 	engine := NewEngineWithPolicy(p)
 	fixture := &geoDiscoveryFixture{}
-	engine.client.Transport = fixture
+	engine.discovery.Transport = fixture
 	if candidates := engine.MirrorCandidates(distro.NewBuiltinRegistry(), distro.TypeUbuntu); len(candidates) == 0 {
 		t.Fatal("discovery rejection lost fallback")
 	}
 	if fixture.calls != 1 || fixture.uri != distro.UbuntuGeoMirrorAPI || !fixture.bounded {
 		t.Fatalf("geo fixture=%+v", fixture)
+	}
+}
+
+// The geo endpoint may redirect; discovery has to follow it even though probes
+// of the discovered mirrors do not follow redirects.
+func TestGuardedGeoDiscoveryFollowsRedirects(t *testing.T) {
+	p, err := access.NewUpstream(&access.UpstreamConfig{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngineWithPolicy(p)
+	if engine.discovery.Transport != engine.client.Transport {
+		t.Fatal("discovery does not use the guarded probe transport")
+	}
+	const moved = "https://geo.example/mirrors.txt"
+	var visited []string
+	engine.discovery.Transport = failedProbeTransport(func(r *http.Request) (*http.Response, error) {
+		visited = append(visited, r.URL.String())
+		if r.URL.String() != moved {
+			return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {moved}}, Body: http.NoBody, Request: r}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("https://mirror.example/ubuntu/\n")), Request: r}, nil
+	})
+	candidates := engine.MirrorCandidates(distro.NewBuiltinRegistry(), distro.TypeUbuntu)
+	if len(candidates) != 1 || candidates[0] != "https://mirror.example/ubuntu/" {
+		t.Fatalf("candidates=%v after visiting %v", candidates, visited)
+	}
+	if len(visited) != 2 || visited[0] != distro.UbuntuGeoMirrorAPI || visited[1] != moved {
+		t.Fatalf("discovery visited %v", visited)
 	}
 }
