@@ -9,6 +9,7 @@ import (
 	"io"
 	"os/exec"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -111,7 +112,14 @@ func checksumLines(value, prefix string) ([]Object, error) {
 	return uniqueObjects(result)
 }
 
-func (s *Store) selectedIndexes(ctx context.Context, m *Manifest) ([]Object, error) {
+// indexFamily is one index and the compression variants that Release lists.
+type indexFamily struct {
+	path     string // uncompressed index path
+	required bool
+	variants []Object
+}
+
+func (s *Store) selectedIndexes(ctx context.Context, m *Manifest) ([]indexFamily, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -144,35 +152,38 @@ func (s *Store) selectedIndexes(ctx context.Context, m *Manifest) ([]Object, err
 	for _, ref := range refs {
 		available[ref.Path] = ref
 	}
-	var result []Object
+	var result []indexFamily
 	for _, component := range m.Selection.Components {
 		for _, arch := range m.Selection.Architectures {
-			indexes := indexVariants(available, base+component+"/binary-"+arch+"/Packages")
-			if len(indexes) == 0 {
+			family := indexVariants(available, base+component+"/binary-"+arch+"/Packages", true)
+			if len(family.variants) == 0 {
 				return nil, fmt.Errorf("release has no Packages index for %s/%s", component, arch)
 			}
-			result = append(result, indexes...)
+			result = append(result, family)
 		}
-		result = append(result, indexVariants(available, base+component+"/binary-all/Packages")...)
+		// A selected "all" architecture already requires this index.
+		if !slices.Contains(m.Selection.Architectures, "all") {
+			result = append(result, indexVariants(available, base+component+"/binary-all/Packages", false))
+		}
 		if m.Selection.Sources {
-			indexes := indexVariants(available, base+component+"/source/Sources")
-			if len(indexes) == 0 {
+			family := indexVariants(available, base+component+"/source/Sources", true)
+			if len(family.variants) == 0 {
 				return nil, fmt.Errorf("release has no Sources index for %s", component)
 			}
-			result = append(result, indexes...)
+			result = append(result, family)
 		}
 	}
-	return uniqueObjects(result)
+	return result, nil
 }
 
-func indexVariants(available map[string]Object, p string) []Object {
-	var result []Object
+func indexVariants(available map[string]Object, p string, required bool) indexFamily {
+	family := indexFamily{path: p, required: required}
 	for _, suffix := range []string{"", ".gz", ".xz"} {
 		if o, ok := available[p+suffix]; ok {
-			result = append(result, o)
+			family.variants = append(family.variants, o)
 		}
 	}
-	return result
+	return family
 }
 
 func (s *Store) decodedIndex(ctx context.Context, o Object) ([]byte, error) {
@@ -229,8 +240,8 @@ func (s *Store) decodedIndex(ctx context.Context, o Object) ([]byte, error) {
 }
 
 func (s *Store) packageObjects(ctx context.Context, indexes []Object) ([]Object, error) {
-	// Every advertised supported variant is parsed. Divergent variants cannot
-	// cause APT's compression choice to reveal an unprefetched dependency.
+	// Every stored variant is parsed. Divergent variants cannot cause APT's
+	// compression choice to reveal an unprefetched dependency.
 	var result []Object
 	for _, o := range indexes {
 		data, err := s.decodedIndex(ctx, o)
@@ -307,11 +318,25 @@ func (s *Store) verify(ctx context.Context, m *Manifest) ([]string, error) {
 	if len(damaged) > 0 {
 		return damaged, errors.New("snapshot contains missing or damaged objects")
 	}
-	indexes, err := s.selectedIndexes(ctx, m)
+	families, err := s.selectedIndexes(ctx, m)
 	if err != nil {
 		return nil, err
 	}
 	byPath := objectMap(m)
+	// A snapshot holds the listed variants that its origin published.
+	var indexes []Object
+	for _, family := range families {
+		stored := false
+		for _, index := range family.variants {
+			if _, ok := byPath[index.Path]; ok {
+				indexes = append(indexes, index)
+				stored = true
+			}
+		}
+		if family.required && !stored {
+			return nil, fmt.Errorf("snapshot has no variant of required index: %s", family.path)
+		}
+	}
 	expected := append([]Object(nil), indexes...)
 	for _, index := range indexes {
 		alias := index

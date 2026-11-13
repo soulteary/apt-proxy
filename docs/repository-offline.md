@@ -42,14 +42,23 @@ The snapshot preserves the raw `InRelease` file, or `Release` plus
 `Release.gpg` when the signature is available. The SHA256 table in Release selects
 `Packages`, `Packages.gz`, and `Packages.xz` for every requested component and
 architecture; separate `binary-all` indexes are included when advertised. With
-`--sources`, the corresponding Sources variants are also required. Every
-supported advertised variant is parsed, so the selected compression format
-cannot expose a missing package dependency.
+`--sources`, the corresponding Sources variants are also selected.
 
-All indexes must match their declared sizes and SHA256 digests. Every Packages
-`Filename`/`Size`/`SHA256` object and every Sources
+Release may list a variant that the repository does not publish. The official
+Debian and Ubuntu archives list the uncompressed `Packages` and `Sources` but
+serve only the compressed files. A selected variant that the origin answers
+with 404 is left out of the snapshot together with its by-hash alias, and the
+offline server answers 404 for it as the origin does. Every requested Packages
+index, and every Sources index with `--sources`, needs at least one published
+variant; otherwise prefetch fails and names the index. A separate `binary-all`
+index stays optional. Any other download failure aborts the prefetch. Every
+stored variant is parsed, so the compression format a client selects cannot
+expose a missing package dependency.
+
+All stored indexes must match their declared sizes and SHA256 digests. Every
+Packages `Filename`/`Size`/`SHA256` object and every Sources
 `Directory`/`Checksums-Sha256` reference, including `.dsc` and source archives,
-is then fetched and verified. SHA256 by-hash aliases for selected indexes are
+is then fetched and verified. SHA256 by-hash aliases for the stored indexes are
 provided. Optional translation, Contents, AppStream and installer indexes are
 outside this selected package/source snapshot. Clients can disable optional
 translation downloads with `Acquire::Languages=none`.
@@ -72,7 +81,8 @@ Plain and gzip indexes use Go readers. Parsing a selected `.xz` variant requires
 the system `xz` executable in `PATH`. The process uses no shell, a 256 MiB
 decompression memory limit and the same bounded output size as other index
 formats. An unavailable executable, malformed compression, oversized index or
-missing declared object fails the operation without publishing a partial set.
+missing package or source file fails the operation without publishing a partial
+set.
 
 Install `xz-utils` on Debian/Ubuntu or `xz` on Alpine before using snapshots whose
 Release advertises selected xz indexes. Existing distroless images do not ship
@@ -123,12 +133,20 @@ apt-proxy repository repair --dir /srv/apt-snapshot \
 ```
 
 Verification hashes every unique object, re-reads the Release/index chain and
-checks that the manifest includes exactly the selected complete set. Repair
-uses the manifest's repository origin and expected digests, fetching only
-missing or damaged objects. `--paths` optionally restricts it to comma-separated
-manifest paths. A repair is successful only when the whole set verifies; healthy
-objects are not downloaded again. Changed upstream content cannot silently
-replace the pinned object: its expected digest must still match.
+checks that the manifest includes exactly the selected complete set: the
+Release metadata, the stored index variants, their by-hash aliases and every
+object those indexes reference. The stored variants must be listed by Release,
+and each required index must have at least one. Repair uses the manifest's
+repository origin and expected digests, fetching only missing or damaged
+objects. `--paths` optionally restricts it to comma-separated manifest paths. A
+repair is successful only when the whole set verifies; healthy objects are not
+downloaded again. Changed upstream content cannot silently replace the pinned
+object: its expected digest must still match.
+
+Repair never changes the published set. An index variant that was left out by
+prefetch is not a manifest path and is not fetched later; a stored object that
+the origin no longer serves fails the repair with its path. Run `prefetch`
+again to publish a snapshot of what the origin serves now.
 
 Serving starts only after the full selected set verifies. Each requested object
 is checked again before serving; a damaged object returns 503. A running server
@@ -151,6 +169,11 @@ before switching the current snapshot. Traversal names, symlinks, duplicate or
 extra entries, missing objects and corrupt payloads fail closed. The archive
 contains repository URLs without credentials; it provides integrity validation,
 not an authenticated provenance signature.
+
+An archive carries exactly the index variants of the exported snapshot, and
+import applies the same completeness rules as verification. Earlier releases
+required every listed variant, so they reject an archive of a snapshot that
+leaves one out.
 
 Publication writes synced immutable objects and a hash-addressed manifest before
 atomically replacing `current`. A failed prefetch/import keeps the previous

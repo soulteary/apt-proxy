@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -349,6 +350,129 @@ func TestRepositoryIndexClosureFailures(t *testing.T) {
 	_, err = limited.packageObjects(context.Background(), []Object{o})
 	if err == nil || !strings.Contains(err.Error(), "object limit") {
 		t.Fatalf("index object limit: %v", err)
+	}
+}
+
+// archiveOf frames a manifest and its stored objects without verifying them.
+func archiveOf(t *testing.T, s *Store, m *Manifest) []byte {
+	t.Helper()
+	var archive bytes.Buffer
+	tw := tar.NewWriter(&archive)
+	add := func(name string, data []byte) {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0600, Size: int64(len(data)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add("manifest.json", data)
+	seen := make(map[string]bool)
+	for _, o := range m.Objects {
+		if seen[o.SHA256] {
+			continue
+		}
+		seen[o.SHA256] = true
+		data, err := os.ReadFile(s.filename(o.SHA256))
+		if err != nil {
+			t.Fatal(err)
+		}
+		add("objects/"+o.SHA256, data)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return archive.Bytes()
+}
+
+func TestRepositoryClosureWithAbsentIndexVariants(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, false)
+	s := testStore(t, Limits{})
+	m, err := s.Prefetch(ctx, f.selection(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := objectMap(m)[packagesIndex]
+	gz := objectMap(m)[packagesIndex+".gz"]
+	deb := "pool/main/h/hello/hello_1_amd64.deb"
+	derive := func(remove []string, add ...Object) *Manifest {
+		derived := *m
+		derived.Objects = add
+		for _, o := range m.Objects {
+			if !slices.Contains(remove, o.Path) {
+				derived.Objects = append(derived.Objects, o)
+			}
+		}
+		return &derived
+	}
+	// Any non-empty subset of the listed variants is a complete snapshot.
+	for _, absent := range []Object{plain, gz} {
+		subset := derive([]string{absent.Path, byHash(absent)})
+		if _, err := s.verify(ctx, subset); err != nil {
+			t.Fatalf("without %s: %v", absent.Path, err)
+		}
+		imported := testStore(t, Limits{})
+		if _, err := imported.Import(ctx, bytes.NewReader(archiveOf(t, s, subset))); err != nil {
+			t.Fatalf("import without %s: %v", absent.Path, err)
+		}
+		h, err := imported.Handler(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range []string{absent.Path, byHash(absent)} {
+			if w := serve(h, http.MethodGet, "/"+p); w.Code != 404 {
+				t.Fatalf("absent %s: got %d", p, w.Code)
+			}
+		}
+		// Repair keeps the published set and does not fetch the absent variant.
+		f.mu.Lock()
+		f.requests = make(map[string]int)
+		f.mu.Unlock()
+		if err := imported.Repair(ctx, nil); err != nil {
+			t.Fatal(err)
+		}
+		if current, err := imported.Current(); err != nil || !slices.Equal(current.Objects, subset.Objects) || f.requested(absent.Path) != 0 {
+			t.Fatalf("repair without %s changed the snapshot: %v", absent.Path, err)
+		}
+	}
+	missing := derive([]string{plain.Path, byHash(plain), gz.Path, byHash(gz), deb})
+	extra := Object{Path: "pool/extra.deb", SHA256: gz.SHA256, Size: gz.Size}
+	unlisted := Object{Path: packagesIndex + ".xz", SHA256: gz.SHA256, Size: gz.Size}
+	for name, bad := range map[string]*Manifest{
+		"no variant of a required index":     missing,
+		"alias of an absent variant":         derive([]string{plain.Path}),
+		"variant without its alias":          derive([]string{byHash(gz)}),
+		"variant that Release does not list": derive(nil, unlisted),
+		"object outside the stored closure":  derive([]string{plain.Path, byHash(plain)}, extra),
+		"closure object missing":             derive([]string{plain.Path, byHash(plain), deb}),
+	} {
+		if _, err := s.verify(ctx, bad); err == nil {
+			t.Fatalf("%s: accepted", name)
+		}
+	}
+	// Every entry point names the required index that has no stored variant.
+	if err := s.publish(missing); err != nil {
+		t.Fatal(err)
+	}
+	imported := testStore(t, Limits{})
+	for name, check := range map[string]func() error{
+		"verify": func() error { _, err := s.Verify(ctx); return err },
+		"repair": func() error { return s.Repair(ctx, nil) },
+		"export": func() error { return s.Export(ctx, io.Discard) },
+		"serve":  func() error { _, err := s.Handler(ctx); return err },
+		"import": func() error { _, err := imported.Import(ctx, bytes.NewReader(archiveOf(t, s, missing))); return err },
+	} {
+		if err := check(); err == nil || !strings.HasSuffix(err.Error(), "required index: "+packagesIndex) {
+			t.Fatalf("%s without an index variant: %v", name, err)
+		}
+	}
+	if _, err := imported.Current(); err == nil {
+		t.Fatal("failed import published a snapshot")
 	}
 }
 
