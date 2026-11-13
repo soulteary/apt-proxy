@@ -68,7 +68,7 @@ go build -o apt-proxy ./cmd/apt-proxy
 
 与 [vfs-kit](https://github.com/soulteary/vfs-kit) 或 [httpcache-kit](https://github.com/soulteary/httpcache-kit) 联合开发时，`go.mod` 可使用 `replace` 指向本地目录（如 `../kits/httpcache-kit`）；使用已发布版本时请移除对应 replace。
 
-使用与 `go.mod`、CI 一致的 **Go 1.27.3**。真实客户端测试还需要 Python 3 和 Docker。
+使用与 `go.mod`、CI 一致的 **Go 1.27.4**。真实客户端测试还需要 Python 3 和 Docker。
 
 ### 运行测试
 
