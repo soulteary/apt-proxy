@@ -17,6 +17,28 @@
 
 启用 `shared_cache.coordination_dir` 后，实例间共享磁盘缓存会关闭容量/TTL 淘汰、后台清理和启动暂存扫描；全局在线 purge 被拒绝。维护前必须停止所有共享实例，详见[共享仓库缓存](../docs/shared-repository-cache.md)。
 
+## 新鲜度与不可变文件
+
+缓存的响应在有效期内直接返回，不访问镜像。有效期来自上游的 `Cache-Control` 或 `Expires`；上游两者都未提供时，使用所匹配规则的 `cache_control`（见 [`cache_rules`](repository-configuration.zh-CN.md#发行版与镜像配置文件distributionsyaml)）。过期之后，条目必须先向镜像重新验证才能再次返回。
+
+内置的 Ubuntu、Ubuntu Ports 和 Debian 规则对带版本的软件池文件（`.deb`、`.udeb` 及源码包文件）和 `by-hash` 路径使用 `max-age=100000, immutable`：这类 URL 对应唯一的版本或内容摘要。`InRelease`、`Release` 以及 `by-hash` 之外的 `Packages` 等可变元数据仍为 `max-age=3600`。CentOS 与 Alpine 的规则不含 `immutable` 指令。
+
+规则的 `cache_control` 含有 `immutable` 时，其匹配的路径有两点不同：
+
+- **忽略请求中为零的 `max-age`。** APT 的每个索引请求都带有 `Cache-Control: max-age=0`，否则每次 `by-hash` 下载都会绕过缓存（`X-Cache: SKIP`）。该指令会在查询缓存前移除，也不会转发给镜像。其余内容保持不变：`no-cache` 与 `Pragma: no-cache` 仍然直接向镜像获取，且不改动已缓存的条目；`no-store` 仍然绕过缓存，`only-if-cached` 仍然禁止访问上游。携带 `Authorization` 或 `Cookie` 的请求不做修改。
+- **过期条目在上游故障时仍可使用。** 重新验证因镜像无法连接或返回 `5xx` 状态而失败时，直接返回缓存条目，并为其开始新的有效期。每次这样应答都会记录一条包含上游 URL 的 warning 日志。
+
+上游故障回退的生效条件与限制：
+
+- 条目必须保存有 `ETag` 或 `Last-Modified`。两者皆无的过期条目会被完整重新下载，并随镜像一同失败。
+- 不适用于 `Range` 和 `If-Range` 请求。
+- 不适用于可变路径：`apt-get update` 获取 `InRelease` 时仍然需要镜像可用。
+- 应答发生在上游请求（含重试与超时）失败之后。
+- 上游标记了 `must-revalidate`、`proxy-revalidate` 或 `s-maxage` 的条目同样适用。
+- 不可变路径无法由缓存应答时，自带 `If-None-Match` 或 `If-Modified-Since` 的客户端会在上游故障期间收到 `304 Not Modified`；apt-proxy 无法核对客户端持有的副本。
+
+这些规则的有效期特意保持为 100000 秒。后端 TTL（`ttl_hours`，默认 168）与 HTTP 新鲜度相互独立，从最近一次写入或成功重新验证起算，而不是从最近一次请求起算。条目过期后再次被请求时会重新验证，从而重新开始计时；若条目的有效期长于 TTL，则无论请求多么频繁，它都会被清理并重新下载，因此不可变规则的 `max-age` 应小于 `ttl_hours`。上游显式提供的 `Cache-Control` 或 `Expires` 仍优先于规则。
+
 ## 缓存目录结构
 
 磁盘后端在缓存目录下放四样东西。它们在第一次写入时出现，不是启动时就创建：

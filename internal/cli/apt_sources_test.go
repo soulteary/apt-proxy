@@ -97,7 +97,7 @@ func TestProductionSourceArtifactsRewriteAndCache(t *testing.T) {
 						if cacheState != "" && resp.Header.Get("X-Cache") != cacheState {
 							t.Fatalf("%s: X-Cache=%s want=%s", path, resp.Header.Get("X-Cache"), cacheState)
 						}
-						if cacheState != "" && resp.Header.Get("Cache-Control") != "max-age=100000" {
+						if cacheState != "" && resp.Header.Get("Cache-Control") != "max-age=100000, immutable" {
 							t.Fatalf("source freshness=%s", resp.Header.Get("Cache-Control"))
 						}
 					}

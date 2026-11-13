@@ -162,7 +162,7 @@ distributions:
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
     cache_rules:
       - pattern: "deb$"
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
     mirrors:
       official:
@@ -191,7 +191,7 @@ distributions:
 - `host_pattern` — 可选，用于匹配原始请求域名的正则，匹配前转为小写并保留显式端口。同时命中域名和 `url_pattern` 的条目优先于通用路径规则；没有任何发行版路径命中时，才按域名匹配，并把整个请求路径拼到镜像根目录后，适用于 `security.debian.org`、`apt.armbian.com` 等域名根仓库。请使用 `^...$` 锚定，避免匹配相似域名。它是路由提示，不是域名访问白名单：本地路径别名仍可使用代理自身的域名。省略时继承该类型的内置匹配器（Debian 保留 `security.debian.org`），显式设置则覆盖内置值。只有内置 Debian security 域名会路由到专用的 Debian Security 镜像；为 type `3` 配置的其他域名使用该条目自己的镜像。
 - `benchmark_url` — 镜像测速用的相对路径。
 - `geo_mirror_api` — 可选，返回地理镜像列表（Ubuntu 风格的 `mirrors.txt`）。
-- `cache_rules[]` — 上游没有提供 `Cache-Control` 与 `Expires` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式指令与过期时间（包括过去或无效的 `Expires`）、较短有效期、`private` 和 `no-store` 会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。
+- `cache_rules[]` — 上游没有提供 `Cache-Control` 与 `Expires` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式指令与过期时间（包括过去或无效的 `Expires`）、较短有效期、`private` 和 `no-store` 会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。`cache_control` 含有 `immutable` 指令（例如 `max-age=100000, immutable`）时，还表示匹配的 URL 内容永不改变：请求中为零的 `max-age` 会被忽略，过期条目在上游故障时仍可使用。请只将其用于带版本或按内容寻址的路径，详见[新鲜度与不可变文件](cache-storage.zh-CN.md#新鲜度与不可变文件)。
 - `mirrors.official` / `mirrors.custom` — 镜像主机列表。基于主机末段会自动生成 `cn:<name>` 形式的别名（如 `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`）。
 - `aliases` — 显式别名映射，可覆盖/补充自动生成的别名。
 
@@ -273,6 +273,7 @@ distributions:
 - `type` 请跨重载保持稳定 —— 镜像选择与 rewriter 状态都以它为键。
 - `benchmark_url` 必须是镜像列表里每个站点都存在的小文件，测速时会实际请求它。
 - `cache_rules` 按顺序匹配，命中第一条即停，而且**未命中任何规则的路径会直接返回 `404`**，不会透传。`apt update` 除了 `InRelease` 还会拉取软件包索引（`Packages.xz`、`by-hash/...`），所以除非你刻意只想代理特定类型的文件，否则请以兜底规则 `".*"` 结尾。
+- 自定义发行版只使用其规则中写明的有效期。希望带版本的软件包或 `by-hash` 路径与内置 Debian 系规则行为一致时，请在对应规则的 `cache_control` 中加入 `immutable`（例如 `max-age=100000, immutable`），并把该规则放在兜底规则之前。
 - 以 `--mode=all`（默认值）运行。`--mode` 只接受内置发行版的名字，自定义发行版在 `all` 模式下才会启用。
 - 只有匹配 `url_pattern`（或 `host_pattern`）的请求才会被代理，其余仍然返回 `404`。
 - 文件必须放在 apt-proxy 会去找的位置：上面列出的查找路径之一，或用 `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG` 指定。服务端根本没加载的文件，等于这条配置静默失效。启动日志会打印实际生效的文件和所有已注册的发行版（`distributions registered config=... distributions=[...]`），是确认配置是否生效最快的方式。
@@ -493,6 +494,15 @@ DEP-11 组件索引、内容 ID 索引及已知图标归档的直接路径现可
 包括从 by-hash 回退到直接 URL 的客户端。规则限定在
 `dists/<suite>/<component>/dep11/`，不开放任意 YAML、JSON 或归档下载。
 支持范围见[AppStream 元数据](../docs/apt-appstream.md)。
+
+### 不可变文件与上游故障
+
+内置的 Ubuntu、Ubuntu Ports 和 Debian 规则为带版本的软件池文件（`.deb`、`.udeb`、
+源码包文件）和 `by-hash` 路径提供默认策略 `max-age=100000, immutable`。这些路径会忽略
+请求中为零的 `max-age`，因此 APT 的 `by-hash` 索引请求可由缓存应答；镜像故障期间，
+已过期的缓存条目仍可返回。`InRelease` 等可变索引保持 `max-age=3600`，仍然依赖镜像。
+自定义发行版在规则的 `cache_control` 中加入 `immutable` 即可启用。生效条件、限制以及
+与后端 TTL 的关系见[新鲜度与不可变文件](cache-storage.zh-CN.md#新鲜度与不可变文件)。
 
 ### 完整仓库快照和离线访问
 

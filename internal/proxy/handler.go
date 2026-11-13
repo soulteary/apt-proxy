@@ -306,7 +306,7 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		transport:    transport,
 		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
-			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}, resources: opts.Resources},
+			Transport: &immutableFallbackTransport{RoundTripper: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}, resources: opts.Resources}, log: log},
 			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 				log.Error().Err(logsafe.Error(err)).Msg("upstream request failed")
 				if errors.Is(err, resource.ErrAdmission) {

@@ -18,6 +18,28 @@ After a process restart, the LRU order is approximated using file modification t
 
 With `shared_cache.coordination_dir`, shared disk mode disables capacity/TTL eviction, background cleanup and startup staging sweeps; online global purge is rejected. Stop every sharing instance before maintenance. See [shared repository cache](../docs/shared-repository-cache.md).
 
+## Freshness and Immutable Artifacts
+
+A cached response is served without contacting the mirror while it is fresh. Its lifetime comes from the upstream `Cache-Control` or `Expires`; when the upstream sends neither, the matched rule's `cache_control` applies (see [`cache_rules`](repository-configuration.md#distributions-and-mirrors-config-distributionsyaml)). Once the lifetime has passed, the entry has to be revalidated with the mirror before it is served again.
+
+The built-in Ubuntu, Ubuntu Ports and Debian rules use `max-age=100000, immutable` for versioned pool artifacts (`.deb`, `.udeb` and source artifacts) and for `by-hash` paths: such a URL names one version or one content digest. Mutable metadata such as `InRelease`, `Release` and `Packages` outside `by-hash` keeps `max-age=3600`. CentOS and Alpine rules carry no `immutable` directive.
+
+A rule whose `cache_control` contains `immutable` changes two things for the paths it matches:
+
+- **A zero `max-age` in the request is ignored.** APT sends `Cache-Control: max-age=0` with every index request, which otherwise makes each `by-hash` download bypass the cache (`X-Cache: SKIP`). The directive is removed before the cache lookup and is not forwarded to the mirror. Everything else is kept: `no-cache` and `Pragma: no-cache` still fetch from the mirror and leave the stored entry as it is, `no-store` still bypasses the cache, and `only-if-cached` still forbids an upstream fetch. Requests carrying `Authorization` or `Cookie` are left as they are.
+- **An expired entry survives an upstream failure.** If revalidation fails because the mirror cannot be reached or answers with a `5xx` status, the cached entry is served and starts a new freshness lifetime. Each such answer logs a warning with the upstream URL.
+
+Conditions and limits of the upstream-failure fallback:
+
+- The entry needs a stored `ETag` or `Last-Modified`. An expired entry without either is refetched in full and fails together with the mirror.
+- `Range` and `If-Range` requests are not covered.
+- Mutable paths are not covered: `apt-get update` still needs the mirror for `InRelease`.
+- The answer follows the failed upstream attempt, including its retries and timeouts.
+- It also applies to an entry the upstream marked `must-revalidate`, `proxy-revalidate` or `s-maxage`.
+- When an immutable path cannot be answered from the cache, a client that sends its own `If-None-Match` or `If-Modified-Since` receives `304 Not Modified` during an upstream failure; apt-proxy cannot check the client's copy.
+
+The lifetime of these rules stays at 100000 seconds on purpose. The backend TTL (`ttl_hours`, 168 by default) is separate from HTTP freshness and counts from the last store or successful revalidation, not from the last request. An entry that is requested after its freshness lifetime has passed is revalidated, which restarts that count. An entry that stayed fresh for longer than the TTL would be removed and downloaded again however often it is requested, so keep the `max-age` of an immutable rule below `ttl_hours`. An explicit upstream `Cache-Control` or `Expires` still takes precedence over the rule.
+
 ## Cache Directory Layout
 
 The disk backend keeps four things under the cache directory. They appear on the
