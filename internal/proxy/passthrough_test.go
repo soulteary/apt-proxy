@@ -41,6 +41,7 @@ type recordedRequest struct {
 	host   string
 	path   string
 	query  string
+	header http.Header
 }
 
 // passthroughProxy builds a PackageStruct with the given allowlist and an
@@ -64,6 +65,7 @@ func passthroughProxy(t *testing.T, entries ...string) (*PackageStruct, *recorde
 		seen.count++
 		seen.method, seen.path, seen.query = r.Method, r.URL.EscapedPath(), r.URL.RawQuery
 		seen.scheme, seen.host = r.URL.Scheme, r.Host
+		seen.header = r.Header.Clone()
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{},

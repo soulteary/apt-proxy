@@ -59,7 +59,7 @@ func TestProductionDownloadClientAccess(t *testing.T) {
 				t.Fatal(err)
 			}
 			done := make(chan error, 1)
-			go func() { done <- srv.app.Listener(listener) }()
+			go func() { done <- srv.listen(listener) }()
 			t.Cleanup(func() {
 				_ = srv.shutdown()
 				select {

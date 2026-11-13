@@ -86,9 +86,10 @@ func stripDefaultPort(authority string) string {
 // matchPassthrough reports whether r addresses an allowlisted third-party
 // origin, and if so points the request at it.
 //
-// This runs only after distribution matching has failed, so an archive
-// apt-proxy mirrors keeps its existing routing and its own cache rules; the
-// allowlist covers what would otherwise be a 404.
+// For a host that belongs to a distribution this runs only after distribution
+// matching has failed, so an archive apt-proxy mirrors keeps its routing and
+// its own cache rules. Any other allowlisted origin is matched ahead of
+// path-only distribution routing; see handleExternalURLs.
 //
 // The origin is taken from the request authority rather than the path: a
 // client reaches a third-party archive by using apt-proxy as its HTTP proxy
@@ -111,9 +112,9 @@ func (ap *PackageStruct) matchPassthrough(r *http.Request) *distro.Rule {
 		return nil
 	}
 
-	// Fiber's adaptor hands us a server request: the authority is in Host and
-	// URL.Host is empty. The ReverseProxy needs an absolute URL, so fill it in
-	// from what the client addressed. The path is left exactly as sent.
+	// The reverse proxy needs an absolute URL. An origin-form request has an
+	// empty URL.Host, so fill it in from the authority the client addressed.
+	// The path is left exactly as sent.
 	scheme, host := "http", authority
 	if rule.ForceHTTPS {
 		scheme = "https"

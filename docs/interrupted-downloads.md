@@ -2,15 +2,22 @@
 
 The reverse proxy runs inside httpcache-kit's upstream worker. Go's
 ReverseProxy can panic with http.ErrAbortHandler on response-copy failure;
-that worker is outside net/http's per-request panic recovery. The proxy now
+that worker is outside net/http's per-request panic recovery. The proxy
 contains that intentional signal at the reverse-proxy boundary so the cache
-can close its stream and finish the miss flight. Other panics still propagate.
+can close its stream and finish the miss flight. Any other panic in the worker
+is logged with its stack and fails only that request: 502 when no response has
+started, an aborted connection otherwise. A panic in the request's own
+goroutine is recovered by net/http, which closes that connection.
 
-Known-length responses continue to stream. The existing cache write check
-rejects a body shorter than Content-Length. The client can observe an incomplete
-response and retry; the proxy does not splice a retry into a partially sent
-response. Waiting clients can fetch a replacement when the failed leader leaves
-no usable cache entry.
+Known-length responses stream to the client as they arrive. The existing cache
+write check rejects a body shorter than Content-Length. When the upstream body
+ends early the proxy aborts the client connection, so the client observes an
+incomplete response and can retry; this also holds for cacheable misses, which
+the cache re-frames as chunked to carry the `X-Cache-Staging` trailer and which
+would otherwise end cleanly. The proxy does not splice a retry into a partially
+sent response. Waiting clients can fetch a replacement when the failed leader
+leaves no usable cache entry. An upstream status code outside 100-999 is
+answered with 502.
 
 Unknown-length responses, including chunked and automatically decompressed
 responses, are fully spooled to a temporary file before headers are exposed to
@@ -41,11 +48,13 @@ body-bearing crash residues rather than guessing which legacy files are active.
 
 Real HTTP connection tests cover a truncated fixed-length response, an unfinished
 chunked response, a complete replacement and its cache reuse, and canceling a
-cold-download leader while another client requests the same package. Focused
-unit tests cover successful temporary-file cleanup and selective panic handling.
+cold-download leader while another client requests the same package, a
+truncated response under staged framing, an out-of-range upstream status and a
+panic inside the worker. Focused unit tests cover successful temporary-file
+cleanup and panic handling.
 These checks establish response framing completeness; they do not validate
 repository signatures, checksums or the meaning of a clean but incorrect body.
 
 ```sh
-go test -race ./internal/proxy -run 'Test(InterruptedUpstreamDownloadRecovers|CanceledColdLeaderDoesNotStrandFollowers|UnknownLengthDownloadTempFileCleanup|AbortSafeHandlerDoesNotHideUnexpectedPanics)' -count=10
+go test -race ./internal/proxy -run 'Test(InterruptedUpstreamDownloadRecovers|CanceledColdLeaderDoesNotStrandFollowers|UnknownLengthDownloadTempFileCleanup|AbortSafeHandlerContainsWorkerPanics|TruncatedUpstreamIsVisibleThroughStagedFraming|InvalidUpstreamStatusBecomesBadGateway|WorkerPanicFailsOnlyItsRequest)' -count=10
 ```

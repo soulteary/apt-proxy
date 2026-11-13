@@ -38,7 +38,7 @@ func TestProductionKnownLengthAdmissionOverload(t *testing.T) {
 	defer releaseBody()
 	done := make(chan error, 1)
 	go func() {
-		res, err := srv.app.Test(httptest.NewRequest("GET", "/ubuntu/pool/one.deb", nil))
+		res, err := srv.testRequest(httptest.NewRequest("GET", "/ubuntu/pool/one.deb", nil))
 		if err == nil {
 			_, err = io.Copy(io.Discard, res.Body)
 			_ = res.Body.Close()
@@ -50,7 +50,7 @@ func TestProductionKnownLengthAdmissionOverload(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("first upstream did not reach headers")
 	}
-	res, err := srv.app.Test(httptest.NewRequest("GET", "/ubuntu/pool/two.deb", nil))
+	res, err := srv.testRequest(httptest.NewRequest("GET", "/ubuntu/pool/two.deb", nil))
 	if err != nil {
 		releaseBody()
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestProductionUnifiedCopiesPreserveResponseWhenCacheRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = srv.shutdown() }()
-	res, err := srv.app.Test(httptest.NewRequest("GET", "/ubuntu/pool/copies.deb", nil))
+	res, err := srv.testRequest(httptest.NewRequest("GET", "/ubuntu/pool/copies.deb", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
