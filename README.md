@@ -291,7 +291,7 @@ guide and the [release notes](docs/releases/v0.19.5.md), rather than in the star
 
 ## Development
 
-Use Go **1.27.3**, matching `go.mod` and CI. Real-client tests additionally need
+Use Go **1.27.4**, matching `go.mod` and CI. Real-client tests additionally need
 Python 3 and Docker; selected offline xz indexes need the system `xz` executable.
 
 ```bash
