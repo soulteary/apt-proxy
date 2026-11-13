@@ -35,7 +35,8 @@ class Repository(http.server.BaseHTTPRequestHandler):
         self.get()
 
     def get(self, head=False):
-        path = urllib.parse.urlsplit(self.path).path
+        # Archive servers decode the path; APT percent-encodes "+" and "~".
+        path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
         if path == '/__control/status':
             with LOCK:
                 body = json.dumps(STATE).encode()

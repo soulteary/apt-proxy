@@ -357,7 +357,7 @@ func (s *Store) download(ctx context.Context, selection Selection, p string, exp
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode == http.StatusNotFound {
-		return Object{}, errNotFound
+		return Object{}, fmt.Errorf("%w: %s", errNotFound, p)
 	}
 	encoding := strings.TrimSpace(res.Header.Get("Content-Encoding"))
 	if res.StatusCode != http.StatusOK || (encoding != "" && !strings.EqualFold(encoding, "identity")) {
@@ -397,24 +397,38 @@ func (s *Store) Prefetch(ctx context.Context, selection Selection) (*Manifest, e
 	if err := s.validateManifest(m); err != nil {
 		return nil, err
 	}
-	indexes, err := s.selectedIndexes(ctx, m)
+	families, err := s.selectedIndexes(ctx, m)
 	if err != nil {
 		return nil, err
 	}
-	for _, index := range indexes {
-		m.Objects = append(m.Objects, index)
-		alias := index
-		alias.Path = path.Dir(index.Path) + "/by-hash/SHA256/" + index.SHA256
-		m.Objects = append(m.Objects, alias)
-	}
-	if err := s.validateManifest(m); err != nil {
-		return nil, err
-	}
-	for _, index := range indexes {
-		if !s.hasObject(index) {
-			if _, err := s.download(ctx, selection, index.Path, &index); err != nil {
+	// Release may list variants that the origin does not publish: the official
+	// Debian and Ubuntu archives list an uncompressed index but serve only the
+	// compressed ones. A variant answered with 404 is left out of the snapshot.
+	var indexes []Object
+	for _, family := range families {
+		stored := false
+		for _, index := range family.variants {
+			alias := index
+			alias.Path = path.Dir(index.Path) + "/by-hash/SHA256/" + index.SHA256
+			m.Objects = append(m.Objects, index, alias)
+			if err := s.validateManifest(m); err != nil {
 				return nil, err
 			}
+			if !s.hasObject(index) {
+				_, err := s.download(ctx, selection, index.Path, &index)
+				if errors.Is(err, errNotFound) {
+					m.Objects = m.Objects[:len(m.Objects)-2]
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
+			indexes = append(indexes, index)
+			stored = true
+		}
+		if family.required && !stored {
+			return nil, fmt.Errorf("origin publishes no variant of required index: %s", family.path)
 		}
 	}
 	objects, err := s.packageObjects(ctx, indexes)
