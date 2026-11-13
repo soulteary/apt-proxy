@@ -410,8 +410,16 @@ host should not also expose whatever else listens on that machine.
 - Cache lifetime is the origin's: apt-proxy knows a distribution's index and
   package TTLs, but nothing about a third-party archive, so its
   `Cache-Control` is respected as-is.
-- Distribution routing wins. If an allowlisted host is also served by a
-  configured distribution, that distribution's mirror and cache rules apply.
+- A distribution's own hosts keep distribution routing. If an allowlisted host
+  matches a configured distribution's `host_pattern`, is one of its listed
+  mirrors, or is the mirror currently selected for it, that distribution's
+  mirror and cache rules apply to its paths. Any other allowlisted origin is
+  fetched from the origin itself, including paths that start like a
+  distribution's, such as `packages.microsoft.com/ubuntu/...`.
+- A host that is not allowlisted is still routed by path alone:
+  `http://<any host>/ubuntu/...` is served from the selected Ubuntu mirror.
+  Credentials a proxy client sends for such a host are not forwarded to that
+  mirror; see [private repositories](private-repositories.md).
 
 Startup logs the allowlist (`passthrough enabled for third-party origins`), so
 an empty or mistyped list is visible rather than silent.
