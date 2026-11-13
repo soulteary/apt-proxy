@@ -1,6 +1,6 @@
 module github.com/soulteary/apt-proxy
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/gofiber/fiber/v3 v3.6.1

@@ -276,7 +276,7 @@ curl -fsS -X POST -H "X-API-Key: $APT_PROXY_API_KEY" \
 
 ## 开发
 
-使用与 `go.mod`、CI 一致的 **Go 1.27.3**。真实客户端测试还需要 Python 3 与 Docker；
+使用与 `go.mod`、CI 一致的 **Go 1.27.4**。真实客户端测试还需要 Python 3 与 Docker；
 离线快照选择 xz 索引时，需要系统提供 `xz` 程序。
 
 ```bash
