@@ -365,6 +365,10 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 				}
 			},
 			ModifyResponse: func(resp *http.Response) error {
+				if !validUpstreamStatus(resp.StatusCode) {
+					return fmt.Errorf("upstream answered with invalid status code %d", resp.StatusCode)
+				}
+				trackUpstreamBody(resp)
 				protectPrivateRepositoryResponse(resp)
 				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)
 				applyRepositoryCachePolicy(resp.Header, resp.StatusCode, rule)
@@ -504,7 +508,8 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if rejectRepositoryMethod(rw, r) {
 		return
 	}
-	ctx := r.Context()
+	ctx, abort := trackUpstreamAbort(r.Context())
+	defer abort.propagate()
 
 	spanCtx, span := tracing.StartSpan(ctx, "proxy.request")
 	defer span.End()
