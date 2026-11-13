@@ -66,8 +66,19 @@ func TestLateRegistryPopulationPublishesRoutingSnapshot(t *testing.T) {
 }
 
 func TestProxyUninitializedHandlerFailsClosed(t *testing.T) {
+	// Without a mirror there is nothing to fetch the request from.
 	p := &PackageStruct{log: logger.Default()}
 	rec := httptest.NewRecorder()
+	p.ServeHTTP(rec, httptest.NewRequest("GET", "http://example/ubuntu/pool/package.deb", nil))
+	if rec.Code != 404 {
+		t.Fatalf("proxy without mirrors status=%d", rec.Code)
+	}
+	// With a mirror the request routes and stops at the missing handler.
+	p.routing.Store(&routing{
+		patterns:  defaultHostPatterns,
+		rewriters: newRewriters(distro.TypeUbuntu, newTestState(), newTestRegistry(), false, nil),
+	})
+	rec = httptest.NewRecorder()
 	p.ServeHTTP(rec, httptest.NewRequest("GET", "http://example/ubuntu/pool/package.deb", nil))
 	if rec.Code != 500 {
 		t.Fatalf("uninitialized handler status=%d", rec.Code)

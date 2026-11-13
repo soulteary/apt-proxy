@@ -643,8 +643,9 @@ func requestHost(r *http.Request) string {
 }
 
 // processMatchingRule processes a request that matches a distribution pattern.
-// It finds the specific caching rule, preserves client cache directives,
-// and rewrites the URL if necessary.
+// It finds the specific caching rule and points the request at the
+// distribution's mirror. It returns nil when no rule matches or when the
+// request cannot be pointed at a mirror.
 func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, entry hostPatternEntry) *distro.Rule {
 	rule, match := MatchingRule(r.URL.Path, entry.rules)
 	if !match {
@@ -654,31 +655,42 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, entry
 		*r = *r.WithContext(context.WithValue(r.Context(), mirrorHealthKey{}, mirrorHealthScope{entry.repositoryID, rt.healthEpoch}))
 	}
 
-	if rule.Rewrite {
-		ap.rewriteRequest(r, rt, rule, entry.repositoryID)
+	// A distribution request is fetched from the mirror apt-proxy selected
+	// and from nowhere else. Without the rewrite the upstream would be the
+	// authority the client put in the request line, so such a request is not
+	// served. That covers a distribution the mode does not enable, one without
+	// a mirror, a rule with rewrite disabled, and a path that matches only
+	// after percent-decoding.
+	if !rule.Rewrite || !ap.rewriteRequest(r, rt, rule, entry.repositoryID) {
+		ap.log.Debug().
+			Str("distribution", entry.repositoryID).
+			Str("path", r.URL.Path).
+			Msg("request matches a distribution rule but has no mirror to be fetched from")
+		return nil
 	}
 	return rule
 }
 
 // rewriteRequest rewrites the request URL to point to the configured mirror
 // for the distribution. This enables transparent proxying to different mirrors
-// while maintaining the original request path structure.
-func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *distro.Rule, repositoryID string) {
+// while maintaining the original request path structure. It reports whether
+// the request now points at a mirror.
+func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *distro.Rule, repositoryID string) bool {
 	if r.URL == nil {
 		ap.log.Error().Msg("request URL is nil, cannot rewrite")
-		return
+		return false
 	}
 	before := logsafe.URL(r.URL.String())
-	RewriteRequestByMode(r, rt.rewriters, rule.OS)
-
-	if r.URL != nil {
-		r.Host = r.URL.Host
-		ap.log.Debug().
-			Str("distribution", repositoryID).
-			Str("from", before).
-			Str("to", logsafe.URL(r.URL.String())).
-			Msg("rewrote request URL")
+	if !rewriteToMirror(r, rt.rewriters, rule.OS) {
+		return false
 	}
+	r.Host = r.URL.Host
+	ap.log.Debug().
+		Str("distribution", repositoryID).
+		Str("from", before).
+		Str("to", logsafe.URL(r.URL.String())).
+		Msg("rewrote request URL")
+	return true
 }
 
 // RefreshMirrors refreshes this PackageStruct's mirror configuration.

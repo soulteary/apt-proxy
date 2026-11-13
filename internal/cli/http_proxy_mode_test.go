@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -85,5 +86,63 @@ func TestProxyModeCredentialsStayWithNamedOrigin(t *testing.T) {
 	got = get(http.DefaultTransport, "http://"+address+"/ubuntu/dists/noble/InRelease")
 	if want := (upstreamRequest{"/ubuntu/dists/noble/InRelease", "Bearer client-token", "session=client"}); got != want {
 		t.Errorf("request addressed to the daemon reached the mirror as %+v, want %+v", got, want)
+	}
+}
+
+// TestProxyModeFetchesOnlyFromConfiguredMirrors drives the daemon over a real
+// connection as an HTTP proxy. The request line names a host that is no mirror
+// of anything. A distribution request is served from the configured mirror
+// whatever host it names, and one that cannot be pointed at a mirror ends at
+// the daemon with 404: the named host must never be contacted.
+func TestProxyModeFetchesOnlyFromConfiguredMirrors(t *testing.T) {
+	var namedHostRequests atomic.Int64
+	named := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		namedHostRequests.Add(1)
+		_, _ = io.WriteString(w, "from the named host")
+	}))
+	defer named.Close()
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "mirror "+r.URL.EscapedPath())
+	}))
+	defer mirror.Close()
+	mirrors := config.MirrorConfig{
+		Ubuntu: mirror.URL + "/ubuntu/", UbuntuPorts: mirror.URL + "/ubuntu-ports/", Debian: mirror.URL + "/debian/",
+		CentOS: mirror.URL + "/centos/", Alpine: mirror.URL + "/alpine/",
+	}
+
+	for _, tc := range []struct {
+		name       string
+		mode       int
+		path       string
+		wantStatus int
+		wantBody   string
+	}{
+		{"default mode", distro.TypeAllDistros, "/debian/dists/x/InRelease", http.StatusOK, "mirror /debian/dists/x/InRelease"},
+		{"default mode, escaped distribution segment", distro.TypeAllDistros, "/%64ebian/dists/x/InRelease", http.StatusNotFound, ""},
+		{"single mode, selected distribution", distro.TypeDebian, "/debian/dists/x/InRelease", http.StatusOK, "mirror /debian/dists/x/InRelease"},
+		{"single mode, another distribution", distro.TypeDebian, "/ubuntu/dists/x/InRelease", http.StatusNotFound, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, err := NewServer(&config.Config{CacheDir: t.TempDir(), Mode: tc.mode, Listen: "127.0.0.1:0", Mirrors: mirrors})
+			if err != nil {
+				t.Fatal(err)
+			}
+			address := listenOn(t, srv)
+			proxied := &http.Transport{Proxy: http.ProxyURL(&url.URL{Scheme: "http", Host: address})}
+			defer proxied.CloseIdleConnections()
+
+			res, err := (&http.Client{Timeout: 10 * time.Second, Transport: proxied}).Get(named.URL + tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := io.ReadAll(res.Body)
+			_ = res.Body.Close()
+			if err != nil || res.StatusCode != tc.wantStatus || (tc.wantBody != "" && string(body) != tc.wantBody) {
+				t.Errorf("GET %s%s through the proxy: status=%d body=%q err=%v, want %d %q", named.URL, tc.path, res.StatusCode, body, err, tc.wantStatus, tc.wantBody)
+			}
+			if got := namedHostRequests.Load(); got != 0 {
+				t.Errorf("the host named by the client received %d request(s)", got)
+			}
+		})
 	}
 }
