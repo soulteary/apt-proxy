@@ -7,7 +7,7 @@
 #     name: Ubuntu
 #     type: 1
 #     url_pattern: "/ubuntu/(.+)$"
-#     benchmark_url: "dists/noble/main/binary-amd64/Release"
+#     benchmark_url: "dists/devel/Release"
 #     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
 #     cache_rules:
 #       - pattern: "deb$"
@@ -184,7 +184,7 @@ distributions:
     name: Ubuntu
     type: 1
     url_pattern: "/ubuntu/(.+)$"
-    benchmark_url: "dists/noble/main/binary-amd64/Release"
+    benchmark_url: "dists/devel/Release"
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
     cache_rules:
       - pattern: "deb$"
@@ -267,7 +267,7 @@ distributions:
     name: Ubuntu Ports
     type: 2
     url_pattern: "/ubuntu-ports/(.+)$"
-    benchmark_url: "dists/noble/InRelease/Release"
+    benchmark_url: "dists/devel/Release"
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
     cache_rules:
       - pattern: "deb$"
@@ -345,7 +345,7 @@ distributions:
     name: Debian
     type: 3
     url_pattern: "/debian(-security)?/(.+)$"
-    benchmark_url: "dists/bullseye/main/binary-amd64/Release"
+    benchmark_url: "dists/stable/Release"
     cache_rules:
       - pattern: "deb$"
         cache_control: "max-age=100000, immutable"

@@ -164,6 +164,17 @@ func (r *URLRewriters) fetchesFrom(mode int, hostname string) bool {
 	return false
 }
 
+// published returns the rewriter currently registered for mode, or nil when
+// there is none. Unlike get it takes Mu itself.
+func (r *URLRewriters) published(mode int) *URLRewriter {
+	if r == nil {
+		return nil
+	}
+	r.Mu.RLock()
+	defer r.Mu.RUnlock()
+	return r.get(mode)
+}
+
 // set stores v as the rewriter for mode, allocating the custom map on first
 // use. Callers must hold Mu for writing.
 func (r *URLRewriters) set(mode int, v *URLRewriter) {
@@ -634,9 +645,14 @@ func MatchingRule(path string, rules []distro.Rule) (*distro.Rule, bool) {
 // A construction-time async benchmark that is still pending keeps writing into
 // the set it captured, so its late result lands on a snapshot no longer
 // serving traffic and is dropped. That is the right precedence: this
-// synchronous election is both newer and complete. If any required mirror
-// cannot be elected, callers retain the old set instead of publishing a partial one.
-func buildRewriters(mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) (*URLRewriters, error) {
+// synchronous election is both newer and complete.
+//
+// A distribution whose election fails keeps the mirror it has in previous, the
+// set being replaced, so its unreachable candidates do not fail the refresh
+// for every other distribution. Only a required mirror that can be neither
+// elected nor kept is an error, and callers then retain the old set instead of
+// publishing a partial one.
+func buildRewriters(previous *URLRewriters, mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) (*URLRewriters, error) {
 	log := logger.Default()
 	log.Info().Msg("refreshing mirror configurations...")
 
@@ -647,6 +663,15 @@ func buildRewriters(mode int, st *state.AppState, reg *distro.Registry, bench *b
 	var errs []error
 	for _, m := range modesToInit(mode, reg) {
 		rw := createRewriter(m, st, reg, engine)
+		if rw != nil && rw.mirror == nil {
+			// rw is not published yet, so it can take over the previous
+			// mirrors in place. Its patterns stay those of the reloaded registry.
+			if old := previous.published(m); old != nil && old.mirror != nil {
+				_, name := resolveDescriptor(m, reg)
+				log.Warn().Str("distro", name).Str("mirror", logsafe.URL(old.mirror.String())).Msg("mirror election failed, keeping previous mirror")
+				rw.mirror, rw.securityMirror = old.mirror, old.securityMirror
+			}
+		}
 		requiresMirror := false
 		for _, rule := range GetRewriteRulesByMode(reg, m) {
 			requiresMirror = requiresMirror || rule.Rewrite
@@ -687,7 +712,7 @@ func RefreshRewritersWithEngine(rewriters *URLRewriters, mode int, st *state.App
 		return nil
 	}
 	// Build outside the lock and publish only a complete, usable replacement.
-	next, err := buildRewriters(mode, st, reg, bench)
+	next, err := buildRewriters(rewriters, mode, st, reg, bench)
 	if err != nil {
 		return err
 	}

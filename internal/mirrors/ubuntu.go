@@ -19,6 +19,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
@@ -28,6 +30,11 @@ import (
 // mirrors API to respond. Bare http.Get had no timeout, which could stall
 // benchmark/startup indefinitely when the API was unreachable.
 const ubuntuGeoLookupTimeout = 5 * time.Second
+
+// maxGeoMirrors caps how many discovered mirrors become election candidates.
+// The list arrives over plain HTTP, so neither its entries nor its length are
+// taken on trust.
+const maxGeoMirrors = 64
 
 // GetUbuntuMirrorUrlsByGeo fetches the geo-localized mirrors list using a
 // background context with a fixed timeout. Prefer GetUbuntuMirrorUrlsByGeoCtx
@@ -67,8 +74,22 @@ func ubuntuMirrorsWithClient(ctx context.Context, client *http.Client, endpoint 
 	}
 
 	scanner := bufio.NewScanner(response.Body)
-	for scanner.Scan() {
-		mirrors = append(mirrors, scanner.Text())
+	for len(mirrors) < maxGeoMirrors && scanner.Scan() {
+		if mirror, ok := geoMirrorURL(scanner.Text()); ok {
+			mirrors = append(mirrors, mirror)
+		}
 	}
 	return mirrors, scanner.Err()
+}
+
+// geoMirrorURL returns the mirror named by one line of the discovered list. A
+// line qualifies only as an absolute http(s) URL with a host and no userinfo:
+// the proxy sends package requests to whatever is accepted here.
+func geoMirrorURL(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	u, err := url.Parse(line)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
+		return "", false
+	}
+	return line, true
 }

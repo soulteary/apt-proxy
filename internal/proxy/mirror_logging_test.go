@@ -49,7 +49,28 @@ func TestMirrorLifecycleLogsRedactCredentials(t *testing.T) {
 					return createRewriterAsync(distro.TypeUbuntu, st, reg, &URLRewriters{}, engine)
 				}},
 				{"refresh", func() *URLRewriter {
-					rewriters, err := buildRewriters(distro.TypeUbuntu, st, reg, engine)
+					rewriters, err := buildRewriters(nil, distro.TypeUbuntu, st, reg, engine)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return rewriters.get(distro.TypeUbuntu)
+				}},
+				{"refresh after failed election", func() *URLRewriter {
+					// The mirror in service carries the credentials; the
+					// election meant to replace it has no usable candidate.
+					mirror, err := url.Parse(raw)
+					if err != nil {
+						t.Fatal(err)
+					}
+					serving := &URLRewriters{}
+					serving.set(distro.TypeUbuntu, &URLRewriter{mirror: mirror})
+					unpinned := newTestState()
+					unpinned.SetMirror(distro.TypeUbuntu, "")
+					unelectable := newTestRegistry()
+					ubuntu, _ := unelectable.GetByType(distro.TypeUbuntu)
+					ubuntu.Builtin = false
+					ubuntu.Mirrors = []distro.URLWithAlias{{URL: "http://:invalid/", Scheme: "http"}}
+					rewriters, err := buildRewriters(serving, distro.TypeUbuntu, unpinned, unelectable, engine)
 					if err != nil {
 						t.Fatal(err)
 					}

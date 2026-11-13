@@ -158,7 +158,7 @@ distributions:
     name: Ubuntu
     type: 1
     url_pattern: "/ubuntu/(.+)$"
-    benchmark_url: "dists/noble/main/binary-amd64/Release"
+    benchmark_url: "dists/devel/Release"
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
     cache_rules:
       - pattern: "deb$"
@@ -180,7 +180,10 @@ distributions:
 路由先查找同时匹配域名和路径的条目，再匹配路径，最后按域名匹配根目录仓库。
 每个阶段内仍按既定顺序匹配内置发行版，自定义条目按 `id` 升序匹配。
 选中发行版后使用第一条命中的 `cache_rules[]`；没有命中缓存规则时返回 `404`，
-不会继续尝试其他仓库。配置加载或镜像选优失败时，热重载保留原有路由与缓存规则。
+不会继续尝试其他仓库。某个发行版镜像选优失败时，该发行版沿用原有镜像，并应用重载后的
+匹配规则与缓存规则，同时记录一条带发行版名称的 warning，热重载不会因此失败。
+配置加载失败，或没有原有镜像的发行版（例如本次重载新增的发行版）选优失败时，
+热重载保留原有路由与缓存规则。
 
 **字段说明：**
 
@@ -189,7 +192,7 @@ distributions:
 - `type` — 整数类型。`1` Ubuntu、`2` UbuntuPorts、`3` Debian、`4` CentOS、`5` Alpine 用于覆盖内置发行版的配置，`0` 保留给 "all"。**填写其它正整数即可注册一个 apt-proxy 未内置的发行版** —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。已被占用的类型在加载时会直接报错，所以请挑一个未使用的数字（`6`、`7`……）并保持稳定：镜像选择与 rewriter 状态都以它为键跨重载保存。
 - `url_pattern` — 用于匹配请求路径的正则；最后一个捕获组会拼到上游镜像根目录后。
 - `host_pattern` — 可选，用于匹配原始请求域名的正则，匹配前转为小写并保留显式端口。同时命中域名和 `url_pattern` 的条目优先于通用路径规则；没有任何发行版路径命中时，才按域名匹配，并把整个请求路径拼到镜像根目录后，适用于 `security.debian.org`、`apt.armbian.com` 等域名根仓库。请使用 `^...$` 锚定，避免匹配相似域名。它是路由提示，不是域名访问白名单：本地路径别名仍可使用代理自身的域名。省略时继承该类型的内置匹配器（Debian 保留 `security.debian.org`），显式设置则覆盖内置值。只有内置 Debian security 域名会路由到专用的 Debian Security 镜像；为 type `3` 配置的其他域名使用该条目自己的镜像。
-- `benchmark_url` — 镜像测速用的相对路径。
+- `benchmark_url` — 镜像测速时请求的路径，相对于各镜像根目录。只有自身返回 `200` 的镜像才会参与选优：返回重定向、其他状态码或 HTML 页面的镜像都会被排除。
 - `geo_mirror_api` — 可选，返回地理镜像列表（Ubuntu 风格的 `mirrors.txt`）。
 - `cache_rules[]` — 上游没有提供 `Cache-Control` 与 `Expires` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式指令与过期时间（包括过去或无效的 `Expires`）、较短有效期、`private` 和 `no-store` 会被保留。默认值在写入缓存前应用；`rewrite` 决定是否对该模式做 URL 重写。`cache_control` 含有 `immutable` 指令（例如 `max-age=100000, immutable`）时，还表示匹配的 URL 内容永不改变：请求中为零的 `max-age` 会被忽略，过期条目在上游故障时仍可使用。请只将其用于带版本或按内容寻址的路径，详见[新鲜度与不可变文件](cache-storage.zh-CN.md#新鲜度与不可变文件)。
 - `mirrors.official` / `mirrors.custom` — 镜像主机列表。基于主机末段会自动生成 `cn:<name>` 形式的别名（如 `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`）。
@@ -465,7 +468,7 @@ HTTPS_PROXY=socks5h://127.0.0.1:1080 ./apt-proxy
 地理镜像发现的上游主机、
 端口和解析地址。新连接检查全部 DNS 结果后直接连接已允许的 IP，保留 TLS 主机名
 验证。私有仓库需要明确的 CIDR 例外；启用后的仓库连接不使用环境变量中的转发代理。
-测速和发现请求的重定向及 HEAD→GET 回退同样受保护；启动和镜像刷新沿用实例策略。
+测速请求不跟随重定向；发现请求的重定向及测速的 HEAD→GET 回退同样受保护；启动和镜像刷新沿用实例策略。
 修改后需要重启。配置示例及镜像测速等后台请求的适用边界见
 [上游访问说明](../docs/upstream-access.md)。
 

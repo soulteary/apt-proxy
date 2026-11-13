@@ -55,15 +55,18 @@ unchecked destination, so this implementation does not claim to enforce the
 policy through one. Disabling this policy retains existing proxy behavior.
 Custom transport overrides are rejected with an active policy.
 
-Mirror probes and geo discovery follow redirects through the same guarded
-transport: every hop is checked, including its resolved addresses. HEAD probes
-that fall back to GET also use that transport. Geo discovery is capped at five
-seconds (or an earlier caller deadline), and only HTTP 200 bodies become mirror
-candidates. When discovery fails or is denied, built-in candidate lists remain
-available; their probes and subsequent downloads are still guarded. Host lists
-must allow `mirrors.ubuntu.com` (and any permitted redirect hosts) to enable
-Ubuntu geo discovery, as well as the intended mirror hosts. User-configured
-registry mirror lists keep their existing precedence.
+Mirror probes and geo discovery use the same guarded transport. Probes do not
+follow redirects: a candidate that answers with one is rejected and its
+redirect target is not contacted. HEAD probes that fall back to GET also use
+that transport. Geo discovery does follow redirects, and every hop is checked,
+including its resolved addresses. Geo discovery is capped at five seconds (or
+an earlier caller deadline). Only an HTTP 200 body is read, and only its lines
+that are absolute `http`/`https` URLs with a host and without userinfo become
+mirror candidates, up to 64. When discovery fails or is denied, built-in
+candidate lists remain available; their probes and subsequent downloads are
+still guarded. Host lists must allow `mirrors.ubuntu.com` (and any permitted
+redirect hosts) to enable Ubuntu geo discovery, as well as the intended mirror
+hosts. User-configured registry mirror lists keep their existing precedence.
 
 The package reverse proxy returns upstream redirects to the client; it does
 not follow them. No proxy-side connection is made to a Location target. If a

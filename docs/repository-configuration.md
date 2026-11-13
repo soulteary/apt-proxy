@@ -168,7 +168,7 @@ distributions:
     name: Ubuntu
     type: 1
     url_pattern: "/ubuntu/(.+)$"
-    benchmark_url: "dists/noble/main/binary-amd64/Release"
+    benchmark_url: "dists/devel/Release"
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
     cache_rules:
       - pattern: "deb$"
@@ -187,8 +187,12 @@ distributions:
 
 After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to hot-reload without restart.
 
-Reload is published only after the configuration loads and all required mirror
-elections succeed. A failed reload keeps the previous routing and cache rules;
+Reload is published only after the configuration loads and every distribution
+that needs a mirror has one. A distribution whose mirror election fails keeps
+the mirror it was using, takes its reloaded match patterns and cache rules, and
+is named in a warning; that alone does not fail the reload. The reload fails
+when a distribution with no previous mirror, such as one the reload adds, cannot
+elect one. A failed reload keeps the previous routing and cache rules;
 the API returns a structured error (`500` for configuration loading failures,
 `503` for failed mirror election), and SIGHUP logs the failure. Repair the file
 or mirror connectivity and retry. Routing first tries entries matching both
@@ -205,7 +209,7 @@ returns `404` rather than falling through to another repository.
 - `type` — integer distro type. `1` Ubuntu, `2` UbuntuPorts, `3` Debian, `4` CentOS and `5` Alpine reconfigure the built-in distributions; `0` is reserved for "all". **Any other positive integer registers a distribution apt-proxy does not ship** — see [Adding a distribution apt-proxy does not ship](#adding-a-distribution-apt-proxy-does-not-ship). A type already in use is rejected at load time, so pick a free number (`6`, `7`, …) and keep it stable: it is the key the mirror and rewriter state is held under across reloads.
 - `url_pattern` — regex matched against the request path; its last captured group is appended to the upstream mirror root.
 - `host_pattern` — optional regex matched against the original request host, lower-cased and including any explicit port. An entry matching both host and `url_pattern` takes priority over generic path-only routes. If no distribution path matches, host-only fallback treats the entire request path as relative to the mirror root (for example `security.debian.org` or `apt.armbian.com`). Anchor it (`^...$`) to avoid matching lookalike hosts. This is a routing hint, not a host allowlist: path aliases still work with the proxy's host name. Omitting it inherits the built-in matcher for that distro type (Debian keeps `security.debian.org`); setting it replaces the built-in. Only the built-in Debian security host routes to the dedicated Debian Security mirror; a custom type `3` host resolves to that entry's own mirror.
-- `benchmark_url` — relative path probed during mirror benchmarking.
+- `benchmark_url` — path, relative to each mirror root, probed during mirror benchmarking. A mirror is eligible only if it answers `200` itself: a redirect, any other status or an HTML page disqualifies it.
 - `geo_mirror_api` — optional URL returning a list of geo-located mirrors (Ubuntu-style `mirrors.txt`).
 - `cache_rules[]` — per-pattern cache directives. `cache_control` supplies a default response `Cache-Control` for matched paths when the upstream omits both `Cache-Control` and `Expires` (`200` uses the configured value; `404` uses `public, max-age=30`). Explicit upstream directives and expiration dates, including past or invalid `Expires` dates, shorter freshness lifetimes, `private`, and `no-store`, are preserved. Defaults are applied before cache storage; `rewrite: true` enables URL rewriting for that pattern. A `cache_control` containing the `immutable` directive (for example `max-age=100000, immutable`) also declares that the matched URLs never change content: a zero `max-age` in the request is ignored and an expired entry survives an upstream failure. Use it only for versioned or content-addressed paths; see [freshness and immutable artifacts](cache-storage.md#freshness-and-immutable-artifacts).
 - `mirrors.official` / `mirrors.custom` — mirror host lists. Aliases of the form `cn:<name>` are auto-generated from each mirror's host (e.g. `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`).
@@ -499,9 +503,9 @@ Optional YAML `upstream_access.enabled: true` restricts package downloads, mirro
 probes and Ubuntu geo discovery by target hosts, ports and resolved IPs. New connections validate all DNS answers and
 connect directly to approved IPs, preserving TLS hostname verification.
 Private repositories require explicit CIDR exceptions. Enabled repository
-transports ignore environment forward proxies; probe/discovery redirects and
-HEAD-to-GET fallback remain guarded. Startup and mirror refresh use the same
-per-instance policy. Restart to change policy.
+transports ignore environment forward proxies. Probes do not follow redirects;
+discovery redirects and the probes' HEAD-to-GET fallback remain guarded. Startup
+and mirror refresh use the same per-instance policy. Restart to change policy.
 See [upstream access](../docs/upstream-access.md) for examples and the separate
 background-client boundary.
 

@@ -17,8 +17,11 @@ package benchmarks
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -106,6 +109,7 @@ const (
 	BenchmarkMaxTimeout    = 150 * time.Second // detect resource timeout
 	BenchmarkMaxTries      = 3                 // maximum number of attempts
 	BenchmarkDetectTimeout = 30 * time.Second  // for select fast mirror
+	BenchmarkProbeTimeout  = 5 * time.Second   // for one attempt against one mirror
 )
 
 // MaxBenchmarkConcurrency caps how many mirror benchmarks run in parallel.
@@ -113,13 +117,17 @@ const (
 // connections wastes resources and can trip rate limits on shared CDNs.
 const MaxBenchmarkConcurrency = 8
 
-// newBenchmarkClient builds the shared HTTP client used by an Engine. The
+// newBenchmarkClient builds the HTTP client an Engine probes mirrors with. The
 // settings (connection pool, timeouts) are kept on a fresh client per Engine
 // so two engines do not share TCP connection state or mutate each other's
 // transport.
 func newBenchmarkClient() *http.Client {
 	return &http.Client{
 		Timeout: BenchmarkMaxTimeout,
+		// The reverse proxy returns upstream redirects to the package manager
+		// instead of following them, so a probe has to see the 3xx a client
+		// would get rather than the page it leads to.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Transport: &http.Transport{
 			// Mirror election has to reach the outside world the same way
 			// the proxy itself does. Without this, a deployment that only
@@ -138,7 +146,7 @@ func newBenchmarkClient() *http.Client {
 
 // Engine encapsulates everything that used to live as package-level state:
 // the result cache, the singleflight group that collapses concurrent
-// cache-miss requests, and the HTTP client used to probe mirrors.
+// cache-miss requests, and the HTTP clients used to probe and discover mirrors.
 //
 // Each Server should construct its own Engine via NewEngine so a refresh on
 // one Server does not flush another Server's mirror selection cache. The
@@ -146,23 +154,30 @@ func newBenchmarkClient() *http.Client {
 // thin wrappers around a process-wide Default() Engine, kept for backward
 // compatibility with existing tests and any single-Server callers.
 type Engine struct {
-	cache   *BenchmarkCache
-	group   singleflight.Group
-	client  *http.Client
-	guarded bool
+	cache *BenchmarkCache
+	group singleflight.Group
+	// client probes candidates and never follows redirects.
+	client *http.Client
+	// discovery fetches the geo mirror list of a guarded engine. The endpoint
+	// may redirect, so this client follows redirects; it shares client's
+	// transport, so the upstream policy checks every hop.
+	discovery *http.Client
+	guarded   bool
 }
 
 // NewEngine returns a fresh, independent Engine. Use one per Server.
 func NewEngine() *Engine { return NewEngineWithPolicy(nil) }
 
 // NewEngineWithPolicy applies the daemon's immutable upstream policy to mirror
-// probes and geo discovery, including every redirect and HEAD-to-GET fallback.
+// probes, including their HEAD-to-GET fallback, and to geo discovery,
+// including every redirect it follows.
 func NewEngineWithPolicy(policy *access.Upstream) *Engine {
 	client := newBenchmarkClient()
 	if policy != nil {
 		client.Transport = policy.Transport(client.Transport.(*http.Transport))
 	}
-	return &Engine{cache: NewBenchmarkCache(), client: client, guarded: policy != nil}
+	discovery := &http.Client{Timeout: client.Timeout, Transport: client.Transport}
+	return &Engine{cache: NewBenchmarkCache(), client: client, discovery: discovery, guarded: policy != nil}
 }
 
 // MirrorCandidates discovers mirrors through this engine's policy. Legacy
@@ -173,7 +188,7 @@ func (e *Engine) MirrorCandidates(reg *distro.Registry, mode int) []string {
 		return mirrors.GetGeoMirrorUrlsByMode(reg, mode)
 	}
 	return mirrors.GetGeoMirrorUrlsByModeWithLookup(reg, mode, func() ([]string, error) {
-		return mirrors.GetUbuntuMirrorUrlsByGeoWithClient(context.Background(), e.client)
+		return mirrors.GetUbuntuMirrorUrlsByGeoWithClient(context.Background(), e.discovery)
 	})
 }
 
@@ -202,17 +217,26 @@ type Result struct {
 	Duration time.Duration
 }
 
-// Results implements sort.Interface for []Result based on Duration
+// Results implements sort.Interface for []Result based on Duration. Equal
+// durations are ordered by URL so the order never depends on arrival order.
 type Results []Result
 
-func (r Results) Len() int           { return len(r) }
-func (r Results) Less(i, j int) bool { return r[i].Duration < r[j].Duration }
-func (r Results) Swap(i, j int)      { r[i], r[j] = r[j], r[i] }
+func (r Results) Len() int { return len(r) }
+func (r Results) Less(i, j int) bool {
+	if r[i].Duration != r[j].Duration {
+		return r[i].Duration < r[j].Duration
+	}
+	return r[i].URL < r[j].URL
+}
+func (r Results) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
 
 // Benchmark probes a mirror directory and relative path using the engine's
-// shared HTTP client and reports the average response time.
+// probe client and reports the fastest of the given number of attempts. Later
+// attempts can reuse the connection the first one opened, so the minimum
+// measures the request itself rather than connection setup. One failed attempt
+// fails the mirror.
 func (e *Engine) Benchmark(ctx context.Context, base, query string, times int) (time.Duration, error) {
-	var totalDuration time.Duration
+	var fastest time.Duration
 	// Configuration may omit the root's final slash or include the probe's
 	// leading slash. Keep mirror election consistent with request rewriting.
 	probeURL := base
@@ -228,11 +252,13 @@ func (e *Engine) Benchmark(ctx context.Context, base, query string, times int) (
 			if err != nil {
 				return 0, err
 			}
-			totalDuration += duration
+			if i == 0 || duration < fastest {
+				fastest = duration
+			}
 		}
 	}
 
-	return totalDuration / time.Duration(times), nil
+	return fastest, nil
 }
 
 // Benchmark is the package-level shim that delegates to the default engine.
@@ -240,13 +266,19 @@ func Benchmark(ctx context.Context, base, query string, times int) (time.Duratio
 	return defaultEngine.Benchmark(ctx, base, query, times)
 }
 
-func singleBenchmark(ctx context.Context, client *http.Client, url string) (time.Duration, error) {
+func singleBenchmark(ctx context.Context, client *http.Client, target string) (time.Duration, error) {
+	// An unresponsive mirror gives its concurrency slot back after this long
+	// instead of holding it until the election deadline.
+	ctx, cancel := context.WithTimeout(ctx, BenchmarkProbeTimeout)
+	defer cancel()
+
 	// Use HEAD when the upstream supports it: we only care about latency,
 	// not the response payload. Falling back to GET (with a tiny CopyN
 	// drain) is necessary for mirrors that don't implement HEAD correctly,
 	// since some return 405 / empty bodies that would otherwise mark the
 	// mirror as unhealthy.
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	op := "Head"
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, target, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -259,7 +291,8 @@ func singleBenchmark(ctx context.Context, client *http.Client, url string) (time
 	if resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented {
 		_ = resp.Body.Close()
 		// Retry as GET, draining only the first 8 KiB to keep network cost low.
-		getReq, gerr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		op = "Get"
+		getReq, gerr := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 		if gerr != nil {
 			return 0, gerr
 		}
@@ -279,23 +312,36 @@ func singleBenchmark(ctx context.Context, client *http.Client, url string) (time
 		_, _ = io.CopyN(io.Discard, resp.Body, 1024)
 	}
 
+	// Redirects are not followed, so a 3xx fails here like any other status.
 	if resp.StatusCode != http.StatusOK {
-		return 0, errors.New("non-200 status code received")
+		return 0, probeFailure(op, target, fmt.Sprintf("unexpected status %d", resp.StatusCode))
+	}
+	// Repository metadata is never HTML: a 200 page is a landing page or a
+	// soft 404 served in place of the requested file.
+	if mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mediaType == "text/html" {
+		return 0, probeFailure(op, target, "unexpected HTML response")
 	}
 
 	return time.Since(start), nil
 }
 
-// GetTheFastestMirror finds the fastest responding mirror from the provided
-// list. Concurrency is capped at MaxBenchmarkConcurrency. Once `maxResults`
-// valid results are collected, the parent context is cancelled so in-flight
-// benchmarks abort promptly instead of running to completion.
+// probeFailure reports why an answered probe disqualifies its mirror. Like the
+// transport errors of net/http it is a *url.Error, so a joined election error
+// names every candidate and logsafe.Error can redact their credentials.
+func probeFailure(op, target, reason string) error {
+	return &url.Error{Op: op, URL: target, Err: errors.New(reason)}
+}
+
+// GetTheFastestMirror probes every mirror in the provided list, at most
+// MaxBenchmarkConcurrency at a time, and returns the best one by rankResults.
+// When BenchmarkDetectTimeout expires, queued mirrors are skipped and running
+// probes are cancelled, so the election is decided among the mirrors that had
+// answered by then.
 func (e *Engine) GetTheFastestMirror(mirrors []string, testURL string) (string, error) {
 	log := logger.Default()
 	ctx, cancel := context.WithTimeout(context.Background(), BenchmarkDetectTimeout)
 	defer cancel()
 
-	maxResults := min(len(mirrors), 3)
 	results := make(chan Result, len(mirrors))
 	var wg sync.WaitGroup
 
@@ -304,11 +350,11 @@ func (e *Engine) GetTheFastestMirror(mirrors []string, testURL string) (string, 
 
 	log.Info().Int("count", len(mirrors)).Msg("starting benchmark for mirrors")
 
-	// Concurrency-limit semaphore. When ctx is cancelled (e.g. enough results
-	// were collected), workers that haven't started yet bail out cheaply.
+	// Concurrency-limit semaphore. When ctx expires, workers that haven't
+	// started yet bail out cheaply.
 	sem := make(chan struct{}, MaxBenchmarkConcurrency)
 
-	for _, url := range mirrors {
+	for _, mirror := range mirrors {
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
@@ -325,36 +371,17 @@ func (e *Engine) GetTheFastestMirror(mirrors []string, testURL string) (string, 
 				return
 			}
 			results <- Result{URL: u, Duration: duration}
-		}(url)
+		}(mirror)
 	}
 
-	go func() {
-		wg.Wait()
-		close(results)
-		close(errs)
-	}()
+	// Both channels hold one slot per mirror, so no worker blocks on sending.
+	wg.Wait()
+	close(results)
+	close(errs)
 
 	var collectedResults Results
-	brokeEarly := false
 	for result := range results {
 		collectedResults = append(collectedResults, result)
-		if len(collectedResults) >= maxResults {
-			// Signal the remaining workers to stop ASAP.
-			cancel()
-			brokeEarly = true
-			break
-		}
-	}
-
-	if brokeEarly {
-		// Drain remaining channels to avoid goroutine leaks: workers are still
-		// running and the closer goroutine is blocked on wg.Wait.
-		go func() {
-			for range results {
-			}
-			for range errs {
-			}
-		}()
 	}
 
 	if len(collectedResults) == 0 {
@@ -369,10 +396,33 @@ func (e *Engine) GetTheFastestMirror(mirrors []string, testURL string) (string, 
 		return "", errors.New("no valid results found")
 	}
 
-	sort.Sort(collectedResults)
 	log.Info().Int("valid_results", len(collectedResults)).Msg("completed benchmark")
 
-	return collectedResults[0].URL, nil
+	return rankResults(collectedResults)[0].URL, nil
+}
+
+// rankResults orders successful results for election. A mirror that answered
+// over both schemes keeps only its https result, so it is used over plain http
+// only when its https variant failed. The rest is sorted by duration, then by
+// URL.
+func rankResults(results Results) Results {
+	secure := make(map[string]struct{}, len(results))
+	for _, result := range results {
+		if rest, ok := strings.CutPrefix(result.URL, "https://"); ok {
+			secure[rest] = struct{}{}
+		}
+	}
+	ranked := make(Results, 0, len(results))
+	for _, result := range results {
+		if rest, ok := strings.CutPrefix(result.URL, "http://"); ok {
+			if _, both := secure[rest]; both {
+				continue
+			}
+		}
+		ranked = append(ranked, result)
+	}
+	sort.Sort(ranked)
+	return ranked
 }
 
 // GetTheFastestMirror is the package-level shim that delegates to the default engine.
