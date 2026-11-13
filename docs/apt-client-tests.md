@@ -18,6 +18,15 @@ online reinstall follows `apt-get clean` and must leave the origin package GET
 count unchanged; `cache-hit.json` records that proxy-cache proof and installed
 payload verification. No signature or TLS verification is disabled.
 
+The fixture repository follows the layout of the official Debian and Ubuntu
+archives: Release lists the uncompressed `Packages` and `Sources`, but the
+origin publishes only their `.gz` and `.xz` variants. Prefetch must leave the
+unpublished variant out, and the offline server must answer 404 for it. A
+second package, `apt-proxy-fixture-encoded_1.0~rc1+b1_all.deb`, is installed
+through the proxy and from the offline snapshot. APT requests the `+` and `~`
+of that file name as `%2b` and `%7e`; the offline server is also asked for the
+literal path and both hex cases and must return the same file.
+
 Logs and assertion evidence are written to `apt-client-evidence/` (override
 with `APT_CLIENT_EVIDENCE_DIR`). Private signing keys and TLS private keys stay
 inside the disposable container. Relative evidence roots are resolved from the
