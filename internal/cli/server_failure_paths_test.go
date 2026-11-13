@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/metalink"
@@ -153,7 +152,7 @@ func TestServerOperationalRoutesAndLogs(t *testing.T) {
 	}{{"GET", "/", 200}, {"POST", "/api/mirrors/health", 405}} {
 		req := httptest.NewRequest(tt.method, tt.path, nil)
 		req.Header.Set("X-API-Key", "key")
-		res, err := s.app.Test(req)
+		res, err := s.testRequest(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -170,22 +169,4 @@ func TestServerOperationalRoutesAndLogs(t *testing.T) {
 	s.registry = nil
 	s.logRegisteredDistributions()
 	vfs.LogCloseError(errors.New("fixture close failed"))
-}
-
-func TestHealthDetailsCanOmitChecks(t *testing.T) {
-	cfg := health.DefaultConfig()
-	cfg.IncludeDetails = true
-	cfg.IncludeChecks = false
-	agg := health.NewAggregator(cfg)
-	app := fiber.New()
-	app.Get("/healthz", fiberHealthHandler(agg))
-	res, err := app.Test(httptest.NewRequest("GET", "/healthz", nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
-	body, _ := io.ReadAll(res.Body)
-	if res.StatusCode != 200 || strings.Contains(string(body), "\"checks\":{") {
-		t.Fatalf("health=%d %s", res.StatusCode, body)
-	}
 }

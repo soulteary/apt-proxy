@@ -15,7 +15,9 @@
 package cli
 
 import (
+	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/api"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
@@ -150,7 +151,7 @@ func TestProductionProxyRouteRewritesAndCaches(t *testing.T) {
 	request := func() *http.Response {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, "/ubuntu/dists/jammy/InRelease?arch=amd64", nil)
-		resp, err := srv.app.Test(req)
+		resp, err := srv.testRequest(req)
 		if err != nil {
 			t.Fatalf("app.Test: %v", err)
 		}
@@ -189,7 +190,7 @@ func TestProductionProxyRouteRewritesAndCaches(t *testing.T) {
 	}
 
 	unknown := httptest.NewRequest(http.MethodGet, "/not-a-supported-repository/file", nil)
-	unknownResp, err := srv.app.Test(unknown)
+	unknownResp, err := srv.testRequest(unknown)
 	if err != nil {
 		t.Fatalf("unknown app.Test: %v", err)
 	}
@@ -227,7 +228,7 @@ func TestProductionProxyRouteRewritesAndCachesAlpineIndex(t *testing.T) {
 	request := func() *http.Response {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, "/alpine/v3.22/main/x86_64/APKINDEX.tar.gz", nil)
-		resp, err := srv.app.Test(req)
+		resp, err := srv.testRequest(req)
 		if err != nil {
 			t.Fatalf("app.Test: %v", err)
 		}
@@ -317,7 +318,7 @@ func TestProductionProxyRouteSupportsHostPrefixedDebianPaths(t *testing.T) {
 			request := func() *http.Response {
 				t.Helper()
 				req := httptest.NewRequest(http.MethodGet, tt.requestPath, nil)
-				resp, err := srv.app.Test(req)
+				resp, err := srv.testRequest(req)
 				if err != nil {
 					t.Fatalf("app.Test: %v", err)
 				}
@@ -409,8 +410,8 @@ func TestServerCreateRouter(t *testing.T) {
 		t.Fatalf("NewServer() error = %v", err)
 	}
 
-	if srv.app == nil {
-		t.Error("Server Fiber app is nil")
+	if srv.handler == nil || srv.httpServer == nil {
+		t.Error("server has no HTTP handler")
 	}
 }
 
@@ -434,32 +435,33 @@ func TestServerStartAndShutdown(t *testing.T) {
 		t.Fatalf("NewServer() error = %v", err)
 	}
 
-	// Start Fiber in goroutine
-	serverStarted := make(chan struct{})
+	listener, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
 	serverErr := make(chan error, 1)
-	go func() {
-		close(serverStarted)
-		if err := srv.app.Listen(cfg.Listen, fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
-			serverErr <- err
-		}
-		close(serverErr)
-	}()
+	go func() { serverErr <- srv.listen(listener) }()
 
-	// Wait for server goroutine to start
-	<-serverStarted
-	// Give server time to start listening
-	time.Sleep(50 * time.Millisecond)
+	// The listener is already bound, so this request waits for Serve to accept it.
+	res, err := (&http.Client{Timeout: 2 * time.Second}).Get("http://" + listener.Addr().String() + "/livez")
+	if err != nil {
+		t.Fatalf("request to started server: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("/livez status = %d, want 200", res.StatusCode)
+	}
 
-	// Shutdown the Fiber app
-	if err := srv.app.ShutdownWithTimeout(2 * time.Second); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := srv.httpServer.Shutdown(ctx); err != nil {
 		t.Errorf("Server shutdown error: %v", err)
 	}
 
-	// Wait for server goroutine to finish
 	select {
 	case err := <-serverErr:
 		if err != nil {
-			t.Logf("Server returned with error (may be expected): %v", err)
+			t.Errorf("server exit: %v", err)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("Server did not shutdown within timeout")
@@ -538,7 +540,7 @@ func TestHealthEndpoints(t *testing.T) {
 			}
 			req.Host = "localhost"
 
-			resp, err := srv.app.Test(req)
+			resp, err := srv.testRequest(req)
 			if err != nil {
 				t.Fatalf("app.Test(%s) error: %v", tt.path, err)
 			}
@@ -676,7 +678,7 @@ func TestCacheStatsAPI(t *testing.T) {
 			}
 			req.Host = "localhost"
 
-			resp, err := srv.app.Test(req)
+			resp, err := srv.testRequest(req)
 			if err != nil {
 				t.Fatalf("app.Test(%s) error: %v", tt.method, err)
 			}
@@ -765,7 +767,7 @@ func TestCachePurgeAPI(t *testing.T) {
 			req.Host = "localhost"
 			req.Header.Set("X-API-Key", "test-api-key")
 
-			resp, err := srv.app.Test(req)
+			resp, err := srv.testRequest(req)
 			if err != nil {
 				t.Fatalf("app.Test(%s) error: %v", tt.method, err)
 			}
@@ -806,7 +808,7 @@ func TestMutatingManagementAPIFailsClosedWithoutAuth(t *testing.T) {
 
 	for _, path := range []string{"/api/cache/purge", "/api/cache/cleanup", "/api/mirrors/refresh"} {
 		req := httptest.NewRequest(http.MethodPost, path, nil)
-		resp, err := srv.app.Test(req)
+		resp, err := srv.testRequest(req)
 		if err != nil {
 			t.Fatalf("app.Test(%s): %v", path, err)
 		}
@@ -816,7 +818,7 @@ func TestMutatingManagementAPIFailsClosedWithoutAuth(t *testing.T) {
 		}
 	}
 
-	resp, err := srv.app.Test(httptest.NewRequest(http.MethodGet, "/api/cache/stats", nil))
+	resp, err := srv.testRequest(httptest.NewRequest(http.MethodGet, "/api/cache/stats", nil))
 	if err != nil {
 		t.Fatalf("stats app.Test: %v", err)
 	}
@@ -841,8 +843,8 @@ func TestServerUsesSharedCacheWithoutWriteDeadline(t *testing.T) {
 	if defaultWriteTimeout != 0 {
 		t.Fatalf("defaultWriteTimeout = %v, want disabled for streaming downloads", defaultWriteTimeout)
 	}
-	if got := srv.app.Config().WriteTimeout; got != 0 {
-		t.Fatalf("Fiber WriteTimeout = %s, want disabled for streaming downloads", got)
+	if got := srv.httpServer.WriteTimeout; got != 0 {
+		t.Fatalf("HTTP server WriteTimeout = %s, want disabled for streaming downloads", got)
 	}
 }
 
@@ -903,7 +905,7 @@ func TestCacheCleanupAPI(t *testing.T) {
 			req.Host = "localhost"
 			req.Header.Set("X-API-Key", "test-api-key")
 
-			resp, err := srv.app.Test(req)
+			resp, err := srv.testRequest(req)
 			if err != nil {
 				t.Fatalf("app.Test(%s) error: %v", tt.method, err)
 			}
@@ -990,7 +992,7 @@ func TestMirrorsRefreshAPI(t *testing.T) {
 			req.Host = "localhost"
 			req.Header.Set("X-API-Key", "test-api-key")
 
-			resp, err := srv.app.Test(req)
+			resp, err := srv.testRequest(req)
 			if err != nil {
 				t.Fatalf("app.Test(%s) error: %v", tt.method, err)
 			}

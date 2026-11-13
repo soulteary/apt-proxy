@@ -31,12 +31,12 @@ func TestRequestLogsRedactCustomQueryAuthentication(t *testing.T) {
 	}
 	var output bytes.Buffer
 	srv.log = logger.New(logger.Config{Level: logger.InfoLevel, Output: &output, Format: logger.FormatJSON})
-	srv.app = srv.createFiberApp()
+	srv.handler = srv.newHandler()
 	t.Cleanup(func() {
 		_ = srv.shutdown()
 		logger.SetDefault(previous)
 	})
-	res, err := srv.app.Test(httptest.NewRequest("GET", "/ubuntu/pool/package.deb?custom_auth=query-secret&arch=amd64", nil))
+	res, err := srv.testRequest(httptest.NewRequest("GET", "/ubuntu/pool/package.deb?custom_auth=query-secret&arch=amd64", nil))
 	if err != nil {
 		t.Fatal(err)
 	}

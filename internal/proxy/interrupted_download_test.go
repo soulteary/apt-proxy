@@ -79,18 +79,22 @@ func TestInterruptedUpstreamDownloadRecovers(t *testing.T) {
 			server, cache := downloadTestServer(t, upstream.URL)
 			client := &http.Client{Timeout: 3 * time.Second}
 			url := server.URL + "/ubuntu/pool/interrupted.deb"
+			// A truncated fixed-length response aborts the client connection,
+			// which the client sees as a failed request or a failed body read.
 			res, err := client.Get(url)
-			if err != nil {
+			if err != nil && chunked {
 				t.Fatal(err)
 			}
-			body, readErr := io.ReadAll(res.Body)
-			res.Body.Close()
-			if chunked {
-				if res.StatusCode != 502 {
-					t.Fatalf("incomplete chunked body: status=%d body=%q", res.StatusCode, body)
+			if err == nil {
+				body, readErr := io.ReadAll(res.Body)
+				res.Body.Close()
+				if chunked {
+					if res.StatusCode != 502 {
+						t.Fatalf("incomplete chunked body: status=%d body=%q", res.StatusCode, body)
+					}
+				} else if readErr == nil {
+					t.Fatal("truncated fixed-length response appeared complete")
 				}
-			} else if readErr == nil {
-				t.Fatal("truncated fixed-length response appeared complete")
 			}
 			if cache.Stats().ItemCount != 0 {
 				t.Fatal("incomplete download cached")
@@ -99,7 +103,7 @@ func TestInterruptedUpstreamDownloadRecovers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			body, err = io.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			res.Body.Close()
 			if err != nil || res.StatusCode != 200 || string(body) != "complete" {
 				t.Fatalf("recovery: %d %q %v", res.StatusCode, body, err)

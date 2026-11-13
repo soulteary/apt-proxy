@@ -17,24 +17,35 @@ package proxy
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/gofiber/fiber/v3"
 	logger "github.com/soulteary/logger-kit/v3"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 )
 
-// fiberApp mounts ps with the same repository bridge as the daemon. That
-// conversion moves the authority from
-// URL.Host into Host and leaves URL.Host empty, so testing through it is the
-// only way to cover what production actually sees -- httptest.NewRequest
-// keeps the absolute-form authority in URL.Host and hides the difference.
-func fiberApp(ps *PackageStruct) *fiber.App {
-	app := fiber.New()
-	app.All("/*", FiberHTTPHandler(ps))
-	return app
+// wireResponse sends req through a real net/http server that fronts handler
+// with the daemon's path guard. The server is addressed as an HTTP proxy, so
+// the request line carries the absolute target the way a package manager
+// configured with a proxy sends it.
+func wireResponse(t *testing.T, handler http.Handler, req *http.Request) *http.Response {
+	t.Helper()
+	server := httptest.NewServer(GuardRequestPath(handler))
+	t.Cleanup(server.Close)
+	proxyURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+	t.Cleanup(transport.CloseIdleConnections)
+	res, err := (&http.Client{Transport: transport, Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", req.Method, req.URL, err)
+	}
+	return res
 }
 
 func markerTestProxy(t *testing.T, upstream string) *PackageStruct {
@@ -104,27 +115,22 @@ func TestTLSRewriteMarkerIsRejectedNotMisrouted(t *testing.T) {
 		},
 	}
 
-	app := fiberApp(ps)
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			before := upstreamHits
 
-			// Through the Fiber adaptor, as production does.
+			// Over the wire, as a client using the proxy sends it.
 			req, err := http.NewRequest(http.MethodGet, tt.url, nil)
 			if err != nil {
 				t.Fatalf("NewRequest: %v", err)
 			}
-			resp, err := app.Test(req)
-			if err != nil {
-				t.Fatalf("app.Test: %v", err)
-			}
+			resp := wireResponse(t, ps, req)
 			_ = resp.Body.Close()
 			if resp.StatusCode != http.StatusForbidden {
-				t.Errorf("via Fiber: status = %d, want 403", resp.StatusCode)
+				t.Errorf("over the wire: status = %d, want 403", resp.StatusCode)
 			}
 
-			// And directly, where the authority stays in URL.Host.
+			// And in process, with the Host header a rewrite-form client sends.
 			direct := httptest.NewRequest(http.MethodGet, tt.url, nil)
 			direct.Host = tt.host
 			rec := httptest.NewRecorder()
@@ -159,10 +165,7 @@ func TestTLSRewriteMarkerGuardLeavesNormalRequestsAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
-	resp, err := fiberApp(ps).Test(req)
-	if err != nil {
-		t.Fatalf("app.Test: %v", err)
-	}
+	resp := wireResponse(t, ps, req)
 	_ = resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

@@ -6,6 +6,18 @@ anonymous entries nor enter cold-download sharing/storage. Credentials still
 reach the configured upstream. Their responses receive an additional no-store
 directive to prevent downstream storage.
 
+A client that uses apt-proxy as its HTTP proxy names an origin in the request
+line (`GET http://host/path`), and its credentials were issued for that origin.
+When routing selects a different host, such as the distribution mirror for a
+`/ubuntu/...` path, the `Authorization` and `Cookie` headers of that request
+are removed before it leaves; a warning names both hosts. The request is then
+an anonymous one and uses the shared cache. Credentials configured in the
+mirror URL still apply. Hosts are compared without regard to the default ports
+80 and 443. Requests addressed to apt-proxy itself, and requests whose named
+origin is the upstream (the selected mirror or a `passthrough` origin), are
+forwarded with their credentials as before. To fetch a private origin whose
+paths look like a distribution's, add it to the `passthrough` allowlist.
+
 URL userinfo is converted to Basic Authorization before cache lookup and removed
 from the request URL. An explicit Authorization header retains precedence.
 Incoming URL credentials are normalized on the detached request before routing;
@@ -46,8 +58,10 @@ This is a conservative cache policy rather than per-user cache partitioning.
 Even identical authenticated public packages are fetched separately. It does
 not add upstream credential storage/rotation, validate repository permissions,
 choose safe mirrors for private credentials or detect arbitrary custom auth
-headers/query tokens. Operators remain responsible for trusted mirror/origin
-configuration. Repository signature/checksum verification is separate work.
+headers/query tokens. Beyond the named-origin check above, operators remain
+responsible for trusted mirror/origin configuration. That check needs the
+absolute request form: a transparently redirected client sends the origin only
+in `Host`, which cannot be told apart from a request addressed to apt-proxy. Repository signature/checksum verification is separate work.
 
 Real shared-disk-cache tests cover anonymous warming followed by two private
 users, private cache-only requests, anonymous entry preservation, Set-Cookie

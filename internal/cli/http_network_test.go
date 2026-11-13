@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
@@ -21,7 +20,7 @@ import (
 	httpcache "github.com/soulteary/httpcache-kit/v4"
 )
 
-func TestRepositoryStagingTrailerSurvivesActualFiberNetwork(t *testing.T) {
+func TestRepositoryStagingTrailerOverTheNetwork(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		size    int
@@ -58,7 +57,7 @@ func TestRepositoryStagingTrailerSurvivesActualFiberNetwork(t *testing.T) {
 				t.Fatal(err)
 			}
 			done := make(chan error, 1)
-			go func() { done <- srv.app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true}) }()
+			go func() { done <- srv.listen(listener) }()
 			defer func() {
 				_ = srv.shutdown()
 				if err := <-done; err != nil {
@@ -75,7 +74,7 @@ func TestRepositoryStagingTrailerSurvivesActualFiberNetwork(t *testing.T) {
 				if tc.outcome == "ADMITTED" && attempt == 1 {
 					wantLabel, wantTrailer = "HIT", ""
 				}
-				assertRepositoryStagingResponse(t, srv, res, body, wantLabel, wantTrailer, tc.outcome == "SKIP")
+				assertRepositoryStagingResponse(t, srv, res, body, wantLabel, wantTrailer)
 			}
 			wantCalls := int32(2)
 			if tc.outcome == "ADMITTED" {
@@ -88,7 +87,7 @@ func TestRepositoryStagingTrailerSurvivesActualFiberNetwork(t *testing.T) {
 	}
 }
 
-func assertRepositoryStagingResponse(t *testing.T, srv *Server, res *http.Response, body []byte, wantLabel, wantTrailer string, allowSkip bool) {
+func assertRepositoryStagingResponse(t *testing.T, srv *Server, res *http.Response, body []byte, wantLabel, wantTrailer string) {
 	t.Helper()
 	got, readErr := io.ReadAll(res.Body)
 	_ = res.Body.Close()
@@ -96,14 +95,10 @@ func assertRepositoryStagingResponse(t *testing.T, srv *Server, res *http.Respon
 	if readErr != nil || res.StatusCode != http.StatusOK || !bytes.Equal(got, body) || res.ProtoMajor != 1 || res.ProtoMinor != 1 {
 		t.Fatalf("delivery status=%d proto=%s bytes=%d err=%v", res.StatusCode, res.Proto, len(got), readErr)
 	}
-	validLabel := res.Header.Get("X-Cache") == wantLabel
-	// A buffered Fiber adaptor can preserve final SKIP as an initial header;
-	// a streamed writer retains MISS plus the final trailer.
-	if allowSkip && res.Header.Get("X-Cache") == "SKIP" {
-		validLabel = true
-	}
-	if !validLabel || res.Trailer.Get("X-Cache-Staging") != wantTrailer {
-		t.Fatalf("Fiber outcome: headers=%v trailers=%v, want %s/%s", res.Header, res.Trailer, wantLabel, wantTrailer)
+	// The response is streamed: headers are on the wire before staging can be
+	// refused, so a refusal is reported in the trailer and X-Cache stays MISS.
+	if res.Header.Get("X-Cache") != wantLabel || res.Trailer.Get("X-Cache-Staging") != wantTrailer {
+		t.Fatalf("outcome: headers=%v trailers=%v, want %s/%s", res.Header, res.Trailer, wantLabel, wantTrailer)
 	}
 	if stats := srv.resources.Stats(); stats.ActiveDownloads != 0 || stats.TemporaryBytes != 0 {
 		t.Fatalf("resource ownership:%+v", stats)

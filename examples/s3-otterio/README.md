@@ -43,7 +43,9 @@ appear as you proxy more requests.
 - `apt-proxy.yaml` — example apt-proxy YAML config equivalent to the env
   vars used in the compose file. Mount it via
   `-v $(pwd)/apt-proxy.yaml:/etc/apt-proxy.yaml --config /etc/apt-proxy.yaml`
-  if you'd rather configure the proxy from a file.
+  if you'd rather configure the proxy from a file. It reads the credentials
+  from `APT_PROXY_S3_ACCESS_KEY` and `APT_PROXY_S3_SECRET_KEY`; apt-proxy
+  refuses to start while either is unset.
 
 ## Why OtterIO instead of MinIO?
 

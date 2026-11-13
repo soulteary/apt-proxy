@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/config"
 	apperrors "github.com/soulteary/apt-proxy/internal/errors"
 	logger "github.com/soulteary/logger-kit/v3"
@@ -30,13 +29,16 @@ func TestServeReloadBurstAndCancellation(t *testing.T) {
 	s := makeIsolationServer(t, "lifecycle", "test-key", "http://127.0.0.1:1")
 	observed := reloadObserver{completed: make(chan struct{}, 4)}
 	s.log = logger.New(logger.Config{Output: observed, Format: logger.FormatJSON})
-	ready := make(chan string, 1)
-	s.app.Hooks().OnListen(func(d fiber.ListenData) error { ready <- net.JoinHostPort(d.Host, d.Port); return nil })
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := listener.Addr().String()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	signals := make(chan os.Signal)
 	done := make(chan error, 1)
-	go func() { done <- s.serve(ctx, signals) }()
+	go func() { done <- s.serveListener(ctx, listener, signals) }()
 	defer func() {
 		cancel()
 		select {
@@ -45,13 +47,7 @@ func TestServeReloadBurstAndCancellation(t *testing.T) {
 			t.Error("listener did not stop")
 		}
 	}()
-	var addr string
-	select {
-	case addr = <-ready:
-	case <-time.After(5 * time.Second):
-		t.Fatal("listener did not start")
-	}
-	client := &http.Client{Timeout: time.Second}
+	client := &http.Client{Timeout: 5 * time.Second}
 	res, err := client.Get("http://" + addr + "/version")
 	if err != nil {
 		t.Fatal(err)

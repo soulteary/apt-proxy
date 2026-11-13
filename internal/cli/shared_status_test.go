@@ -10,9 +10,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
@@ -54,7 +52,7 @@ func TestSharedByHashMissingMirrorDoesNotPoisonHealthyMirror(t *testing.T) {
 	}
 	one, two := makeServer(bases[0]), makeServer(bases[1])
 	path := "/ubuntu/dists/test/main/binary-amd64/by-hash/SHA256/" + digest
-	res, err := one.app.Test(httptest.NewRequest("GET", path, nil))
+	res, err := one.testRequest(httptest.NewRequest("GET", path, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +107,7 @@ func TestSharedByHash304FreshensExistingVerifiedBody(t *testing.T) {
 	httpcache.Writes.Wait()
 	req := httptest.NewRequest("GET", path, nil)
 	req.Header.Set("Cache-Control", "min-fresh=7200")
-	res, err := srv.app.Test(req)
+	res, err := srv.testRequest(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +235,7 @@ func TestSharedHeadFallbackThroughMirror304PreservesAndWithdrawsGet(t *testing.T
 		t.Helper()
 		req := httptest.NewRequest("HEAD", path, nil)
 		req.Header.Set("Cache-Control", "min-fresh=7200")
-		res, err := one.app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
+		res, err := one.testRequest(req)
 		if err != nil {
 			t.Fatal(err)
 		}
