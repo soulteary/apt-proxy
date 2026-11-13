@@ -11,7 +11,7 @@
 #     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
 #     cache_rules:
 #       - pattern: "deb$"
-#         cache_control: "max-age=100000"
+#         cache_control: "max-age=100000, immutable"
 #         rewrite: true
 #       - pattern: "InRelease$"
 #         cache_control: "max-age=3600"
@@ -188,10 +188,10 @@ distributions:
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
     cache_rules:
       - pattern: "deb$"
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       - pattern: "udeb$"
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       # Common installer files, including mutable current/ paths.
       - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
@@ -206,7 +206,7 @@ distributions:
         rewrite: true
       # Versioned source artifacts; this does not enable arbitrary archive caching.
       - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       - pattern: "InRelease$"
         cache_control: "max-age=3600"
@@ -243,7 +243,7 @@ distributions:
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"
-        cache_control: "max-age=3600"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
     mirrors:
       official:
@@ -271,10 +271,10 @@ distributions:
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
     cache_rules:
       - pattern: "deb$"
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       - pattern: "udeb$"
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       # Common installer files, including mutable current/ paths.
       - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
@@ -289,7 +289,7 @@ distributions:
         rewrite: true
       # Versioned source artifacts; this does not enable arbitrary archive caching.
       - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       - pattern: "InRelease$"
         cache_control: "max-age=3600"
@@ -326,7 +326,7 @@ distributions:
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"
-        cache_control: "max-age=3600"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
     mirrors:
       official:
@@ -348,10 +348,10 @@ distributions:
     benchmark_url: "dists/bullseye/main/binary-amd64/Release"
     cache_rules:
       - pattern: "deb$"
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       - pattern: "udeb$"
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       # Common installer files, including mutable current/ paths.
       - pattern: '(^|/)dists/[A-Za-z0-9][A-Za-z0-9._+-]*/[A-Za-z0-9][A-Za-z0-9_-]*/installer-[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9._+~-]*/(legacy-)?images/(MD5SUMS|SHA256SUMS|MANIFEST(\.udebs)?|udeb\.list)$'
@@ -366,7 +366,7 @@ distributions:
         rewrite: true
       # Versioned source artifacts; this does not enable arbitrary archive caching.
       - pattern: '(^|/)pool/(updates/)?[A-Za-z0-9_-]+/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*/[a-z0-9][a-z0-9+.-]*_[0-9][A-Za-z0-9.+~:-]*(\.dsc|(\.orig(-[A-Za-z0-9-]+)?|\.debian)?\.tar\.(gz|bz2|lzma|xz)|\.orig(-[A-Za-z0-9-]+)?\.tar\.(gz|bz2|lzma|xz)\.asc|\.diff\.gz)$'
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
       - pattern: "InRelease$"
         cache_control: "max-age=3600"
@@ -403,7 +403,7 @@ distributions:
         cache_control: "max-age=3600"
         rewrite: true
       - pattern: "/by-hash/"
-        cache_control: "max-age=3600"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
     mirrors:
       official:
