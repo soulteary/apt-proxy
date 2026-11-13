@@ -151,8 +151,11 @@ func GenerateBuildInList(officialList []string, customList []string) []URLWithAl
 func appendBuiltins(mirrors []URLWithAlias, list []string, official bool) []URLWithAlias {
 	for _, url := range list {
 		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-			mirrors = append(mirrors, GenerateBuiltinMirrorItem("http://"+url, official))
+			// https comes first: the first list entry is the default mirror
+			// until an election finishes, and an alias resolves to the first
+			// entry carrying it.
 			mirrors = append(mirrors, GenerateBuiltinMirrorItem("https://"+url, official))
+			mirrors = append(mirrors, GenerateBuiltinMirrorItem("http://"+url, official))
 			continue
 		}
 		mirrors = append(mirrors, GenerateBuiltinMirrorItem(url, official))

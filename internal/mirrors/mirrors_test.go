@@ -17,7 +17,6 @@ package mirrors
 import (
 	"reflect"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
@@ -100,8 +99,8 @@ func TestUbuntuConfiguredRegistryOverridesGeoDiscovery(t *testing.T) {
 
 func TestGetUbuntuMirrorByAliases(t *testing.T) {
 	alias := GetMirrorURLByAliases(nil, distro.TypeUbuntu, "cn:tsinghua")
-	if !strings.Contains(alias, "mirrors.tuna.tsinghua.edu.cn/ubuntu/") {
-		t.Fatal("Test Get Mirror By Custom Name Failed")
+	if alias != "https://mirrors.tuna.tsinghua.edu.cn/ubuntu/" {
+		t.Fatalf("cn:tsinghua resolved to %q, want the https mirror", alias)
 	}
 
 	alias = GetMirrorURLByAliases(nil, distro.TypeUbuntu, "cn:not-found")
@@ -112,8 +111,8 @@ func TestGetUbuntuMirrorByAliases(t *testing.T) {
 
 func TestGetDebianMirrorByAliases(t *testing.T) {
 	alias := GetMirrorURLByAliases(nil, distro.TypeDebian, "cn:tsinghua")
-	if !strings.Contains(alias, "mirrors.tuna.tsinghua.edu.cn/debian/") {
-		t.Fatal("Test Get Mirror By Custom Name Failed")
+	if alias != "https://mirrors.tuna.tsinghua.edu.cn/debian/" {
+		t.Fatalf("cn:tsinghua resolved to %q, want the https mirror", alias)
 	}
 
 	alias = GetMirrorURLByAliases(nil, distro.TypeDebian, "cn:not-found")
@@ -124,8 +123,8 @@ func TestGetDebianMirrorByAliases(t *testing.T) {
 
 func TestGetCentOSMirrorByAliases(t *testing.T) {
 	alias := GetMirrorURLByAliases(nil, distro.TypeCentOS, "cn:tsinghua")
-	if !strings.Contains(alias, "mirrors.tuna.tsinghua.edu.cn/centos/") {
-		t.Fatal("Test Get Mirror By Custom Name Failed")
+	if alias != "https://mirrors.tuna.tsinghua.edu.cn/centos/" {
+		t.Fatalf("cn:tsinghua resolved to %q, want the https mirror", alias)
 	}
 
 	alias = GetMirrorURLByAliases(nil, distro.TypeCentOS, "cn:not-found")

@@ -20,7 +20,9 @@ import (
 
 const (
 	UbuntuGeoMirrorAPI = "http://mirrors.ubuntu.com/mirrors.txt"
-	UbuntuBenchmarkURL = "dists/noble/main/binary-amd64/Release"
+	// dists/devel aliases the current development series, so unlike a codename
+	// the path survives every release reaching end of life.
+	UbuntuBenchmarkURL = "dists/devel/Release"
 )
 
 var UbuntuHostPattern = regexp.MustCompile(`/ubuntu/(.+)$`)
@@ -48,7 +50,6 @@ var UbuntuOfficialMirrors = []string{
 	"ftp.sjtu.edu.cn/ubuntu/",
 	"mirrors.njupt.edu.cn/ubuntu/",
 	"mirrors.cloud.tencent.com/ubuntu/",
-	"http://mirrors.dgut.edu.cn/ubuntu/",
 	"mirrors.ustc.edu.cn/ubuntu/",
 	"mirrors.sdu.edu.cn/ubuntu/",
 	"http://cn.archive.ubuntu.com/ubuntu/",

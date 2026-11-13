@@ -17,7 +17,9 @@ package distro
 import "regexp"
 
 const (
-	DebianBenchmarkURL = "dists/bullseye/main/binary-amd64/Release"
+	// dists/stable aliases the current release, so unlike a codename the path
+	// survives a release moving to the archive.
+	DebianBenchmarkURL = "dists/stable/Release"
 )
 
 var DebianHostPattern = regexp.MustCompile(`/debian(-security)?/(.+)$`)
