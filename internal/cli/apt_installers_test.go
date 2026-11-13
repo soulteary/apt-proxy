@@ -85,7 +85,7 @@ func TestProductionInstallerFilesRewriteAndCache(t *testing.T) {
 				request := func(path string, status int, cacheState string) {
 					t.Helper()
 					expectedPath = distribution.prefix + path
-					resp, err := srv.app.Test(httptest.NewRequest("GET", distribution.prefix+path, nil))
+					resp, err := srv.testRequest(httptest.NewRequest("GET", distribution.prefix+path, nil))
 					if err != nil {
 						t.Fatal(err)
 					}

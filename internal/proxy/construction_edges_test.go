@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -80,18 +79,6 @@ func TestProxyUninitializedHandlerFailsClosed(t *testing.T) {
 		t.Fatal("URL credentials normalization failed")
 	}
 	p.rewriteRequest(&http.Request{}, nil, nil, "")
-}
-
-func TestDetachedRequestKeepsIndependentFraming(t *testing.T) {
-	req := httptest.NewRequest("GET", "http://example/pkg", nil)
-	req.TransferEncoding = []string{"chunked"}
-	req.Trailer = http.Header{"X-Checksum": {"one"}}
-	detached := detachRequest(context.Background(), req)
-	detached.TransferEncoding[0] = "identity"
-	detached.Trailer.Set("X-Checksum", "two")
-	if req.TransferEncoding[0] != "chunked" || req.Trailer.Get("X-Checksum") != "one" {
-		t.Fatal("detached request aliases original")
-	}
 }
 
 func TestHomeStatisticsCountsMetadataAndReusesSnapshot(t *testing.T) {

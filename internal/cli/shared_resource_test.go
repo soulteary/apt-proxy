@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
@@ -51,7 +50,7 @@ type sharedResult struct {
 }
 
 func getShared(s *Server, path string) sharedResult {
-	res, err := s.app.Test(httptest.NewRequest("GET", path, nil), fiber.TestConfig{Timeout: 5 * time.Second})
+	res, err := s.testRequest(httptest.NewRequest("GET", path, nil))
 	if err != nil {
 		return sharedResult{err: err}
 	}
@@ -215,7 +214,7 @@ func TestSharedVerificationCancellationReleasesAllResourcesAndMissLock(t *testin
 	}
 	defer func() { _ = srv.shutdown() }()
 	finished := make(chan struct{})
-	// Real net/http preserves cancellation; Fiber's Test adapter serializes requests.
+	// A real connection is needed: cancelling the client request must reach the handler.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { defer close(finished); srv.proxy.ServeHTTP(w, r) }))
 	defer server.Close()
 	ctx, cancel := context.WithCancel(context.Background())

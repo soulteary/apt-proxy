@@ -66,7 +66,7 @@ func TestSharedRepositoryInstancesCoalesceVerifiedContent(t *testing.T) {
 	responses := make(chan error, 2)
 	get := func(srv *Server) {
 		req := httptest.NewRequest("GET", path, nil)
-		res, err := srv.app.Test(req)
+		res, err := srv.testRequest(req)
 		if err == nil {
 			data, readErr := io.ReadAll(res.Body)
 			_ = res.Body.Close()
@@ -132,7 +132,7 @@ func TestSharedRepositoryRejectsUnknownTenantHeaders(t *testing.T) {
 		if tenant != "" {
 			r.Header.Set("X-Tenant-ID", tenant)
 		}
-		res, err := srv.app.Test(r)
+		res, err := srv.testRequest(r)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -187,7 +187,7 @@ func TestSharedRepositoryCrossInstance304Withdrawal(t *testing.T) {
 		if refresh {
 			req.Header.Set("Cache-Control", "min-fresh=7200")
 		}
-		res, err := srv.app.Test(req)
+		res, err := srv.testRequest(req)
 		if err != nil {
 			t.Fatal(err)
 		}

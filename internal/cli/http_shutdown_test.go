@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -11,13 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 )
 
 func TestRepositoryShutdownCancelsStalledOrigin(t *testing.T) {
-	for _, method := range []string{"server", "fiber"} {
+	for _, method := range []string{"server", "listener"} {
 		t.Run(method, func(t *testing.T) {
 			fixture := newRepositoryShutdownFixture(t)
 			waitRepositoryEvent(t, fixture.started, "upstream request")
@@ -25,7 +25,10 @@ func TestRepositoryShutdownCancelsStalledOrigin(t *testing.T) {
 			if method == "server" {
 				err = fixture.server.shutdown()
 			} else {
-				err = fixture.server.app.ShutdownWithTimeout(time.Second)
+				// Shutting down only the HTTP server must cancel the request too.
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				err = fixture.server.httpServer.Shutdown(ctx)
+				cancel()
 			}
 			if err != nil {
 				t.Fatalf("%s shutdown exhausted its drain deadline: %v", method, err)
@@ -72,7 +75,7 @@ func newRepositoryShutdownFixture(t *testing.T) repositoryShutdownFixture {
 		t.Fatal(err)
 	}
 	serveDone := make(chan error, 1)
-	go func() { serveDone <- server.app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true}) }()
+	go func() { serveDone <- server.listen(listener) }()
 	t.Cleanup(func() {
 		releaseOnce.Do(func() { close(release) })
 		_ = server.shutdown()

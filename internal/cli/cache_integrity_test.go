@@ -38,7 +38,7 @@ func checksumServer(t *testing.T, dir, mirror, mode string) *Server {
 }
 func checksumRequest(t *testing.T, s *Server, want, cacheLabel string) {
 	t.Helper()
-	res, err := s.app.Test(httptest.NewRequest("GET", "/ubuntu/pool/integrity.deb", nil))
+	res, err := s.testRequest(httptest.NewRequest("GET", "/ubuntu/pool/integrity.deb", nil))
 	if err != nil {
 		t.Fatal(err)
 	}

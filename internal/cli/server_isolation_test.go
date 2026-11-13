@@ -19,7 +19,7 @@ package cli
 // reachable once the package-level globals were torn out (see
 // internal/state/app.go's package doc). The tests here intentionally
 // avoid Server.Start so they don't touch the global SIGTERM/SIGHUP
-// signal handlers; we drive the Fiber app via app.Test instead.
+// signal handlers; we drive the handler in process instead.
 //
 // The integration-tagged sibling at tests/integration/multi_server_test.go
 // covers the same invariants on real listening ports.
@@ -146,7 +146,7 @@ func TestTwoServersAPIKeyIsolation(t *testing.T) {
 			req.Host = "localhost"
 			req.Header.Set("X-API-Key", tc.key)
 
-			resp, err := tc.srv.app.Test(req)
+			resp, err := tc.srv.testRequest(req)
 			if err != nil {
 				t.Fatalf("app.Test: %v", err)
 			}
@@ -177,7 +177,7 @@ func TestTwoServersCacheStatsIsolation(t *testing.T) {
 	purge, _ := http.NewRequest(http.MethodPost, "/api/cache/purge", nil)
 	purge.Host = "localhost"
 	purge.Header.Set("X-API-Key", "keyA")
-	resp, err := srvA.app.Test(purge)
+	resp, err := srvA.testRequest(purge)
 	if err != nil {
 		t.Fatalf("purge A: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestTwoServersCacheStatsIsolation(t *testing.T) {
 	stats, _ := http.NewRequest(http.MethodGet, "/api/cache/stats", nil)
 	stats.Host = "localhost"
 	stats.Header.Set("X-API-Key", "keyB")
-	resp, err = srvB.app.Test(stats)
+	resp, err = srvB.testRequest(stats)
 	if err != nil {
 		t.Fatalf("stats B: %v", err)
 	}

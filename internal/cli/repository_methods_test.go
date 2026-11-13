@@ -47,7 +47,7 @@ func TestProductionRepositoryRejectsWritesBeforeMirrorAuthentication(t *testing.
 	for _, method := range []string{http.MethodPut, http.MethodDelete, http.MethodPost, http.MethodPatch, http.MethodOptions, http.MethodTrace} {
 		// The download client has no credentials. Previously the proxy added
 		// the mirror's writer credentials and forwarded these requests.
-		res, err := srv.app.Test(httptest.NewRequest(method, "/ubuntu/pool/mutation.deb", strings.NewReader("untrusted replacement")))
+		res, err := srv.testRequest(httptest.NewRequest(method, "/ubuntu/pool/mutation.deb", strings.NewReader("untrusted replacement")))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestProductionRepositoryRejectsWritesBeforeMirrorAuthentication(t *testing.
 		t.Fatalf("rejected request reached upstream/cache: reads=%d writes=%d items=%d", reads.Load(), writes.Load(), srv.cache.Stats().ItemCount)
 	}
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
-		res, err := srv.app.Test(httptest.NewRequest(method, "/ubuntu/pool/mutation.deb", nil))
+		res, err := srv.testRequest(httptest.NewRequest(method, "/ubuntu/pool/mutation.deb", nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,7 +74,7 @@ func TestProductionRepositoryRejectsWritesBeforeMirrorAuthentication(t *testing.
 		t.Fatalf("read forwarding changed: reads=%d writes=%d", reads.Load(), writes.Load())
 	}
 	// Management API handlers retain their own method/authentication rules.
-	res, err := srv.app.Test(httptest.NewRequest(http.MethodPost, "/api/cache/purge", nil))
+	res, err := srv.testRequest(httptest.NewRequest(http.MethodPost, "/api/cache/purge", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
