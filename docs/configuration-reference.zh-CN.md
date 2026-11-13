@@ -253,7 +253,12 @@ distributions_config: ./config/distributions.yaml
 这与仅支持 YAML 的 `download` / `resources` 限制不同，后者的 `0` 始终选择有界默认值。
 
 省略 `security.api_rate_limit_per_minute` 与 `storage.s3.use_ssl` 时，沿用对应 CLI 参数的默认值
-（`60` 与 `true`）；在 YAML 中显式写 `0` 或 `false` 会生效。
+（`60` 与 `true`）；在 YAML 中显式写 `0` 或 `false` 会生效。`-api-key` 或 `APT_PROXY_API_KEY` 为空时，
+既不会替换 `security.api_key`，也不会关闭配置文件已启用的鉴权；需要关闭鉴权时请使用
+`-enable-api-auth=false` 或 `APT_PROXY_ENABLE_API_AUTH=false`。
+
+布尔、数值与 `mode` 选项对应的环境变量若已设置但值为空，视为未提供值：配置文件中的设置或默认值保持不变。
+例如 `APT_PROXY_CACHE_MAX_SIZE=` 不会关闭缓存容量上限，`APT_PROXY_CACHE_MAX_SIZE=0` 才会。
 
 **配置文件搜索路径（按顺序）：**
 1. 通过 `-config` 参数或 `APT_PROXY_CONFIG_FILE` 环境变量指定的路径

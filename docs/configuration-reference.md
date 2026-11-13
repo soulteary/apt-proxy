@@ -257,7 +257,14 @@ a bounded default.
 
 Omitted `security.api_rate_limit_per_minute` and `storage.s3.use_ssl` keep the
 defaults of their flags (`60` and `true`); an explicit `0` or `false` in YAML is
-honored.
+honored. An empty `-api-key` or `APT_PROXY_API_KEY` neither replaces
+`security.api_key` nor turns off authentication that the file enables; use
+`-enable-api-auth=false` or `APT_PROXY_ENABLE_API_AUTH=false` for that.
+
+An environment variable that is set to an empty value carries no value for a
+boolean, numeric or `mode` option: the config file's setting, or the default,
+stays in place. For example, `APT_PROXY_CACHE_MAX_SIZE=` does not turn off the
+cache size limit; `APT_PROXY_CACHE_MAX_SIZE=0` does.
 
 **Config file search paths (in order):**
 1. Path specified via `-config` flag or `APT_PROXY_CONFIG_FILE` environment variable

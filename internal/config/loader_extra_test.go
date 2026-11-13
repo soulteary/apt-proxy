@@ -18,6 +18,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/state"
@@ -48,6 +49,7 @@ func clearConfigEnv(t *testing.T) {
 		EnvCacheMaxSize, EnvCacheTTL, EnvCacheCleanupInterval,
 		EnvDebug, EnvUbuntu, EnvUbuntuPorts, EnvDebian, EnvDebianSecurity,
 		EnvCentOS, EnvAlpine,
+		EnvTLSEnabled, EnvTLSCertFile, EnvTLSKeyFile, EnvPassthrough,
 		EnvAPIKey, EnvAPIRateLimitPerMinute, EnvEnableAPIAuth, EnvTrustedProxies,
 		EnvUpstreamKeepAlive, EnvDistributionsConfig,
 		EnvStorageBackend, EnvS3Endpoint, EnvS3Region, EnvS3Bucket, EnvS3Prefix,
@@ -346,4 +348,226 @@ func TestConfigFileKeepsNonZeroDefaults(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestEmptyAPIKeyKeepsFileAuthentication covers an API key flag or environment
+// variable set to the empty string. It is not a key, so the key and the
+// authentication enabled by the config file stay in place; only the explicit
+// toggle turns authentication off.
+func TestEmptyAPIKeyKeepsFileAuthentication(t *testing.T) {
+	// The file enables authentication either explicitly or by the key alone.
+	fileForms := []struct{ name, toggle string }{
+		{"explicit toggle", "  enable_api_auth: true\n"},
+		{"implied by key", ""},
+	}
+	for _, tc := range []struct {
+		name        string
+		args        []string
+		env         map[string]string
+		wantKey     string
+		wantEnabled bool
+	}{
+		{name: "empty flag", args: []string{"--api-key="}, wantKey: "file-key", wantEnabled: true},
+		{name: "empty environment variable", env: map[string]string{EnvAPIKey: ""}, wantKey: "file-key", wantEnabled: true},
+		{name: "replacement key", args: []string{"--api-key=flag-key"}, wantKey: "flag-key", wantEnabled: true},
+		{name: "explicit false flag", args: []string{"--enable-api-auth=false"}, wantKey: "file-key", wantEnabled: false},
+		{name: "explicit false environment variable", env: map[string]string{EnvEnableAPIAuth: "false"}, wantKey: "file-key", wantEnabled: false},
+		{name: "explicit false with an empty key", args: []string{"--api-key=", "--enable-api-auth=false"}, wantKey: "file-key", wantEnabled: false},
+	} {
+		for _, form := range fileForms {
+			t.Run(tc.name+"/"+form.name, func(t *testing.T) {
+				clearConfigEnv(t)
+				for name, value := range tc.env {
+					t.Setenv(name, value)
+				}
+				cfg, err := parseWithConfigFile(t, "security:\n  api_key: file-key\n"+form.toggle, tc.args...)
+				if err != nil {
+					t.Fatalf("ParseFlagsWithConfigFile: %v", err)
+				}
+				if cfg.Security.APIKey != tc.wantKey {
+					t.Errorf("APIKey = %q, want %q", cfg.Security.APIKey, tc.wantKey)
+				}
+				if cfg.Security.EnableAPIAuth != tc.wantEnabled {
+					t.Errorf("EnableAPIAuth = %v, want %v", cfg.Security.EnableAPIAuth, tc.wantEnabled)
+				}
+			})
+		}
+	}
+}
+
+// valueSettings holds the options that have no empty value: booleans, numbers
+// and the mode enumeration.
+type valueSettings struct {
+	Mode                  int
+	Debug                 bool
+	CacheMaxSize          int64
+	CacheTTL              time.Duration
+	CacheCleanupInterval  time.Duration
+	TLSEnabled            bool
+	EnableAPIAuth         bool
+	APIRateLimitPerMinute int
+	UpstreamKeepAlive     bool
+	S3UseSSL              bool
+	S3UsePathStyle        bool
+	S3InlineMaxMB         int64
+}
+
+func valueSettingsOf(cfg *Config) valueSettings {
+	return valueSettings{
+		Mode:                  cfg.Mode,
+		Debug:                 cfg.Debug,
+		CacheMaxSize:          cfg.Cache.MaxSize,
+		CacheTTL:              cfg.Cache.TTL,
+		CacheCleanupInterval:  cfg.Cache.CleanupInterval,
+		TLSEnabled:            cfg.TLS.Enabled,
+		EnableAPIAuth:         cfg.Security.EnableAPIAuth,
+		APIRateLimitPerMinute: cfg.Security.APIRateLimitPerMinute,
+		UpstreamKeepAlive:     cfg.UpstreamKeepAlive,
+		S3UseSSL:              cfg.Storage.S3.UseSSL,
+		S3UsePathStyle:        cfg.Storage.S3.UsePathStyle,
+		S3InlineMaxMB:         cfg.Storage.S3.InlineMaxMB,
+	}
+}
+
+// TestEmptyEnvironmentValueKeepsFileSetting covers environment variables that
+// are set to the empty string for options without an empty value. The
+// resolvers ignore such a variable, so the config file's setting must stay in
+// place instead of being replaced by the option's default. A variable that
+// holds a value still overrides the file.
+func TestEmptyEnvironmentValueKeepsFileSetting(t *testing.T) {
+	// Every setting differs from its default.
+	const file = `mode: debian
+upstream_keep_alive: false
+server:
+  debug: true
+cache:
+  max_size_gb: 4
+  ttl_hours: 12
+  cleanup_interval_min: 7
+mirrors:
+  ubuntu: https://mirror.example/ubuntu/
+tls:
+  enabled: true
+security:
+  api_key: file-key
+  api_rate_limit_per_minute: 30
+storage:
+  s3:
+    use_ssl: false
+    use_path_style: true
+    inline_max_mb: 3
+`
+	fromFile := valueSettings{
+		Mode:                  distro.TypeDebian,
+		Debug:                 true,
+		CacheMaxSize:          4 << 30,
+		CacheTTL:              12 * time.Hour,
+		CacheCleanupInterval:  7 * time.Minute,
+		TLSEnabled:            true,
+		EnableAPIAuth:         true,
+		APIRateLimitPerMinute: 30,
+		UpstreamKeepAlive:     false,
+		S3UseSSL:              false,
+		S3UsePathStyle:        true,
+		S3InlineMaxMB:         3,
+	}
+	overrides := map[string]string{
+		EnvMode:                  "ubuntu",
+		EnvDebug:                 "false",
+		EnvCacheMaxSize:          "9",
+		EnvCacheTTL:              "5",
+		EnvCacheCleanupInterval:  "0",
+		EnvTLSEnabled:            "false",
+		EnvEnableAPIAuth:         "false",
+		EnvAPIRateLimitPerMinute: "0",
+		EnvUpstreamKeepAlive:     "true",
+		EnvS3UseSSL:              "true",
+		EnvS3UsePathStyle:        "false",
+		EnvS3InlineMaxMB:         "8",
+	}
+	fromEnvironment := valueSettings{
+		Mode:                  distro.TypeUbuntu,
+		Debug:                 false,
+		CacheMaxSize:          9 << 30,
+		CacheTTL:              5 * time.Hour,
+		CacheCleanupInterval:  0,
+		TLSEnabled:            false,
+		EnableAPIAuth:         false,
+		APIRateLimitPerMinute: 0,
+		UpstreamKeepAlive:     true,
+		S3UseSSL:              true,
+		S3UsePathStyle:        false,
+		S3InlineMaxMB:         8,
+	}
+	withValue := func(value string) map[string]string {
+		env := make(map[string]string, len(overrides))
+		for name := range overrides {
+			env[name] = value
+		}
+		return env
+	}
+
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		want valueSettings
+	}{
+		{name: "unset", want: fromFile},
+		{name: "empty", env: withValue(""), want: fromFile},
+		{name: "blank", env: withValue(" "), want: fromFile},
+		{name: "values", env: overrides, want: fromEnvironment},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearConfigEnv(t)
+			for name, value := range tc.env {
+				t.Setenv(name, value)
+			}
+			cfg, err := parseWithConfigFile(t, file)
+			if err != nil {
+				t.Fatalf("ParseFlagsWithConfigFile: %v", err)
+			}
+			if got := valueSettingsOf(cfg); got != tc.want {
+				t.Errorf("settings:\n got %+v\nwant %+v", got, tc.want)
+			}
+		})
+	}
+
+	// Without a file setting the defaults apply. An empty variable used to
+	// count as an explicit zero for the cache options, which turned off the
+	// size limit and expiry.
+	t.Run("empty without a file setting", func(t *testing.T) {
+		clearConfigEnv(t)
+		defaults, err := parseWithConfigFile(t, "")
+		if err != nil {
+			t.Fatalf("ParseFlagsWithConfigFile: %v", err)
+		}
+		for name := range overrides {
+			t.Setenv(name, "")
+		}
+		cfg, err := parseWithConfigFile(t, "")
+		if err != nil {
+			t.Fatalf("ParseFlagsWithConfigFile: %v", err)
+		}
+		got, want := valueSettingsOf(cfg), valueSettingsOf(defaults)
+		if got != want {
+			t.Errorf("settings:\n got %+v\nwant %+v", got, want)
+		}
+		if got.CacheMaxSize == 0 || got.CacheTTL == 0 || got.CacheCleanupInterval == 0 {
+			t.Errorf("cache limits are off: %+v", got)
+		}
+	})
+
+	// String options are unchanged: the presence of the variable still counts,
+	// so an empty one clears the mirror the file selects.
+	t.Run("empty string option", func(t *testing.T) {
+		clearConfigEnv(t)
+		t.Setenv(EnvUbuntu, "")
+		cfg, err := parseWithConfigFile(t, file)
+		if err != nil {
+			t.Fatalf("ParseFlagsWithConfigFile: %v", err)
+		}
+		if cfg.Mirrors.Ubuntu != "" {
+			t.Errorf("Mirrors.Ubuntu = %q, want it cleared", cfg.Mirrors.Ubuntu)
+		}
+	})
 }
