@@ -144,6 +144,26 @@ func (r *URLRewriters) get(mode int) *URLRewriter {
 	return r.custom[mode]
 }
 
+// fetchesFrom reports whether the mirror or security mirror selected for mode
+// is on hostname, which is compared as hostnameOf returns it.
+func (r *URLRewriters) fetchesFrom(mode int, hostname string) bool {
+	if r == nil {
+		return false
+	}
+	r.Mu.RLock()
+	defer r.Mu.RUnlock()
+	rewriter := r.get(mode)
+	if rewriter == nil {
+		return false
+	}
+	for _, mirror := range [2]*url.URL{rewriter.mirror, rewriter.securityMirror} {
+		if mirror != nil && hostnameOf(mirror.Host) == hostname {
+			return true
+		}
+	}
+	return false
+}
+
 // set stores v as the rewriter for mode, allocating the custom map on first
 // use. Callers must hold Mu for writing.
 func (r *URLRewriters) set(mode int, v *URLRewriter) {

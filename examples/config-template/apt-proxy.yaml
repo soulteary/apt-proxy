@@ -10,6 +10,9 @@
 #
 # Configuration priority: CLI flags > Environment variables > Config file > Defaults
 #
+# The file is parsed strictly: unknown keys, additional YAML documents and
+# references to unset environment variables stop startup with an error.
+#
 # This file shows common user-facing YAML fields. Download/resource limits,
 # download CIDR lists and upstream_access are YAML-only and require a restart.
 # Disabled mirror_health defaults and a commented metalink example are below.
@@ -90,7 +93,7 @@ storage:
     access_key: ""        # prefer ENV: APT_PROXY_S3_ACCESS_KEY
     secret_key: ""        # prefer ENV: APT_PROXY_S3_SECRET_KEY
     session_token: ""     # optional STS session token; prefer ENV: APT_PROXY_S3_SESSION_TOKEN
-    use_ssl: true         # use HTTPS to talk to the endpoint
+    use_ssl: true         # use HTTPS to talk to the endpoint (default true)
     use_path_style: false # MinIO/Ceph need true; AWS/R2/B2 use false
     inline_max_mb: 32     # writes <= 32 MiB stay in RAM, larger spill to temp_dir
                           # Per-write threshold; payload memory and disk copies share resources.total_temp_mb.
@@ -159,6 +162,8 @@ security:
 
   # API key for protected management endpoints
   # Supports environment variable expansion: ${APT_PROXY_API_KEY}
+  # Startup fails with an error naming the variable while it is unset: set it
+  # or replace the reference with your own key.
   api_key: ${APT_PROXY_API_KEY}
 
   # Enable API authentication (automatically enabled when api_key is set)

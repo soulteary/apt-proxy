@@ -147,8 +147,8 @@ PBS Client 和 Ceph Squid 条目，需要手动加入有效发行版列表才会
 
 配置必须是单个 YAML 文档，并使用已定义的字段名。未知字段会报出行号和字段名，
 例如应写 `cache_control`，而非 `cache-control`。空文件仍然有效；支持在已定义字段
-内部使用 YAML 锚点与合并，不支持额外的顶层锚点辅助字段。这项校验仅针对
-`distributions.yaml`，不改变服务器主配置的加载方式。
+内部使用 YAML 锚点与合并，不支持额外的顶层锚点辅助字段。服务器主配置
+（`apt-proxy.yaml`）采用同样严格的解析，详见[配置参考](configuration-reference.zh-CN.md#yaml-配置文件)。
 
 **示例 `config/distributions.yaml`：**
 
@@ -387,8 +387,13 @@ passthrough:
 - 只放行 `GET` 和 `HEAD`。apt 只读取，不写入。
 - 缓存时长由源站决定：apt-proxy 清楚发行版的索引和软件包该缓存多久，但对第三方源
   一无所知，因此原样沿用它的 `Cache-Control`。
-- 发行版路由优先。若白名单里的主机同时也被某个已配置的发行版覆盖，则按该发行版的
-  镜像和缓存规则处理。
+- 发行版自己的主机仍按发行版路由。若白名单里的主机匹配某个已配置发行版的 `host_pattern`、
+  属于它的镜像列表，或正是当前为它选中的镜像，则该发行版路径上的请求按其镜像和缓存规则处理。
+  其余白名单源站一律从源站本身获取，即使路径以发行版前缀开头，例如
+  `packages.microsoft.com/ubuntu/...`。
+- 不在白名单里的主机仍只按路径路由：`http://<任意主机>/ubuntu/...` 由选中的 Ubuntu 镜像提供。
+  代理模式下客户端为这类主机发送的凭据不会转发给该镜像，详见
+  [私有仓库](private-repositories.md)。
 
 启动日志会打印生效的白名单（`passthrough enabled for third-party origins`），
 空列表或写错的条目因此是可见的，不会静默。

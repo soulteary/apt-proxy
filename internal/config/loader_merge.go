@@ -104,8 +104,10 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	if ex.APIKey && override.Security.APIKey != "" {
 		result.Security.APIKey = override.Security.APIKey
 	}
-	if ex.EnableAPIAuth || ex.APIKey {
+	if ex.EnableAPIAuth || (ex.APIKey && override.Security.APIKey != "") {
 		// Setting an API key implies enabling auth (preserves legacy behaviour).
+		// An explicitly empty key is not a key: only the explicit toggle may
+		// turn off authentication that the config file enabled.
 		result.Security.EnableAPIAuth = override.Security.EnableAPIAuth
 	}
 	if ex.APIRateLimitPerMinute {

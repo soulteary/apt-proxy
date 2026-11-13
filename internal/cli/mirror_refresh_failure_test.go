@@ -47,7 +47,7 @@ func TestMirrorRefreshAPIFailurePreservesRequests(t *testing.T) {
 			t.Cleanup(func() { _ = srv.shutdown() })
 			get := func() {
 				t.Helper()
-				res, err := srv.app.Test(httptest.NewRequest(http.MethodGet, "/ubuntu/pool/package.deb", nil))
+				res, err := srv.testRequest(httptest.NewRequest(http.MethodGet, "/ubuntu/pool/package.deb", nil))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -77,7 +77,7 @@ func TestMirrorRefreshAPIFailurePreservesRequests(t *testing.T) {
 				t.Helper()
 				req := httptest.NewRequest(http.MethodPost, "/api/mirrors/refresh", nil)
 				req.Header.Set("X-API-Key", "refresh-key")
-				res, err := srv.app.Test(req)
+				res, err := srv.testRequest(req)
 				if err != nil {
 					t.Fatal(err)
 				}

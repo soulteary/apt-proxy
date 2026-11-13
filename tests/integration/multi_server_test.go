@@ -18,7 +18,7 @@ package integration
 
 // multi_server_test.go is the integration-level companion to
 // internal/cli/server_isolation_test.go. The unit tests there drive
-// Server via fiber.app.Test (no real listener); the tests here boot
+// Server's handler in process (no real listener); the tests here boot
 // two full httptest.NewServer instances and exercise the public HTTP
 // surface concurrently.
 //

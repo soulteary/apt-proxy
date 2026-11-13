@@ -21,26 +21,68 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
+
+	logger "github.com/soulteary/logger-kit/v3"
 
 	"github.com/soulteary/apt-proxy/internal/resource"
 )
 
-// abortSafeHandler contains ReverseProxy's intentional copy-error panic in the
-// cache's worker goroutine. Returning lets the cache close its pipe and finish
-// the miss flight; its existing length check rejects incomplete fixed-size
-// responses. Programming errors are never swallowed.
+// abortSafeHandler runs the reverse proxy inside the cache's worker goroutine,
+// which has no net/http panic recovery above it: a panic escaping here would
+// end the process.
+//
+// ReverseProxy panics with http.ErrAbortHandler when copying the response
+// fails. That signal is absorbed so the cache can close its stream and finish
+// the miss flight; the cache's length check rejects the incomplete object and
+// abortTrackingBody tells the client's goroutine about a truncated upstream.
+//
+// Any other panic is a defect. It is logged with its stack and fails this
+// request only: 502 when no response has started, an aborted connection
+// otherwise.
 type abortSafeHandler struct{ handler http.Handler }
 
 func (h *abortSafeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	tracked := &startedWriter{ResponseWriter: w}
 	defer func() {
-		if recovered := recover(); recovered != nil && recovered != http.ErrAbortHandler {
-			panic(recovered)
+		recovered := recover()
+		if recovered == nil || recovered == http.ErrAbortHandler {
+			return
 		}
+		logger.Default().Error().
+			Str("panic", fmt.Sprint(recovered)).
+			Str("stack", string(debug.Stack())).
+			Msg("upstream handler panicked")
+		if tracked.started {
+			markUpstreamAborted(r.Context())
+			return
+		}
+		tracked.WriteHeader(http.StatusBadGateway)
 	}()
-	h.handler.ServeHTTP(w, r)
+	h.handler.ServeHTTP(tracked, r)
 }
+
+// startedWriter records whether a response has begun. It is used by a single
+// goroutine.
+type startedWriter struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (w *startedWriter) WriteHeader(status int) {
+	w.started = true
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *startedWriter) Write(p []byte) (int, error) {
+	w.started = true
+	return w.ResponseWriter.Write(p)
+}
+
+// Unwrap lets http.ResponseController reach the wrapped writer.
+func (w *startedWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // completeUnknownBodyTransport verifies unknown-length bodies before exposing
 // their headers to the cache. A clean EOF is the only completeness signal for

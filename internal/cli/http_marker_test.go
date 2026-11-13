@@ -4,10 +4,9 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"io"
-	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
@@ -15,14 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/proxy"
 	"github.com/soulteary/apt-proxy/internal/resource"
 	httpcache "github.com/soulteary/httpcache-kit/v4"
 )
 
-func TestRepositoryMarkerTrailerSurvivesActualFiberNetwork(t *testing.T) {
+func TestRepositoryMarkerTrailerOverTheNetwork(t *testing.T) {
 	body := bytes.Repeat([]byte("b"), 64<<10)
 	budget, err := resource.New(resource.Config{MaxObjectBytes: 1 << 20, TotalTempBytes: 1 << 20, MaxActiveDownloads: 1})
 	if err != nil {
@@ -38,11 +37,10 @@ func TestRepositoryMarkerTrailerSurvivesActualFiberNetwork(t *testing.T) {
 		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 		_, _ = w.Write(body)
 	}), &httpcache.HandlerOptions{StagingBudget: budget, TempDir: t.TempDir()})
-	app := fiber.New()
-	lifecycle, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	app.All("/*", repositoryHTTPHandler(lifecycle, handler))
-	address := markerTestListener(t, app)
+	// The marker's empty path segments must pass the daemon's path guard.
+	server := httptest.NewServer(proxy.GuardRequestPath(handler))
+	t.Cleanup(server.Close)
+	address := server.Listener.Addr().String()
 	transport := &http.Transport{Proxy: http.ProxyURL(&url.URL{Scheme: "http", Host: address})}
 	t.Cleanup(transport.CloseIdleConnections)
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
@@ -82,8 +80,7 @@ func TestProductionMarkerDownloadClientAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = srv.shutdown() })
-	address := markerTestListener(t, srv.app)
+	address := listenOn(t, srv)
 	transport := &http.Transport{Proxy: http.ProxyURL(&url.URL{Scheme: "http", Host: address})}
 	t.Cleanup(transport.CloseIdleConnections)
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
@@ -112,26 +109,4 @@ func assertMarkerAccessDenied(t *testing.T, res *http.Response) {
 	if err != nil || res.StatusCode != http.StatusForbidden || res.Header.Get("Cache-Control") != "no-store" || !strings.Contains(string(body), "package download access denied") {
 		t.Fatalf("marker bypassed connection-peer access policy: status=%d body=%q err=%v", res.StatusCode, body, err)
 	}
-}
-
-func markerTestListener(t *testing.T, app *fiber.App) string {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true}) }()
-	t.Cleanup(func() {
-		_ = app.Shutdown()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Errorf("marker listener: %v", err)
-			}
-		case <-time.After(5 * time.Second):
-			t.Error("marker listener did not stop")
-		}
-	})
-	return listener.Addr().String()
 }

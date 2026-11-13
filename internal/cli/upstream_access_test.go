@@ -63,7 +63,7 @@ func TestProductionUpstreamAccess(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = srv.shutdown() })
-			resp, err := srv.app.Test(httptest.NewRequest("GET", "/ubuntu/dists/jammy/InRelease", nil))
+			resp, err := srv.testRequest(httptest.NewRequest("GET", "/ubuntu/dists/jammy/InRelease", nil))
 			if err != nil {
 				t.Fatal(err)
 			}
