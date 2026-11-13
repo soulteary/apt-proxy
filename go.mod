@@ -3,7 +3,6 @@ module github.com/soulteary/apt-proxy
 go 1.27.4
 
 require (
-	github.com/gofiber/fiber/v3 v3.6.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/minio/minio-go/v7 v7.4.1
 	github.com/soulteary/cli-kit v1.9.3
@@ -17,7 +16,6 @@ require (
 	github.com/soulteary/version-kit/v4 v4.0.3
 	github.com/soulteary/vfs-kit v1.4.6
 	github.com/stretchr/testify v1.12.1
-	github.com/valyala/fasthttp v1.77.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 	golang.org/x/sync v0.25.0
@@ -32,8 +30,6 @@ require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/gofiber/schema v1.9.2 // indirect
-	github.com/gofiber/utils/v2 v2.6.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.33.0 // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
@@ -44,7 +40,6 @@ require (
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
-	github.com/molecule-man/go-brrr v1.3.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pandatix/go-abnf v0.5.5 // indirect
 	github.com/philhofer/fwd v1.2.1 // indirect
@@ -56,7 +51,6 @@ require (
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tinylib/msgp v1.6.5 // indirect
-	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0 // indirect

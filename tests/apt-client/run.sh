@@ -30,6 +30,18 @@ import random
 Path('/fixture/binary/usr/share/apt-proxy-fixture/payload').write_bytes(random.Random(124).randbytes(2*1024*1024))
 PY
 dpkg-deb --build /fixture/binary "$pool/apt-proxy-fixture_1.0_all.deb"
+# APT percent-encodes the "+" and "~" of this file name in its requests.
+encoded_deb='apt-proxy-fixture-encoded_1.0~rc1+b1_all.deb'
+mkdir -p /fixture/encoded/DEBIAN /fixture/encoded/usr/share/apt-proxy-fixture-encoded
+cat > /fixture/encoded/DEBIAN/control <<'EOF'
+Package: apt-proxy-fixture-encoded
+Version: 1.0~rc1+b1
+Architecture: all
+Maintainer: Fixture <fixture@example.invalid>
+Description: APT proxy fixture with an encoded file name
+EOF
+printf 'encoded request path\n' > /fixture/encoded/usr/share/apt-proxy-fixture-encoded/payload
+dpkg-deb --build /fixture/encoded "$pool/$encoded_deb"
 mkdir -p /fixture/source/apt-proxy-fixture-1.0/debian/source
 cat > /fixture/source/apt-proxy-fixture-1.0/debian/control <<'EOF'
 Source: apt-proxy-fixture
@@ -69,6 +81,8 @@ for index in sorted(root.glob('main/*/*')):
     if not index.is_file(): continue
     data=index.read_bytes(); digest=hashlib.sha256(data).hexdigest()
     header+=f' {digest} {len(data)} {index.relative_to(root)}\n'
+    # The official archives list the uncompressed index without publishing it.
+    if not index.suffix: index.unlink(); continue
     alias=index.parent/'by-hash'/'SHA256'/digest
     alias.parent.mkdir(parents=True,exist_ok=True); alias.write_bytes(data)
 (root/'Release').write_text(header)
@@ -150,6 +164,8 @@ assert all(p.endswith('.gz') for p in indexes), indexes
 PY
 apt-get install -y --no-install-recommends apt-proxy-fixture
 cmp /usr/share/apt-proxy-fixture/payload /fixture/binary/usr/share/apt-proxy-fixture/payload
+apt-get install -y --no-install-recommends apt-proxy-fixture-encoded
+cmp /usr/share/apt-proxy-fixture-encoded/payload /fixture/encoded/usr/share/apt-proxy-fixture-encoded/payload
 mkdir -p /fixture/source-download
 (cd /fixture/source-download && apt-get source --download-only apt-proxy-fixture)
 cmp /fixture/source-download/apt-proxy-fixture_1.0.dsc "$pool/apt-proxy-fixture_1.0.dsc"
@@ -228,8 +244,16 @@ rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb
 apt-get -o Acquire::By-Hash=force -o APT::Update::Error-Mode=any update
 apt-get install -y --reinstall --no-install-recommends apt-proxy-fixture
 cmp /usr/share/apt-proxy-fixture/payload /fixture/binary/usr/share/apt-proxy-fixture/payload
+apt-get install -y --reinstall --no-install-recommends apt-proxy-fixture-encoded
+cmp /usr/share/apt-proxy-fixture-encoded/payload /fixture/encoded/usr/share/apt-proxy-fixture-encoded/payload
+# The snapshot serves the literal and both encoded spellings of one path, and
+# like its origin it has no uncompressed index.
+for name in "$encoded_deb" 'apt-proxy-fixture-encoded_1.0%7erc1%2bb1_all.deb' 'apt-proxy-fixture-encoded_1.0%7Erc1%2Bb1_all.deb'; do
+  curl -fsS "http://127.0.0.1:3144/pool/main/a/apt-proxy-fixture/$name" | cmp - "$pool/$encoded_deb"
+done
+test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3144/dists/test/main/binary-$arch/Packages")" = 404
 mkdir -p /fixture/offline-source
 (cd /fixture/offline-source && apt-get source --download-only apt-proxy-fixture)
 cmp /fixture/offline-source/apt-proxy-fixture_1.0.dsc "$pool/apt-proxy-fixture_1.0.dsc"
 cmp /fixture/offline-source/apt-proxy-fixture_1.0.tar.xz "$pool/apt-proxy-fixture_1.0.tar.xz"
-printf 'PASS: proxy cache hit after client cache cleanup, signature rejection, offline installation and source, signed update, by-hash and gzip indexes, install, source, range, retry/interruption, authenticated HTTPS\n' | tee /evidence/result.txt
+printf 'PASS: proxy cache hit after client cache cleanup, signature rejection, offline installation and source, signed update, by-hash and gzip indexes, install, percent-encoded package paths, source, range, retry/interruption, authenticated HTTPS\n' | tee /evidence/result.txt

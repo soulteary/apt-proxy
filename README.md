@@ -218,8 +218,10 @@ security:
 ```
 
 Set `APT_PROXY_API_KEY` to your own nonempty key and use a writable cache path
-before starting `./apt-proxy --config=apt-proxy.yaml`. Unset `${VAR}` references
-remain literal; the loader does not generate secrets.
+before starting `./apt-proxy --config=apt-proxy.yaml`. An unset `${VAR}` reference
+stops startup with an error naming the variable (use `${VAR:-default}` for
+optional values); the loader does not generate secrets. Unknown YAML fields are
+rejected as well.
 
 - [Flags, environment mappings, YAML fields and configuration-file discovery](docs/configuration-reference.md).
 - [Distribution YAML, host/path matching, mirror aliases and custom types](docs/repository-configuration.md).

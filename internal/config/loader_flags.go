@@ -304,16 +304,8 @@ type cliExplicit struct {
 // configutil.Resolve* helpers fall back to ENV without flagging the flag
 // as visited; checking both sources mirrors what the resolver does.
 func flagOrEnvSet(flags *flag.FlagSet, name, env string) bool {
-	if flags != nil {
-		var seen bool
-		flags.Visit(func(f *flag.Flag) {
-			if f.Name == name {
-				seen = true
-			}
-		})
-		if seen {
-			return true
-		}
+	if flagVisited(flags, name) {
+		return true
 	}
 	if env != "" {
 		if _, ok := os.LookupEnv(env); ok {
@@ -323,33 +315,60 @@ func flagOrEnvSet(flags *flag.FlagSet, name, env string) bool {
 	return false
 }
 
+// flagOrEnvValueSet is flagOrEnvSet for options whose value cannot be empty:
+// booleans, numbers and enumerations. The resolvers ignore an environment
+// variable that is set to the empty string and return the built-in default,
+// so such a variable does not count as explicit. Container tooling passes
+// empty variables for unset host variables; counting them would replace the
+// config file's value with the default, for example turning off
+// authentication the file enables.
+func flagOrEnvValueSet(flags *flag.FlagSet, name, env string) bool {
+	if flagVisited(flags, name) {
+		return true
+	}
+	return env != "" && strings.TrimSpace(os.Getenv(env)) != ""
+}
+
+func flagVisited(flags *flag.FlagSet, name string) bool {
+	if flags == nil {
+		return false
+	}
+	var seen bool
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			seen = true
+		}
+	})
+	return seen
+}
+
 // buildCLIConfig builds a Config from CLI flags and environment variables.
 // Default values are used when flags/env vars are not set.
 // The returned cliExplicit mask records which fields were explicitly set
 // (CLI flag or ENV) so MergeConfigsWithExplicit can honor false/0 overrides.
 func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheDir string, defaultCacheMaxSizeGB int64, defaultCacheTTLHours, defaultCacheCleanupIntervalMin int) (*Config, *cliExplicit) {
 	ex := &cliExplicit{
-		Debug:                 flagOrEnvSet(flags, "debug", EnvDebug),
+		Debug:                 flagOrEnvValueSet(flags, "debug", EnvDebug),
 		CacheDir:              flagOrEnvSet(flags, "cachedir", EnvCacheDir),
-		Mode:                  flagOrEnvSet(flags, "mode", EnvMode),
+		Mode:                  flagOrEnvValueSet(flags, "mode", EnvMode),
 		UbuntuMirror:          flagOrEnvSet(flags, "ubuntu", EnvUbuntu),
 		UbuntuPortsMirror:     flagOrEnvSet(flags, "ubuntu-ports", EnvUbuntuPorts),
 		DebianMirror:          flagOrEnvSet(flags, "debian", EnvDebian),
 		DebianSecurityMirror:  flagOrEnvSet(flags, "debian-security", EnvDebianSecurity),
 		CentOSMirror:          flagOrEnvSet(flags, "centos", EnvCentOS),
 		AlpineMirror:          flagOrEnvSet(flags, "alpine", EnvAlpine),
-		CacheMaxSize:          flagOrEnvSet(flags, "cache-max-size", EnvCacheMaxSize),
-		CacheTTL:              flagOrEnvSet(flags, "cache-ttl", EnvCacheTTL),
-		CacheCleanupInterval:  flagOrEnvSet(flags, "cache-cleanup-interval", EnvCacheCleanupInterval),
-		TLSEnabled:            flagOrEnvSet(flags, "tls", EnvTLSEnabled),
+		CacheMaxSize:          flagOrEnvValueSet(flags, "cache-max-size", EnvCacheMaxSize),
+		CacheTTL:              flagOrEnvValueSet(flags, "cache-ttl", EnvCacheTTL),
+		CacheCleanupInterval:  flagOrEnvValueSet(flags, "cache-cleanup-interval", EnvCacheCleanupInterval),
+		TLSEnabled:            flagOrEnvValueSet(flags, "tls", EnvTLSEnabled),
 		TLSCertFile:           flagOrEnvSet(flags, "tls-cert", EnvTLSCertFile),
 		TLSKeyFile:            flagOrEnvSet(flags, "tls-key", EnvTLSKeyFile),
 		APIKey:                flagOrEnvSet(flags, "api-key", EnvAPIKey),
-		EnableAPIAuth:         flagOrEnvSet(flags, "enable-api-auth", EnvEnableAPIAuth),
-		APIRateLimitPerMinute: flagOrEnvSet(flags, "api-rate-limit", EnvAPIRateLimitPerMinute),
+		EnableAPIAuth:         flagOrEnvValueSet(flags, "enable-api-auth", EnvEnableAPIAuth),
+		APIRateLimitPerMinute: flagOrEnvValueSet(flags, "api-rate-limit", EnvAPIRateLimitPerMinute),
 		TrustedProxies:        flagOrEnvSet(flags, "trusted-proxies", EnvTrustedProxies),
 		Passthrough:           flagOrEnvSet(flags, "passthrough", EnvPassthrough),
-		UpstreamKeepAlive:     flagOrEnvSet(flags, "upstream-keep-alive", EnvUpstreamKeepAlive),
+		UpstreamKeepAlive:     flagOrEnvValueSet(flags, "upstream-keep-alive", EnvUpstreamKeepAlive),
 		DistributionsConfig:   flagOrEnvSet(flags, "distributions-config", EnvDistributionsConfig),
 
 		StorageBackend: flagOrEnvSet(flags, "storage-backend", EnvStorageBackend),
@@ -360,9 +379,9 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 		S3AccessKey:    flagOrEnvSet(flags, "s3-access-key", EnvS3AccessKey),
 		S3SecretKey:    flagOrEnvSet(flags, "s3-secret-key", EnvS3SecretKey),
 		S3SessionToken: flagOrEnvSet(flags, "s3-session-token", EnvS3SessionToken),
-		S3UseSSL:       flagOrEnvSet(flags, "s3-use-ssl", EnvS3UseSSL),
-		S3UsePathStyle: flagOrEnvSet(flags, "s3-use-path-style", EnvS3UsePathStyle),
-		S3InlineMaxMB:  flagOrEnvSet(flags, "s3-inline-max-mb", EnvS3InlineMaxMB),
+		S3UseSSL:       flagOrEnvValueSet(flags, "s3-use-ssl", EnvS3UseSSL),
+		S3UsePathStyle: flagOrEnvValueSet(flags, "s3-use-path-style", EnvS3UsePathStyle),
+		S3InlineMaxMB:  flagOrEnvValueSet(flags, "s3-inline-max-mb", EnvS3InlineMaxMB),
 		S3TempDir:      flagOrEnvSet(flags, "s3-temp-dir", EnvS3TempDir),
 	}
 	hostSet := flagOrEnvSet(flags, "host", EnvHost)
@@ -406,7 +425,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	// user did NOT explicitly pass --enable-api-auth (CLI/ENV); an explicit
 	// `--enable-api-auth=false` must win even with --api-key set.
 	enableAPIAuth := configutil.ResolveBool(flags, "enable-api-auth", EnvEnableAPIAuth, false)
-	enableAPIAuthExplicit := flagOrEnvSet(flags, "enable-api-auth", EnvEnableAPIAuth)
+	enableAPIAuthExplicit := flagOrEnvValueSet(flags, "enable-api-auth", EnvEnableAPIAuth)
 	if apiKey != "" && !enableAPIAuthExplicit {
 		enableAPIAuth = true
 	}

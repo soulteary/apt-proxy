@@ -191,7 +191,9 @@ func TestRepositoryLogsAndSpansRedactCredentials(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			req := httptest.NewRequest("GET", "http://"+credentials.user.String()+"@archive.ubuntu.com/ubuntu/pool/package.deb?custom_auth=query-secret", nil)
+			// The request names the selected mirror: credentials sent for any
+			// other origin are withheld from it and could not be checked upstream.
+			req := httptest.NewRequest("GET", "http://"+credentials.user.String()+"@"+testMirrorHost+"/ubuntu/pool/package.deb?custom_auth=query-secret", nil)
 			rec := httptest.NewRecorder()
 			ps.ServeHTTP(rec, req)
 			if rec.Code != http.StatusOK {
@@ -226,7 +228,7 @@ func TestRepositoryLogsAndSpansRedactCredentials(t *testing.T) {
 				t.Fatal(err)
 			}
 			failed := httptest.NewRecorder()
-			failing.ServeHTTP(failed, httptest.NewRequest("GET", "http://"+credentials.user.String()+"@archive.ubuntu.com/ubuntu/pool/package.deb?custom_auth=query-secret", nil))
+			failing.ServeHTTP(failed, httptest.NewRequest("GET", "http://"+credentials.user.String()+"@"+testMirrorHost+"/ubuntu/pool/package.deb?custom_auth=query-secret", nil))
 			if failed.Code != http.StatusBadGateway || failed.Body.Len() != 0 {
 				t.Fatalf("upstream error response changed: status=%d body=%q", failed.Code, failed.Body.String())
 			}

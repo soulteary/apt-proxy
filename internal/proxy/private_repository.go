@@ -86,6 +86,10 @@ func (ap *PackageStruct) serveMatchedRepository(w http.ResponseWriter, r *http.R
 			return
 		}
 		addNoStore(r.Header)
+	} else if immutableRule(rule) {
+		// A routine revalidation hint for content that cannot change would
+		// only keep the request out of the cache.
+		dropZeroMaxAge(r.Header)
 	}
 	ap.Handler.ServeHTTP(&responseWriter{w, rule}, r.WithContext(context.WithValue(r.Context(), cacheRuleKey{}, rule)))
 }

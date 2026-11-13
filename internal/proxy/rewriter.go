@@ -144,6 +144,26 @@ func (r *URLRewriters) get(mode int) *URLRewriter {
 	return r.custom[mode]
 }
 
+// fetchesFrom reports whether the mirror or security mirror selected for mode
+// is on hostname, which is compared as hostnameOf returns it.
+func (r *URLRewriters) fetchesFrom(mode int, hostname string) bool {
+	if r == nil {
+		return false
+	}
+	r.Mu.RLock()
+	defer r.Mu.RUnlock()
+	rewriter := r.get(mode)
+	if rewriter == nil {
+		return false
+	}
+	for _, mirror := range [2]*url.URL{rewriter.mirror, rewriter.securityMirror} {
+		if mirror != nil && hostnameOf(mirror.Host) == hostname {
+			return true
+		}
+	}
+	return false
+}
+
 // published returns the rewriter currently registered for mode, or nil when
 // there is none. Unlike get it takes Mu itself.
 func (r *URLRewriters) published(mode int) *URLRewriter {

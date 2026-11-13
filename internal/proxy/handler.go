@@ -52,57 +52,6 @@ const (
 	DefaultMaxIdleConns          = 100
 )
 
-func detachRequest(ctx context.Context, r *http.Request) *http.Request {
-	detached := r.Clone(ctx)
-	detached.Method = strings.Clone(detached.Method)
-	detached.Host = strings.Clone(detached.Host)
-	detached.RemoteAddr = strings.Clone(detached.RemoteAddr)
-	detached.RequestURI = strings.Clone(detached.RequestURI)
-
-	if detached.URL != nil {
-		u := *detached.URL
-		u.Scheme = strings.Clone(u.Scheme)
-		u.Opaque = strings.Clone(u.Opaque)
-		u.Host = strings.Clone(u.Host)
-		u.Path = strings.Clone(u.Path)
-		u.RawPath = strings.Clone(u.RawPath)
-		u.RawQuery = strings.Clone(u.RawQuery)
-		u.Fragment = strings.Clone(u.Fragment)
-		u.RawFragment = strings.Clone(u.RawFragment)
-		if u.User != nil {
-			username := strings.Clone(u.User.Username())
-			if password, ok := u.User.Password(); ok {
-				u.User = url.UserPassword(username, strings.Clone(password))
-			} else {
-				u.User = url.User(username)
-			}
-		}
-		detached.URL = &u
-	}
-
-	detached.Header = detachHeader(detached.Header)
-	detached.Trailer = detachHeader(detached.Trailer)
-	for i := range detached.TransferEncoding {
-		detached.TransferEncoding[i] = strings.Clone(detached.TransferEncoding[i])
-	}
-	return detached
-}
-
-func detachHeader(header http.Header) http.Header {
-	if header == nil {
-		return nil
-	}
-	detached := make(http.Header, len(header))
-	for key, values := range header {
-		cloned := make([]string, len(values))
-		for i, value := range values {
-			cloned[i] = strings.Clone(value)
-		}
-		detached[strings.Clone(key)] = cloned
-	}
-	return detached
-}
-
 // hostPatternEntry pairs a compiled URL pattern with its rules and is used
 // instead of map[*regexp.Regexp][]Rule on the request hot path. A slice
 // preserves insertion order so the rule selected for a request is
@@ -114,6 +63,9 @@ type hostPatternEntry struct {
 	// A host-and-path match takes priority over path-only matches. It also
 	// supports host-root archives when no distribution path matches.
 	hostPattern *regexp.Regexp
+	// mirrorHosts holds the hostnames of the distribution's listed mirrors.
+	// An allowlisted origin among them keeps distribution routing.
+	mirrorHosts map[string]struct{}
 	rules       []distro.Rule
 }
 
@@ -143,7 +95,7 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 			if d.Type != mode || d.URLPattern == nil || len(d.CacheRules) == 0 {
 				continue
 			}
-			out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
+			out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, mirrorHosts: mirrorHostSet(d.Mirrors), rules: d.CacheRules})
 			seen[id] = struct{}{}
 		}
 	}
@@ -162,7 +114,7 @@ func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
 		if d.URLPattern == nil || len(d.CacheRules) == 0 {
 			continue
 		}
-		out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, rules: d.CacheRules})
+		out = append(out, hostPatternEntry{repositoryID: id, pattern: d.URLPattern, hostPattern: d.HostPattern, mirrorHosts: mirrorHostSet(d.Mirrors), rules: d.CacheRules})
 	}
 	return out
 }
@@ -354,7 +306,7 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 		transport:    transport,
 		Handler: &abortSafeHandler{handler: &httputil.ReverseProxy{
 			Rewrite:   func(*httputil.ProxyRequest) {},
-			Transport: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}, resources: opts.Resources},
+			Transport: &immutableFallbackTransport{RoundTripper: &completeUnknownBodyTransport{RoundTripper: transport, tempDir: opts.DownloadTempDir, maxBytes: opts.DownloadMaxBytes, timeout: opts.DownloadTimeout, budget: &spoolBudget{limit: totalBytes}, resources: opts.Resources}, log: log},
 			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 				log.Error().Err(logsafe.Error(err)).Msg("upstream request failed")
 				if errors.Is(err, resource.ErrAdmission) {
@@ -365,6 +317,10 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 				}
 			},
 			ModifyResponse: func(resp *http.Response) error {
+				if !validUpstreamStatus(resp.StatusCode) {
+					return fmt.Errorf("upstream answered with invalid status code %d", resp.StatusCode)
+				}
+				trackUpstreamBody(resp)
 				protectPrivateRepositoryResponse(resp)
 				rule, _ := resp.Request.Context().Value(cacheRuleKey{}).(*distro.Rule)
 				applyRepositoryCachePolicy(resp.Header, resp.StatusCode, rule)
@@ -451,9 +407,9 @@ func parseTLSRewriteMarker(r *http.Request) (origin, upstreamPath string, found 
 	escaped := r.URL.EscapedPath()
 	var rest string
 
-	// The authority lands in URL.Host for an absolute-form request, but Fiber's
-	// adaptor converts to a server request where it lives in Host and URL.Host
-	// is empty. Production traffic takes the latter path, so check both.
+	// An absolute-form request line (a client using apt-proxy as its HTTP
+	// proxy) puts the authority in URL.Host; an origin-form request only has
+	// the Host header. Check both.
 	for _, authority := range [2]string{r.URL.Host, r.Host} {
 		if authority == "" {
 			continue
@@ -504,7 +460,8 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if rejectRepositoryMethod(rw, r) {
 		return
 	}
-	ctx := r.Context()
+	ctx, abort := trackUpstreamAbort(r.Context())
+	defer abort.propagate()
 
 	spanCtx, span := tracing.StartSpan(ctx, "proxy.request")
 	defer span.End()
@@ -519,11 +476,12 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		"http.remote_addr": r.RemoteAddr,
 	})
 
-	// Fiber/fasthttp reuses its request buffers after ServeHTTP returns, while
-	// the cache may finish a write asynchronously and retain the request URL as
-	// part of its key. Clone here so background cache work never references
-	// memory that the adapter can reuse for the next request.
-	r = detachRequest(spanCtx, r)
+	// Routing rewrites the URL and headers in place. Work on a copy so the
+	// caller's request, which the access log reads afterwards, stays as sent.
+	r = r.Clone(spanCtx)
+	// An absolute-form request line names the origin the client wants. An
+	// origin-form request addresses apt-proxy itself and leaves this empty.
+	namedOrigin := r.URL.Host
 	normalizeRepositoryCredentials(r)
 	if ap.metalink != nil && ap.metalink.Handle(rw, r, ap.Handler) {
 		return
@@ -548,6 +506,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	rule := ap.handleExternalURLs(r)
 	if rule != nil {
+		ap.withholdForeignCredentials(r, namedOrigin)
 		if name := distro.DistributionName(rule.OS); name != "" {
 			tracing.SetSpanAttributes(span, map[string]string{
 				"proxy.distribution": name,
@@ -631,6 +590,18 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 		}
 	}
 
+	// An origin the operator allowlisted is fetched from that origin. The
+	// path-only match below ignores the host, so without this check an
+	// archive such as packages.microsoft.com/ubuntu/... would be rewritten
+	// onto the Ubuntu mirror and its allowlist entry could never take effect.
+	// A host that belongs to a distribution keeps that distribution's routing
+	// and cache rules.
+	if host != "" && !ap.passthrough.Empty() && !distributionHost(rt, host, path) {
+		if rule := ap.matchPassthrough(r); rule != nil {
+			return rule
+		}
+	}
+
 	// Preserve path-only routes, including local proxy aliases whose Host is
 	// the proxy rather than the original archive. matchesDistroPath rejects
 	// matches hidden behind a prefix that is not a mirror host (hostprefix.go).
@@ -651,9 +622,8 @@ func (ap *PackageStruct) handleExternalURLs(r *http.Request) *distro.Rule {
 		}
 	}
 
-	// Last: a third-party origin the operator allowlisted. Deliberately after
-	// both distribution checks, so an archive apt-proxy mirrors keeps its own
-	// routing and cache rules.
+	// Last: an allowlisted origin that also belongs to a distribution, for the
+	// paths no distribution route claimed.
 	return ap.matchPassthrough(r)
 }
 

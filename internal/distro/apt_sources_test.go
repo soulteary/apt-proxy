@@ -45,7 +45,7 @@ func TestDebStyleSourceCoverage(t *testing.T) {
 						for _, rule := range rules {
 							if rule.Pattern.MatchString(path) {
 								matched = true
-								if !rule.Rewrite || rule.OS != dist.Type || rule.CacheControl != "max-age=100000" {
+								if !rule.Rewrite || rule.OS != dist.Type || rule.CacheControl != "max-age=100000, immutable" {
 									t.Errorf("wrong source policy: %s %+v", path, rule)
 								}
 							}

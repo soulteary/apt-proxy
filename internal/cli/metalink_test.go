@@ -68,7 +68,7 @@ func TestMetalinkServerCacheAndRefresh(t *testing.T) {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, target, nil)
 		req.Header = headers
-		res, err := srv.app.Test(req)
+		res, err := srv.testRequest(req)
 		if err != nil {
 			t.Fatal(err)
 		}
