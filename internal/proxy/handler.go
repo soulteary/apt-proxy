@@ -734,7 +734,14 @@ func (ap *PackageStruct) RefreshMirrors() error {
 	// visible. buildRewriters is the slow part -- it re-elects mirrors --
 	// and for its whole duration requests keep serving the previous
 	// snapshot, matching and rewriting consistently with each other.
-	rewriters, err := buildRewriters(ap.mode, ap.state, ap.registry, ap.bench)
+	//
+	// The previous snapshot's rewriters go in as well: a distribution whose
+	// election fails keeps the mirror it is being served from.
+	var previous *URLRewriters
+	if current := ap.routing.Load(); current != nil {
+		previous = current.rewriters
+	}
+	rewriters, err := buildRewriters(previous, ap.mode, ap.state, ap.registry, ap.bench)
 	if err != nil {
 		return err // Keep the complete old routing, including its match patterns.
 	}

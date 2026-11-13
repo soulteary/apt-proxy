@@ -16,8 +16,18 @@ import (
 )
 
 func TestMirrorRefreshAPIFailurePreservesRequests(t *testing.T) {
-	for _, kind := range []string{"invalid-yaml", "unreachable-mirror"} {
-		t.Run(kind, func(t *testing.T) {
+	for _, tc := range []struct {
+		kind string
+		// want is the status of the refresh that runs into the failure.
+		want int
+	}{
+		{"invalid-yaml", http.StatusInternalServerError},
+		// The mirror in service stops answering: its distribution keeps it.
+		{"unreachable-mirror", http.StatusOK},
+		// A distribution added by the reload has no mirror to keep.
+		{"unreachable-new-distribution", http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
 			var fail atomic.Bool
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				if fail.Load() {
@@ -37,28 +47,40 @@ func TestMirrorRefreshAPIFailurePreservesRequests(t *testing.T) {
 				Security:                config.SecurityConfig{EnableAPIAuth: true, APIKey: "refresh-key"},
 			})
 			cfg.Mirrors.Ubuntu = upstream.URL + "/ubuntu/"
-			if kind == "unreachable-mirror" {
+			switch tc.kind {
+			case "unreachable-mirror":
 				cfg.Mirrors.Ubuntu = ""
+			case "unreachable-new-distribution":
+				// Custom distributions are only served in the all-distributions mode.
+				cfg.Mode = distro.TypeAllDistros
 			}
 			srv, err := NewServer(cfg)
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = srv.shutdown() })
-			get := func() {
+			request := func(target string) {
 				t.Helper()
-				res, err := srv.app.Test(httptest.NewRequest(http.MethodGet, "/ubuntu/pool/package.deb", nil))
+				res, err := srv.app.Test(httptest.NewRequest(http.MethodGet, target, nil))
 				if err != nil {
 					t.Fatal(err)
 				}
 				body, err := io.ReadAll(res.Body)
 				res.Body.Close()
 				if err != nil || res.StatusCode != 200 || string(body) != "repository" {
-					t.Fatalf("working request: status=%d body=%q err=%v", res.StatusCode, body, err)
+					t.Fatalf("working request %s: status=%d body=%q err=%v", target, res.StatusCode, body, err)
 				}
 			}
+			get := func() {
+				t.Helper()
+				request("/ubuntu/pool/package.deb")
+			}
 			get()
-			if kind == "unreachable-mirror" {
+			reloaded := valid
+			switch tc.kind {
+			case "invalid-yaml":
+				reloaded = "distributions: ["
+			case "unreachable-mirror":
 				deadline := time.Now().Add(2 * time.Second)
 				for {
 					if _, ok := srv.proxy.BenchmarkEngine().Cache().GetCachedResult(distro.TypeUbuntu); ok {
@@ -70,9 +92,12 @@ func TestMirrorRefreshAPIFailurePreservesRequests(t *testing.T) {
 					time.Sleep(time.Millisecond)
 				}
 				fail.Store(true)
-			} else {
-				writeAt(t, path, "distributions: [")
+			case "unreachable-new-distribution":
+				deepin := strings.ReplaceAll(customDistroYAML, "community-packages.deepin.com/deepin/", upstream.URL+"/deepin/")
+				reloaded = valid + strings.TrimPrefix(deepin, "\ndistributions:\n")
+				fail.Store(true)
 			}
+			writeAt(t, path, reloaded)
 			refresh := func(want int, success bool) {
 				t.Helper()
 				req := httptest.NewRequest(http.MethodPost, "/api/mirrors/refresh", nil)
@@ -93,16 +118,17 @@ func TestMirrorRefreshAPIFailurePreservesRequests(t *testing.T) {
 					t.Fatalf("failed refresh omitted structured error: %v", body)
 				}
 			}
-			want := http.StatusInternalServerError
-			if kind == "unreachable-mirror" {
-				want = http.StatusServiceUnavailable
-			}
-			refresh(want, false)
+			refresh(tc.want, tc.want == http.StatusOK)
 			fail.Store(false)
 			get() // Old route still works without another successful election.
-			writeAt(t, path, valid)
+			if tc.kind == "invalid-yaml" {
+				writeAt(t, path, valid)
+			}
 			refresh(http.StatusOK, true)
 			get()
+			if tc.kind == "unreachable-new-distribution" {
+				request("/deepin/pool/package.deb")
+			}
 		})
 	}
 }
