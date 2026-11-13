@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -194,11 +195,43 @@ func (b *panicAfterBody) Read(p []byte) (int, error) {
 
 func (*panicAfterBody) Close() error { return nil }
 
+// lockedBuffer is a log sink that can be read while other goroutines still
+// write to it. The cache stores a response in the background and logs a failed
+// store after the request has been answered.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func (b *lockedBuffer) Len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Len()
+}
+
+func (b *lockedBuffer) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf.Reset()
+}
+
 // A defect inside the cache's worker goroutine fails one request. It must not
 // end the process, and a response that already started must not look complete.
 func TestWorkerPanicFailsOnlyItsRequest(t *testing.T) {
 	previous := logger.Default()
-	var logs bytes.Buffer
+	var logs lockedBuffer
 	logger.SetDefault(logger.New(logger.Config{Level: logger.InfoLevel, Output: &logs, Format: logger.FormatJSON}))
 	t.Cleanup(func() { logger.SetDefault(previous) })
 
