@@ -121,6 +121,138 @@ func TestAllowlistedDistributionHostKeepsItsRouting(t *testing.T) {
 	}
 }
 
+// Credentials belong to the origin the client named. When routing selects
+// another host they are withheld; when the client named no origin, or named
+// the upstream itself, they are forwarded as before.
+func TestCredentialsFollowTheNamedOrigin(t *testing.T) {
+	const path = "/ubuntu/dists/jammy/InRelease"
+	withHeader := func(r *http.Request, name, value string) *http.Request {
+		r.Header.Set(name, value)
+		return r
+	}
+	direct := func() *http.Request { return httptest.NewRequest(http.MethodGet, path, nil) }
+
+	for _, tc := range []struct {
+		name      string
+		allowlist []string
+		request   *http.Request
+		wantHost  string
+		wantAuth  string
+		wantCook  string
+	}{
+		{
+			name:     "authorization for another origin",
+			request:  withHeader(absoluteRequest("private.example.test", path), "Authorization", "Bearer origin-token"),
+			wantHost: testMirrorHost,
+		},
+		{
+			name:     "cookie for another origin",
+			request:  withHeader(absoluteRequest("private.example.test", path), "Cookie", "session=origin"),
+			wantHost: testMirrorHost,
+		},
+		{
+			name:     "URL credentials for another origin",
+			request:  httptest.NewRequest(http.MethodGet, "http://user:secret@private.example.test"+path, nil),
+			wantHost: testMirrorHost,
+		},
+		{
+			name:     "request addressed to apt-proxy",
+			request:  withHeader(direct(), "Authorization", "Bearer repository-token"),
+			wantHost: testMirrorHost,
+			wantAuth: "Bearer repository-token",
+		},
+		{
+			name:     "cookie addressed to apt-proxy",
+			request:  withHeader(direct(), "Cookie", "session=repository"),
+			wantHost: testMirrorHost,
+			wantCook: "session=repository",
+		},
+		{
+			name:     "origin is the selected mirror",
+			request:  withHeader(absoluteRequest(testMirrorHost, path), "Authorization", "Bearer mirror-token"),
+			wantHost: testMirrorHost,
+			wantAuth: "Bearer mirror-token",
+		},
+		{
+			name:     "origin is the selected mirror with its default port",
+			request:  withHeader(absoluteRequest(testMirrorHost+":80", path), "Authorization", "Bearer mirror-token"),
+			wantHost: testMirrorHost,
+			wantAuth: "Bearer mirror-token",
+		},
+		{
+			name:     "another port on the mirror host",
+			request:  withHeader(absoluteRequest(testMirrorHost+":8080", path), "Authorization", "Bearer other-service"),
+			wantHost: testMirrorHost,
+		},
+		{
+			name:      "allowlisted origin",
+			allowlist: []string{"private.example.test"},
+			request:   withHeader(absoluteRequest("private.example.test", path), "Authorization", "Bearer origin-token"),
+			wantHost:  "private.example.test",
+			wantAuth:  "Bearer origin-token",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ps, seen := passthroughProxy(t, tc.allowlist...)
+			if status := serveRecorded(ps, tc.request); status != http.StatusOK {
+				t.Fatalf("status = %d, want 200", status)
+			}
+			if seen.count != 1 || seen.host != tc.wantHost {
+				t.Fatalf("upstream saw %d request(s) for %q, want one for %q", seen.count, seen.host, tc.wantHost)
+			}
+			if got := seen.header.Get("Authorization"); got != tc.wantAuth {
+				t.Errorf("upstream Authorization = %q, want %q", got, tc.wantAuth)
+			}
+			if got := seen.header.Get("Cookie"); got != tc.wantCook {
+				t.Errorf("upstream Cookie = %q, want %q", got, tc.wantCook)
+			}
+		})
+	}
+}
+
+// The mirror's configured credentials still apply after a client's
+// credentials for another origin have been withheld.
+func TestConfiguredMirrorCredentialsReplaceForeignOnes(t *testing.T) {
+	ps, seen := passthroughProxy(t)
+	ps.state.SetMirror(distro.TypeUbuntu, "http://alice:secret@"+testMirrorHost+"/ubuntu/")
+	if err := ps.RefreshMirrors(); err != nil {
+		t.Fatalf("RefreshMirrors: %v", err)
+	}
+
+	r := absoluteRequest("private.example.test", "/ubuntu/dists/jammy/InRelease")
+	r.Header.Set("Authorization", "Bearer origin-token")
+	if status := serveRecorded(ps, r); status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	user, password, ok := (&http.Request{Header: seen.header}).BasicAuth()
+	if !ok || user != "alice" || password != "secret" {
+		t.Fatalf("upstream Authorization = %q, want the mirror's configured credentials", seen.header.Get("Authorization"))
+	}
+}
+
+func TestSameHost(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want bool
+	}{
+		{"repo.example", "repo.example", true},
+		{"Repo.Example", "repo.example.", true},
+		{"repo.example:80", "repo.example", true},
+		{"repo.example", "repo.example:443", true},
+		{"repo.example:8080", "repo.example:8080", true},
+		{"repo.example:8080", "repo.example", false},
+		{"repo.example:8080", "repo.example:8443", false},
+		{"repo.example", "other.example", false},
+		{"[2001:db8::1]:80", "[2001:db8::1]", true},
+		{"[2001:db8::1]", "[2001:db8::2]", false},
+		{"", "", false},
+	} {
+		if got := sameHost(tc.a, tc.b); got != tc.want {
+			t.Errorf("sameHost(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
+	}
+}
+
 func TestMirrorHostSet(t *testing.T) {
 	hosts := mirrorHostSet([]distro.URLWithAlias{
 		{URL: "https://Mirrors.Example.org/ubuntu/"},

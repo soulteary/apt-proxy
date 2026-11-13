@@ -391,6 +391,8 @@ passthrough:
   其余白名单源站一律从源站本身获取，即使路径以发行版前缀开头，例如
   `packages.microsoft.com/ubuntu/...`。
 - 不在白名单里的主机仍只按路径路由：`http://<任意主机>/ubuntu/...` 由选中的 Ubuntu 镜像提供。
+  代理模式下客户端为这类主机发送的凭据不会转发给该镜像，详见
+  [私有仓库](private-repositories.md)。
 
 启动日志会打印生效的白名单（`passthrough enabled for third-party origins`），
 空列表或写错的条目因此是可见的，不会静默。

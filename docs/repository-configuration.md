@@ -418,6 +418,8 @@ host should not also expose whatever else listens on that machine.
   distribution's, such as `packages.microsoft.com/ubuntu/...`.
 - A host that is not allowlisted is still routed by path alone:
   `http://<any host>/ubuntu/...` is served from the selected Ubuntu mirror.
+  Credentials a proxy client sends for such a host are not forwarded to that
+  mirror; see [private repositories](private-repositories.md).
 
 Startup logs the allowlist (`passthrough enabled for third-party origins`), so
 an empty or mistyped list is visible rather than silent.

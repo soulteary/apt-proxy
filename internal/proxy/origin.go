@@ -16,6 +16,7 @@ package proxy
 
 import (
 	"net"
+	"net/http"
 	"strings"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
@@ -24,8 +25,9 @@ import (
 // A client that uses apt-proxy as its HTTP proxy names an origin in the
 // request line (GET http://host/path). Distribution routing ignores that host
 // on purpose: whichever mirror a client image points at, /ubuntu/... is served
-// from the mirror apt-proxy selected. An origin the operator allowlisted still
-// has to be fetched from that origin, and this file holds the check for it.
+// from the mirror apt-proxy selected. Two things still have to follow the
+// named origin, and this file holds the checks for them: an origin the
+// operator allowlisted, and the credentials a client sent for the origin.
 
 // splitHostname separates an authority into its host and port. The host is
 // lower-cased and loses IPv6 brackets and a trailing root dot.
@@ -42,6 +44,23 @@ func splitHostname(authority string) (host, port string) {
 func hostnameOf(authority string) string {
 	host, _ := splitHostname(authority)
 	return host
+}
+
+// sameHost reports whether two authorities name the same host. Ports have to
+// agree as well, except that the default ports of http and https are
+// interchangeable: a client speaks http to the proxy while the upstream hop
+// may be https.
+func sameHost(a, b string) bool {
+	hostA, portA := splitHostname(a)
+	hostB, portB := splitHostname(b)
+	if hostA == "" || hostA != hostB {
+		return false
+	}
+	return portA == portB || (defaultWebPort(portA) && defaultWebPort(portB))
+}
+
+func defaultWebPort(port string) bool {
+	return port == "" || port == "80" || port == "443"
 }
 
 // mirrorHostSet collects the hostnames of a distribution's listed mirrors.
@@ -89,4 +108,29 @@ func distributionHost(rt *routing, host, path string) bool {
 		}
 	}
 	return false
+}
+
+// withholdForeignCredentials removes the credentials a client sent for the
+// origin it named when routing selected a different host.
+//
+// namedOrigin is the authority of an absolute-form request line and is empty
+// for origin-form requests. Those address apt-proxy itself, so their
+// credentials are meant for the repository behind it and keep reaching the
+// configured upstream. Credentials sent with a named origin were issued for
+// that origin: a distribution rewrite replaces it with the selected mirror,
+// which must not receive them. The mirror's own configured credentials are
+// applied afterwards as usual.
+func (ap *PackageStruct) withholdForeignCredentials(r *http.Request, namedOrigin string) {
+	if namedOrigin == "" || r.URL == nil || sameHost(namedOrigin, r.URL.Host) {
+		return
+	}
+	if len(r.Header.Values("Authorization")) == 0 && len(r.Header.Values("Cookie")) == 0 {
+		return
+	}
+	r.Header.Del("Authorization")
+	r.Header.Del("Cookie")
+	ap.log.Warn().
+		Str("named_origin", namedOrigin).
+		Str("upstream", r.URL.Host).
+		Msg("client credentials for the named origin were not forwarded to a different upstream host")
 }

@@ -479,6 +479,9 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	// Routing rewrites the URL and headers in place. Work on a copy so the
 	// caller's request, which the access log reads afterwards, stays as sent.
 	r = r.Clone(spanCtx)
+	// An absolute-form request line names the origin the client wants. An
+	// origin-form request addresses apt-proxy itself and leaves this empty.
+	namedOrigin := r.URL.Host
 	normalizeRepositoryCredentials(r)
 	if ap.metalink != nil && ap.metalink.Handle(rw, r, ap.Handler) {
 		return
@@ -503,6 +506,7 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 	rule := ap.handleExternalURLs(r)
 	if rule != nil {
+		ap.withholdForeignCredentials(r, namedOrigin)
 		if name := distro.DistributionName(rule.OS); name != "" {
 			tracing.SetSpanAttributes(span, map[string]string{
 				"proxy.distribution": name,
