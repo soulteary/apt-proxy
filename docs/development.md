@@ -66,7 +66,7 @@ cd apt-proxy
 go build -o apt-proxy ./cmd/apt-proxy
 ```
 
-Use Go **1.27.3**, matching `go.mod` and CI, plus Python 3 and Docker for the
+Use Go **1.27.4**, matching `go.mod` and CI, plus Python 3 and Docker for the
 real-client test suite.
 
 When developing alongside [vfs-kit](https://github.com/soulteary/vfs-kit) or [httpcache-kit](https://github.com/soulteary/httpcache-kit), `go.mod` may use `replace` directives (e.g. `../kits/httpcache-kit`); remove them when using published versions.
