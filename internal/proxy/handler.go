@@ -52,57 +52,6 @@ const (
 	DefaultMaxIdleConns          = 100
 )
 
-func detachRequest(ctx context.Context, r *http.Request) *http.Request {
-	detached := r.Clone(ctx)
-	detached.Method = strings.Clone(detached.Method)
-	detached.Host = strings.Clone(detached.Host)
-	detached.RemoteAddr = strings.Clone(detached.RemoteAddr)
-	detached.RequestURI = strings.Clone(detached.RequestURI)
-
-	if detached.URL != nil {
-		u := *detached.URL
-		u.Scheme = strings.Clone(u.Scheme)
-		u.Opaque = strings.Clone(u.Opaque)
-		u.Host = strings.Clone(u.Host)
-		u.Path = strings.Clone(u.Path)
-		u.RawPath = strings.Clone(u.RawPath)
-		u.RawQuery = strings.Clone(u.RawQuery)
-		u.Fragment = strings.Clone(u.Fragment)
-		u.RawFragment = strings.Clone(u.RawFragment)
-		if u.User != nil {
-			username := strings.Clone(u.User.Username())
-			if password, ok := u.User.Password(); ok {
-				u.User = url.UserPassword(username, strings.Clone(password))
-			} else {
-				u.User = url.User(username)
-			}
-		}
-		detached.URL = &u
-	}
-
-	detached.Header = detachHeader(detached.Header)
-	detached.Trailer = detachHeader(detached.Trailer)
-	for i := range detached.TransferEncoding {
-		detached.TransferEncoding[i] = strings.Clone(detached.TransferEncoding[i])
-	}
-	return detached
-}
-
-func detachHeader(header http.Header) http.Header {
-	if header == nil {
-		return nil
-	}
-	detached := make(http.Header, len(header))
-	for key, values := range header {
-		cloned := make([]string, len(values))
-		for i, value := range values {
-			cloned[i] = strings.Clone(value)
-		}
-		detached[strings.Clone(key)] = cloned
-	}
-	return detached
-}
-
 // hostPatternEntry pairs a compiled URL pattern with its rules and is used
 // instead of map[*regexp.Regexp][]Rule on the request hot path. A slice
 // preserves insertion order so the rule selected for a request is
@@ -455,9 +404,9 @@ func parseTLSRewriteMarker(r *http.Request) (origin, upstreamPath string, found 
 	escaped := r.URL.EscapedPath()
 	var rest string
 
-	// The authority lands in URL.Host for an absolute-form request, but Fiber's
-	// adaptor converts to a server request where it lives in Host and URL.Host
-	// is empty. Production traffic takes the latter path, so check both.
+	// An absolute-form request line (a client using apt-proxy as its HTTP
+	// proxy) puts the authority in URL.Host; an origin-form request only has
+	// the Host header. Check both.
 	for _, authority := range [2]string{r.URL.Host, r.Host} {
 		if authority == "" {
 			continue
@@ -524,11 +473,9 @@ func (ap *PackageStruct) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		"http.remote_addr": r.RemoteAddr,
 	})
 
-	// Fiber/fasthttp reuses its request buffers after ServeHTTP returns, while
-	// the cache may finish a write asynchronously and retain the request URL as
-	// part of its key. Clone here so background cache work never references
-	// memory that the adapter can reuse for the next request.
-	r = detachRequest(spanCtx, r)
+	// Routing rewrites the URL and headers in place. Work on a copy so the
+	// caller's request, which the access log reads afterwards, stays as sent.
+	r = r.Clone(spanCtx)
 	normalizeRepositoryCredentials(r)
 	if ap.metalink != nil && ap.metalink.Handle(rw, r, ap.Handler) {
 		return

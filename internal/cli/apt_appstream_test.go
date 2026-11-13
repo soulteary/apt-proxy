@@ -76,7 +76,7 @@ func TestProductionAppStreamFilesRewriteAndCache(t *testing.T) {
 				t.Cleanup(func() { _ = srv.shutdown() })
 				get := func(path string, status int, cacheState string) {
 					t.Helper()
-					resp, err := srv.app.Test(httptest.NewRequest(http.MethodGet, prefix+path, nil))
+					resp, err := srv.testRequest(httptest.NewRequest(http.MethodGet, prefix+path, nil))
 					if err != nil {
 						t.Fatal(err)
 					}

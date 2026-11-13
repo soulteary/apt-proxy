@@ -7,9 +7,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
@@ -54,7 +52,7 @@ func TestProductionRuntimeMirrorFailoverAndStatus(t *testing.T) {
 		if auth {
 			req.Header.Set("X-API-Key", "status-key")
 		}
-		res, err := srv.app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
+		res, err := srv.testRequest(req)
 		if err != nil {
 			t.Fatal(err)
 		}

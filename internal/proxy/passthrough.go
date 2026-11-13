@@ -111,9 +111,9 @@ func (ap *PackageStruct) matchPassthrough(r *http.Request) *distro.Rule {
 		return nil
 	}
 
-	// Fiber's adaptor hands us a server request: the authority is in Host and
-	// URL.Host is empty. The ReverseProxy needs an absolute URL, so fill it in
-	// from what the client addressed. The path is left exactly as sent.
+	// The reverse proxy needs an absolute URL. An origin-form request has an
+	// empty URL.Host, so fill it in from the authority the client addressed.
+	// The path is left exactly as sent.
 	scheme, host := "http", authority
 	if rule.ForceHTTPS {
 		scheme = "https"

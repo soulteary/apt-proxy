@@ -28,19 +28,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	health "github.com/soulteary/health-kit/v4"
-	healthfiber "github.com/soulteary/health-kit/v4/fiberadapter"
 	logger "github.com/soulteary/logger-kit/v3"
-	loggerfiber "github.com/soulteary/logger-kit/v3/fiberadapter"
 	metrics "github.com/soulteary/metrics-kit/v3"
-	middleware "github.com/soulteary/middleware-kit/v3"
-	mwfiber "github.com/soulteary/middleware-kit/v3/fiberadapter"
 	tracing "github.com/soulteary/tracing-kit/v2"
 	otlp "github.com/soulteary/tracing-kit/v2/otlp"
 	version "github.com/soulteary/version-kit/v4"
-	versionfiber "github.com/soulteary/version-kit/v4/fiberadapter"
 
 	"github.com/soulteary/apt-proxy/internal/access"
 	"github.com/soulteary/apt-proxy/internal/api"
@@ -75,7 +68,9 @@ type Server struct {
 	state               *state.AppState          // Per-server runtime state (proxy mode, mirror URLs)
 	registry            *distro.Registry         // Per-server distribution registry
 	proxy               *proxy.PackageStruct     // Main proxy router (Handler is cache-wrapped)
-	app                 *fiber.App               // Fiber application
+	handler             http.Handler             // Every route: operational endpoints, management API, repository proxy
+	httpServer          *http.Server             // Serves handler; listeners are attached in serve
+	stopRequests        context.CancelFunc       // Cancels the context every request inherits
 	log                 *logger.Logger           // Structured logger
 	healthAggregator    *health.Aggregator       // Health check aggregator
 	metricsRegistry     *metrics.Registry        // Prometheus metrics registry
@@ -324,7 +319,7 @@ func (s *Server) initialize() error {
 	}
 	s.proxy = ps
 
-	// Wrap proxy with cache (request logging is done by logger-kit FiberMiddleware)
+	// Wrap proxy with cache (request logging is done by the access-log middleware)
 	cacheOptions := &httpcache.HandlerOptions{Logger: s.log, StagingBudget: s.resources, TempDir: s.downloadTempDir()}
 	if identity != nil {
 		cacheOptions.RequestKey = identity.RequestKey
@@ -371,8 +366,8 @@ func (s *Server) initialize() error {
 		s.config.Security.TrustedProxies...,
 	)
 
-	// Create Fiber app with all routes
-	s.app = s.createFiberApp()
+	s.handler = s.newHandler()
+	s.httpServer = s.newHTTPServer()
 
 	return nil
 }
@@ -470,165 +465,6 @@ func (s *Server) buildCacheConfig() *httpcache.CacheConfig {
 	return cacheConfig
 }
 
-// Default Fiber server timeouts and buffer sizes.
-const (
-	defaultReadTimeout = 50 * time.Second
-	// Package downloads may legitimately take hours on slow links. A whole-
-	// response write deadline terminates healthy streaming transfers, so rely
-	// on the idle timeout and request cancellation instead.
-	defaultWriteTimeout = 0
-	defaultIdleTimeout  = 120 * time.Second
-	defaultReadBufSize  = 4096 * 4 // 16KB, align with former ReadHeaderTimeout behavior
-)
-
-// cacheLabelFromHeader normalizes X-Cache header to HIT/MISS/SKIP for logging.
-func cacheLabelFromHeader(h string) string {
-	h = strings.TrimSpace(h)
-	if h == "" {
-		return "SKIP"
-	}
-	if strings.HasPrefix(h, "HIT") {
-		return "HIT"
-	}
-	if strings.HasPrefix(h, "MISS") {
-		return "MISS"
-	}
-	return h
-}
-
-// createFiberApp creates the Fiber application with all routes and middleware.
-func (s *Server) createFiberApp() *fiber.App {
-	app := fiber.New(fiber.Config{
-		ReadTimeout:    defaultReadTimeout,
-		WriteTimeout:   defaultWriteTimeout,
-		IdleTimeout:    defaultIdleTimeout,
-		ReadBufferSize: defaultReadBufSize,
-	})
-	// Repository work may outlive its Fiber handler while publishing a cache
-	// object. Cancel its stable context before draining active connections.
-	repositoryLifecycle, cancelRepositories := context.WithCancel(context.Background())
-	app.Hooks().OnPreShutdown(func() error {
-		cancelRepositories()
-		return nil
-	})
-
-	// Version headers for all responses
-	app.Use(versionfiber.Middleware(s.versionInfo, "X-"))
-	// Security headers
-	app.Use(mwfiber.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
-
-	// Request logging: logger-kit fiberadapter middleware, unified with request_id and cache/size for proxy.
-	// The fiber.Ctx-typed hooks live on loggerfiber.Config since logger-kit v3
-	// dropped them from the root MiddlewareConfig.
-	logCfg := logger.DefaultMiddlewareConfig()
-	logCfg.Logger = s.log
-	logCfg.SkipPaths = []string{"/healthz", "/livez", "/readyz"} // skip health noise
-	// Repository authentication can use custom query names. Add a uniformly
-	// redacted query field below instead of the logger's fixed secret-name list.
-	logCfg.IncludeQuery = false
-	if s.config.Debug {
-		logCfg.IncludeHeaders = true
-		logCfg.IncludeBody = true
-	}
-	app.Use(loggerfiber.Middleware(loggerfiber.Config{
-		MiddlewareConfig: logCfg,
-		CustomFields: func(c fiber.Ctx) map[string]interface{} {
-			// Use Content-Length header when available so we don't pull the
-			// (potentially streamed) body into memory just to record its size.
-			size := c.Response().Header.ContentLength()
-			if size <= 0 {
-				size = len(c.Response().Body())
-			}
-			fields := map[string]interface{}{
-				"cache": cacheLabelFromHeader(string(c.Response().Header.Peek("X-Cache"))),
-				"size":  size,
-			}
-			if query := string(c.Request().URI().QueryString()); query != "" {
-				fields["query"] = logsafe.Query(query)
-			}
-			return fields
-		},
-	}))
-
-	// Health check endpoints (Fiber native)
-	// We deliberately use a local handler instead of healthfiber.Handler /
-	// healthfiber.ReadinessHandler: the upstream helpers feed the fasthttp
-	// *RequestCtx into context.WithTimeout, which spawns a propagateCancel
-	// goroutine that races with fiber/fasthttp's ShutdownWithContext during
-	// graceful shutdown (see internal/cli/health.go). Liveness has no
-	// aggregator and is safe to use as-is.
-	app.Get("/healthz", fiberHealthHandler(s.healthAggregator))
-	app.Get("/livez", healthfiber.LivenessHandler("apt-proxy"))
-	app.Get("/readyz", fiberHealthHandler(s.healthAggregator))
-
-	// Version endpoint (Fiber native)
-	app.Get("/version", versionfiber.Handler(version.HandlerConfig{
-		Info:   s.versionInfo,
-		Pretty: true,
-	}))
-
-	// Metrics (wrap net/http handler via adaptor)
-	app.Get("/metrics", adaptor.HTTPHandler(metrics.HandlerFor(s.metricsRegistry)))
-
-	// Cache & mirrors API (rate limit then auth). Read-only statistics may be
-	// exposed without a key for compatibility, but mutating management routes
-	// fail closed unless authentication is configured.
-	apiHandler := func(h http.HandlerFunc) http.Handler {
-		return s.rateLimitMiddleware.Wrap(s.authMiddleware.WrapFunc(h))
-	}
-	mutatingAPIHandler := func(h http.HandlerFunc) http.Handler {
-		if !s.authMiddleware.IsEnabled() {
-			return s.rateLimitMiddleware.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				api.WriteAppError(w, apperrors.New(
-					apperrors.ErrAuthInsufficient,
-					"management API is disabled until API authentication is configured",
-				).WithHTTPStatus(http.StatusServiceUnavailable))
-			}))
-		}
-		return apiHandler(h)
-	}
-	app.All("/api/cache/stats", adaptor.HTTPHandler(apiHandler(s.cacheHandler.HandleCacheStats)))
-	app.All("/api/cache/purge", adaptor.HTTPHandler(mutatingAPIHandler(s.cacheHandler.HandleCachePurge)))
-	app.All("/api/cache/cleanup", adaptor.HTTPHandler(mutatingAPIHandler(s.cacheHandler.HandleCacheCleanup)))
-	app.All("/api/mirrors/refresh", adaptor.HTTPHandler(mutatingAPIHandler(s.mirrorsHandler.HandleMirrorsRefresh)))
-	app.All("/api/mirrors/status", adaptor.HTTPHandler(apiHandler(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.Header().Set("Allow", "GET")
-			api.WriteAppError(w, apperrors.New(apperrors.ErrMethodNotAllowed, "Method not allowed"))
-			return
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		if err := api.WriteJSON(w, http.StatusOK, s.proxy.MirrorHealthStatus()); err != nil {
-			s.log.Error().Err(err).Msg("failed to write mirror health status")
-		}
-	})))
-
-	// Ping (/_/ping and /_/ping/ and /_/ping/...)
-	pingHandler := func(c fiber.Ctx) error {
-		c.Set("Content-Type", "text/plain; charset=utf-8")
-		return c.SendString("pong")
-	}
-	app.All("/_/ping", pingHandler)
-	app.All("/_/ping/*", pingHandler)
-
-	// Root "/" -> home page (Fiber native)
-	app.Get("/", func(c fiber.Ctx) error {
-		tpl, status := proxy.RenderInternalUrls("/", s.config.CacheDir)
-		c.Set("Content-Type", "text/html; charset=utf-8")
-		c.Status(status)
-		return c.SendString(tpl)
-	})
-	// Static assets (must be registered before the catch-all proxy below).
-	app.Get("/static/apt-proxy-logo.png", adaptor.HTTPHandler(http.HandlerFunc(proxy.ServeStaticLogo)))
-	// All other paths -> proxy + cache
-	// Route through PackageStruct rather than its cached upstream directly:
-	// ServeHTTP performs distro matching and mirror URL rewriting before it
-	// delegates to the cache/reverse-proxy chain.
-	app.All("/*", repositoryHTTPHandler(repositoryLifecycle, s.downloadClients.Wrap(s.proxy)))
-
-	return app
-}
-
 // Start begins serving HTTP requests and handles graceful shutdown on SIGINT or SIGTERM.
 // It also handles SIGHUP for configuration hot reload.
 // The server runs in a goroutine while the main goroutine waits for shutdown signals.
@@ -656,32 +492,33 @@ func (s *Server) Start() error {
 	return s.serve(ctx, sighupChan)
 }
 
-// serve runs the listener and reload loop using caller-owned cancellation and
-// reload events. Start adapts process signals to these per-server inputs.
+// serve binds the configured address and runs until ctx is cancelled. Start
+// adapts process signals to these per-server inputs.
 func (s *Server) serve(ctx context.Context, sighupChan <-chan os.Signal) error {
-	// Start Fiber in goroutine
+	listener, err := net.Listen("tcp", s.config.Listen)
+	if err != nil {
+		return wrapErr(apperrors.ErrInternal, "server error", err)
+	}
+	return s.serveListener(ctx, listener, sighupChan)
+}
+
+// serveListener runs the server and the reload loop on a bound listener using
+// caller-owned cancellation and reload events.
+func (s *Server) serveListener(ctx context.Context, listener net.Listener, sighupChan <-chan os.Signal) error {
+	if s.config.TLS.Enabled {
+		s.log.Info().
+			Str("cert", s.config.TLS.CertFile).
+			Str("key", s.config.TLS.KeyFile).
+			Msg("starting HTTPS server with TLS")
+	}
 	serverErr := make(chan error, 1)
 	go func() {
-		var err error
-		if s.config.TLS.Enabled {
-			s.log.Info().
-				Str("cert", s.config.TLS.CertFile).
-				Str("key", s.config.TLS.KeyFile).
-				Msg("starting HTTPS server with TLS")
-			err = s.app.Listen(s.config.Listen, fiber.ListenConfig{
-				DisableStartupMessage: true,
-				CertFile:              s.config.TLS.CertFile,
-				CertKeyFile:           s.config.TLS.KeyFile,
-			})
-		} else {
-			err = s.app.Listen(s.config.Listen, fiber.ListenConfig{DisableStartupMessage: true})
-		}
-		if err != nil {
+		if err := s.listen(listener); err != nil {
 			serverErr <- err
 		}
 	}()
 
-	s.log.Info().Msg("server started successfully")
+	s.log.Info().Str("address", listener.Addr().String()).Msg("server started successfully")
 	s.log.Info().Msg("send SIGHUP to reload mirror configurations")
 
 	// Run reload work asynchronously and debounce bursts (e.g. systemd
@@ -821,18 +658,25 @@ func (s *Server) reload() {
 }
 
 // shutdown performs a graceful server shutdown with a 5-second timeout.
-// It allows in-flight requests to complete before closing the proxy.
-// All cleanup steps run unconditionally so a Fiber-shutdown failure does
-// not leak the cache file lock or skip the tracing flush.
+// Requests still running when it begins are cancelled; the drain then waits
+// for their handlers to return before the proxy is closed.
+// All cleanup steps run unconditionally so a failed drain does not leak the
+// cache file lock or skip the tracing flush.
 func (s *Server) shutdown() error {
 	s.log.Info().Msg("shutting down proxy...")
 
 	var errs []error
 
-	if err := s.app.ShutdownWithTimeout(5 * time.Second); err != nil {
+	s.stopRequests()
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+		// Connections that did not drain in time are closed so their handlers
+		// cannot outlive the cache they use.
+		_ = s.httpServer.Close()
 		s.log.Warn().Err(err).Msg("failed to shutdown server gracefully")
 		errs = append(errs, wrapErr(apperrors.ErrInternal, "failed to shutdown server gracefully", err))
 	}
+	cancelShutdown()
 
 	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 5*time.Second)
 	if s.cacheProxy != nil {

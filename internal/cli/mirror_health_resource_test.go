@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/mirrorhealth"
@@ -72,7 +71,7 @@ func TestProductionFailoverSharesAdmissionAndVerifiesCandidateCache(t *testing.T
 		err                     error
 	}
 	get := func(path string) result {
-		res, err := srv.app.Test(httptest.NewRequest("GET", path, nil), fiber.TestConfig{Timeout: 5 * time.Second})
+		res, err := srv.testRequest(httptest.NewRequest("GET", path, nil))
 		if err != nil {
 			return result{err: err}
 		}

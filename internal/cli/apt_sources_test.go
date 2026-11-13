@@ -78,7 +78,7 @@ func TestProductionSourceArtifactsRewriteAndCache(t *testing.T) {
 				t.Cleanup(func() { _ = srv.shutdown() })
 				request := func(path string, status int, cacheState string) {
 					t.Helper()
-					resp, err := srv.app.Test(httptest.NewRequest("GET", distribution.prefix+path, nil))
+					resp, err := srv.testRequest(httptest.NewRequest("GET", distribution.prefix+path, nil))
 					if err != nil {
 						t.Fatal(err)
 					}
