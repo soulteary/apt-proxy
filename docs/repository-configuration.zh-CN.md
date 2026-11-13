@@ -147,8 +147,8 @@ PBS Client 和 Ceph Squid 条目，需要手动加入有效发行版列表才会
 
 配置必须是单个 YAML 文档，并使用已定义的字段名。未知字段会报出行号和字段名，
 例如应写 `cache_control`，而非 `cache-control`。空文件仍然有效；支持在已定义字段
-内部使用 YAML 锚点与合并，不支持额外的顶层锚点辅助字段。这项校验仅针对
-`distributions.yaml`，不改变服务器主配置的加载方式。
+内部使用 YAML 锚点与合并，不支持额外的顶层锚点辅助字段。服务器主配置
+（`apt-proxy.yaml`）采用同样严格的解析，详见[配置参考](configuration-reference.zh-CN.md#yaml-配置文件)。
 
 **示例 `config/distributions.yaml`：**
 
