@@ -208,7 +208,8 @@ security:
 ```
 
 启动 `./apt-proxy --config=apt-proxy.yaml` 前，请将 `APT_PROXY_API_KEY` 设为自己的非空密钥，
-并确保缓存目录可写。未设置的 `${VAR}` 引用会保留为字面值，加载器不会自动生成密钥。
+并确保缓存目录可写。`${VAR}` 引用的变量未设置时，启动会失败并报出变量名（可选值请写成
+`${VAR:-default}`）；加载器不会自动生成密钥。未知的 YAML 字段同样会被拒绝。
 
 - [CLI 参数、环境变量映射、YAML 字段与配置文件发现](docs/configuration-reference.zh-CN.md)。
 - [发行版 YAML、域名与路径匹配、镜像别名和自定义类型](docs/repository-configuration.zh-CN.md)。

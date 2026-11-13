@@ -627,6 +627,7 @@ func TestMergeConfigs_StorageFields(t *testing.T) {
 }
 
 func TestYamlConfigToConfig_StorageS3(t *testing.T) {
+	useSSL := true
 	yamlCfg := &YAMLConfig{}
 	yamlCfg.Storage.Backend = StorageBackendS3
 	yamlCfg.Storage.S3.Endpoint = "minio:9000"
@@ -635,7 +636,7 @@ func TestYamlConfigToConfig_StorageS3(t *testing.T) {
 	yamlCfg.Storage.S3.Prefix = "cache/"
 	yamlCfg.Storage.S3.AccessKey = "ak"
 	yamlCfg.Storage.S3.SecretKey = "sk"
-	yamlCfg.Storage.S3.UseSSL = true
+	yamlCfg.Storage.S3.UseSSL = &useSSL
 	yamlCfg.Storage.S3.UsePathStyle = true
 	yamlCfg.Storage.S3.InlineMaxMB = 8
 

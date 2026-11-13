@@ -157,7 +157,8 @@ Use a single YAML document and the documented field names. Unknown fields,
 including `cache-control` instead of `cache_control`, are rejected with a line
 number and field name. Empty files remain valid. Anchors and merges within
 recognized fields are supported; extra top-level anchor-helper keys are not.
-This validation applies to `distributions.yaml`, not the main server config.
+The main server config (`apt-proxy.yaml`) is parsed with the same strictness; see
+the [configuration reference](configuration-reference.md#yaml-configuration-file).
 
 **Example `config/distributions.yaml`:**
 

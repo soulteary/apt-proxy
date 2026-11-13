@@ -11,7 +11,9 @@
 # read+write access to the bucket. The bucket itself must already exist.
 #
 # This file uses ${VAR} style substitution: secrets stay out of YAML and live
-# in environment variables / your secret manager of choice.
+# in environment variables / your secret manager of choice. apt-proxy refuses
+# to start while APT_PROXY_S3_ACCESS_KEY or APT_PROXY_S3_SECRET_KEY is unset;
+# the references written with ":-" fall back to the value after it.
 
 server:
   host: "0.0.0.0"

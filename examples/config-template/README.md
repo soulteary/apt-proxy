@@ -22,9 +22,14 @@ APT_PROXY_CONFIG_FILE=/path/to/apt-proxy.yaml apt-proxy
 ```
 
 Before using this template, set `APT_PROXY_API_KEY` to your own nonempty key
-or replace `security.api_key`. Unset `${VAR}` references are preserved literally
-by the loader; they are not generated secrets. The template enables API
-authentication explicitly.
+or replace `security.api_key`. While a referenced `${VAR}` is unset, apt-proxy
+refuses to start and names the variable; the loader neither uses the literal
+text nor generates a secret. Write `${VAR:-default}` to give a reference a
+fallback. The template enables API authentication explicitly.
+
+The file is parsed strictly: it must be a single YAML document, and a key that
+apt-proxy does not know, such as a misspelled one, stops startup with its line
+number instead of being ignored.
 
 ## Configuration priority
 

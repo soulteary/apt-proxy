@@ -242,13 +242,18 @@ upstream_keep_alive: true
 distributions_config: ./config/distributions.yaml
 ```
 
-**YAML 中的环境变量展开：** 仅识别 `${VAR}` 与 `${VAR:-default}` 两种形式；裸 `$VAR` **不会**被展开。未定义的 `${VAR}` 会**保持原样**（而不是替换为空），便于及时发现拼写错误。
+**YAML 中的环境变量展开：** 仅识别 `${VAR}` 与 `${VAR:-default}` 两种形式；裸 `$VAR` **不会**被展开。`${VAR}` 引用的变量未设置时，启动会失败并在错误信息中列出变量名，其字面文本不会被当作配置值。变量可选时请写成 `${VAR:-default}`，需要空值时写成 `${VAR:-}`。只出现在 YAML 注释里的引用不受影响。
+
+**严格解析：** 配置文件必须是单个 YAML 文档，并使用文档列出的字段名。未知字段（例如把 `download_allow_cidrs` 写成 `download_allow_cidr`）会报出行号和字段名并终止启动，而不是被忽略。空文件仍然有效，表示全部使用默认值。支持在已定义字段内部使用 YAML 锚点与合并，不支持额外的顶层锚点辅助字段。
 
 **说明：** 缓存识别上述人类可读字段（`dir`、`max_size_gb`、`ttl_hours`、`cleanup_interval_min`、`integrity`）；原始字节 / Duration 字段（`max_size`、`ttl`、`cleanup_interval`）属于内部表示，不会从 YAML 读入。
 
 缓存大小、TTL 与清理间隔这三个 YAML 字段省略或非正值时，保留普通默认值
 （10 GiB、168 小时、60 分钟）；通过 CLI 或环境变量显式设置 `0` 才会关闭对应后端控制。
 这与仅支持 YAML 的 `download` / `resources` 限制不同，后者的 `0` 始终选择有界默认值。
+
+省略 `security.api_rate_limit_per_minute` 与 `storage.s3.use_ssl` 时，沿用对应 CLI 参数的默认值
+（`60` 与 `true`）；在 YAML 中显式写 `0` 或 `false` 会生效。
 
 **配置文件搜索路径（按顺序）：**
 1. 通过 `-config` 参数或 `APT_PROXY_CONFIG_FILE` 环境变量指定的路径

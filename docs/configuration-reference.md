@@ -243,7 +243,9 @@ upstream_keep_alive: true
 distributions_config: ./config/distributions.yaml
 ```
 
-**Environment variable expansion in YAML:** values support `${VAR}` and `${VAR:-default}` forms. Bare `$VAR` is **not** expanded. An undefined `${VAR}` is left as-is (instead of becoming empty) so that typos surface loudly.
+**Environment variable expansion in YAML:** values support `${VAR}` and `${VAR:-default}` forms. Bare `$VAR` is **not** expanded. A `${VAR}` whose variable is unset stops startup with an error that names the variable; its literal text is never used as the value. Write `${VAR:-default}`, or `${VAR:-}` for an empty value, when the variable is optional. References that appear only in YAML comments are ignored.
+
+**Strict parsing:** the file must be a single YAML document that uses the documented field names. Unknown fields, such as `download_allow_cidr` instead of `download_allow_cidrs`, are rejected with a line number and field name rather than ignored. An empty file is valid and selects the defaults. Anchors and merges within recognized fields are supported; extra top-level anchor-helper keys are not.
 
 **Note:** the cache section uses the human-friendly fields shown above (`dir`, `max_size_gb`, `ttl_hours`, `cleanup_interval_min`, `integrity`); the raw byte/duration fields (`max_size`, `ttl`, `cleanup_interval`) are internal representations and are **not** read from YAML.
 
@@ -252,6 +254,10 @@ retain the normal defaults (10 GiB, 168 hours and 60 minutes). Explicit CLI or
 environment values of `0` disable the corresponding backend control. This
 differs from the YAML-only `download`/`resources` limits, where `0` always selects
 a bounded default.
+
+Omitted `security.api_rate_limit_per_minute` and `storage.s3.use_ssl` keep the
+defaults of their flags (`60` and `true`); an explicit `0` or `false` in YAML is
+honored.
 
 **Config file search paths (in order):**
 1. Path specified via `-config` flag or `APT_PROXY_CONFIG_FILE` environment variable

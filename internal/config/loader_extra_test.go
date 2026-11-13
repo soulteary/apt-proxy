@@ -278,3 +278,72 @@ func TestModeToIntUnknown(t *testing.T) {
 		t.Errorf("ModeToInt(unknown) = %d, want TypeAllDistros (%d)", got, distro.TypeAllDistros)
 	}
 }
+
+// parseWithConfigFile resolves a temporary apt-proxy.yaml holding body
+// together with args through ParseFlagsWithConfigFile.
+func parseWithConfigFile(t *testing.T, body string, args ...string) (*Config, error) {
+	t.Helper()
+	var (
+		cfg *Config
+		err error
+	)
+	withArgs(t, append([]string{"apt-proxy", "--config=" + writeConfigFile(t, body)}, args...), func() {
+		cfg, err = ParseFlagsWithConfigFile()
+	})
+	return cfg, err
+}
+
+// TestConfigFileKeepsNonZeroDefaults covers the two settings whose default is
+// not the zero value: an omitted YAML key keeps the default, an explicit YAML
+// 0/false is honored, and flags and environment variables still win.
+func TestConfigFileKeepsNonZeroDefaults(t *testing.T) {
+	const disabled = "security:\n  api_rate_limit_per_minute: 0\nstorage:\n  s3:\n    use_ssl: false\n"
+	for _, tc := range []struct {
+		name          string
+		yaml          string
+		args          []string
+		env           map[string]string
+		wantRateLimit int
+		wantUseSSL    bool
+	}{
+		{name: "empty file", wantRateLimit: DefaultAPIRateLimitPerMinute, wantUseSSL: true},
+		{
+			name:          "sections without the keys",
+			yaml:          "security:\n  api_key: file-key\nstorage:\n  backend: s3\n  s3:\n    endpoint: s3.example.com\n",
+			wantRateLimit: DefaultAPIRateLimitPerMinute,
+			wantUseSSL:    true,
+		},
+		{name: "explicit zero and false", yaml: disabled, wantRateLimit: 0, wantUseSSL: false},
+		{
+			name:          "flags override the file",
+			yaml:          disabled,
+			args:          []string{"--api-rate-limit=30", "--s3-use-ssl=true"},
+			wantRateLimit: 30,
+			wantUseSSL:    true,
+		},
+		{
+			name:          "environment overrides the file",
+			yaml:          "security:\n  api_rate_limit_per_minute: 30\nstorage:\n  s3:\n    use_ssl: true\n",
+			env:           map[string]string{EnvAPIRateLimitPerMinute: "0", EnvS3UseSSL: "false"},
+			wantRateLimit: 0,
+			wantUseSSL:    false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearConfigEnv(t)
+			for name, value := range tc.env {
+				t.Setenv(name, value)
+			}
+			cfg, err := parseWithConfigFile(t, tc.yaml, tc.args...)
+			if err != nil {
+				t.Fatalf("ParseFlagsWithConfigFile: %v", err)
+			}
+			if got := cfg.Security.APIRateLimitPerMinute; got != tc.wantRateLimit {
+				t.Errorf("APIRateLimitPerMinute = %d, want %d", got, tc.wantRateLimit)
+			}
+			if got := cfg.Storage.S3.UseSSL; got != tc.wantUseSSL {
+				t.Errorf("S3.UseSSL = %v, want %v", got, tc.wantUseSSL)
+			}
+		})
+	}
+}
