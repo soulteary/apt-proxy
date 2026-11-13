@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -51,7 +50,7 @@ func TestUnknownLengthDownloadTempFileCleanup(t *testing.T) {
 
 func TestAbortSafeHandlerContainsWorkerPanics(t *testing.T) {
 	previous := logger.Default()
-	var logs bytes.Buffer
+	var logs lockedBuffer
 	logger.SetDefault(logger.New(logger.Config{Level: logger.InfoLevel, Output: &logs, Format: logger.FormatJSON}))
 	t.Cleanup(func() { logger.SetDefault(previous) })
 
