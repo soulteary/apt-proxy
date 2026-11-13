@@ -227,13 +227,27 @@ func TestRepositoryHTTPRejectsUnsafeRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	deb := "/pool/main/h/hello/hello_1_amd64.deb"
 	for _, tc := range []struct {
 		method, path string
 		status       int
-	}{{"POST", "/pool/a", 405}, {"GET", "/pool/a?key=x", 400}, {"GET", "/../escape", 400}, {"GET", "/pool/%61", 400}} {
+	}{
+		{"POST", "/pool/a", 405}, {"GET", "/pool/a?key=x", 400}, {"GET", "/../escape", 400},
+		// The decoded path must be the exact manifest key.
+		{"GET", "/pool/%61", 404}, {"GET", deb, 200}, {"GET", "/pool/main/h/hello/%68ello_1_amd64%2Edeb", 200},
+		{"GET", "/pool/main/h/hello/hello_1_amd64.deB", 404}, {"GET", deb + "?key=x", 400}, {"GET", deb + "/", 400}, {"GET", "/" + deb, 400},
+		// Encoded dot segments and separators are not resolved onto an object.
+		{"GET", "/pool/main/h/hello/%2e%2e/hello/hello_1_amd64.deb", 400}, {"GET", "/pool/main/h/%2E%2E/h/hello/hello_1_amd64.deb", 400},
+		{"GET", "/pool/main/h/hello/%2e/hello_1_amd64.deb", 400}, {"GET", "/pool/main/h/hello%5chello_1_amd64.deb", 400},
+		{"GET", "/pool/main/h/hello%2fhello_1_amd64.deb", 400}, {"GET", "/pool%2Fmain%2Fh%2Fhello%2Fhello_1_amd64.deb", 400},
+		// Octets are decoded once; control bytes and delimiters never match.
+		{"GET", "/pool/main/h/hello/hello_1_amd64%252edeb", 400}, {"GET", deb + "%3f", 400}, {"GET", deb + "%23", 400},
+		{"GET", deb + "%00", 400}, {"GET", deb + "%0a", 400}, {"GET", deb + "%0D", 400}, {"GET", deb + "%09", 400}, {"GET", deb + "%20", 400},
+		{"GET", deb + "%01", 404}, {"GET", deb + "%7f", 404},
+	} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
-		if w.Code != tc.status {
+		if w.Code != tc.status || (tc.status == 200) != bytes.Equal(w.Body.Bytes(), f.files[deb[1:]]) {
 			t.Fatalf("%s: got %d", tc.path, w.Code)
 		}
 	}
@@ -337,6 +351,7 @@ func TestRepositoryIndexClosureFailures(t *testing.T) {
 		t.Fatalf("index object limit: %v", err)
 	}
 }
+
 func TestRepositoryRedirectAndSignatureFailures(t *testing.T) {
 	f := newFixture(t, false)
 	s := testStore(t, Limits{})

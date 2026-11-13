@@ -24,8 +24,10 @@ func (s *Store) Handler(ctx context.Context) (http.Handler, error) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		// Objects are matched by the decoded path: APT percent-encodes "+" and
+		// "~". An encoded slash stays path data and never becomes a separator.
 		p := strings.TrimPrefix(r.URL.Path, "/")
-		if r.URL.RawPath != "" || r.URL.RawQuery != "" || !safePath(p) {
+		if r.URL.RawQuery != "" || !safePath(p) || strings.Contains(strings.ToLower(r.URL.RawPath), "%2f") {
 			http.Error(w, "invalid repository path", http.StatusBadRequest)
 			return
 		}

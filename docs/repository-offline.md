@@ -30,6 +30,12 @@ Replace `127.0.0.1` with the reachable server address for a remote client. The
 server supports GET, HEAD, conditional requests and byte ranges. Unselected
 paths return 404. It never fetches from the upstream repository.
 
+Request paths are percent-decoded once and must then equal a snapshot path
+exactly. The `%2b` and `%7e` that APT sends for `+` and `~`, for example in
+`libstdc%2b%2b6_12.2.0-14%2bdeb12u1_amd64.deb`, name the same object as the
+literal characters. A query string, a dot segment, an encoded slash or another
+unsafe path character returns 400.
+
 ## What complete means
 
 The snapshot preserves the raw `InRelease` file, or `Release` plus
