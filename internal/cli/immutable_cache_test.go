@@ -23,14 +23,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-
 	"github.com/soulteary/apt-proxy/internal/config"
 	"github.com/soulteary/apt-proxy/internal/distro"
 )
 
-// The daemon wiring adds the Fiber bridge, staging budget and retrying
-// transport around the cases covered in internal/proxy.
+// The daemon wiring adds the staging budget, the retrying transport and
+// download admission around the cases covered in internal/proxy. Requests go
+// to the repository handler directly, so the test does not depend on the HTTP
+// server in front of it.
 func TestProductionImmutableArtifactCaching(t *testing.T) {
 	var failing atomic.Bool
 	var hits atomic.Int64
@@ -68,10 +68,9 @@ func TestProductionImmutableArtifactCaching(t *testing.T) {
 			req.Header.Set("Cache-Control", directive)
 		}
 		// The retrying transport spends its backoff on a failing origin.
-		resp, err := srv.app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second})
-		if err != nil {
-			t.Fatal(err)
-		}
+		rec := httptest.NewRecorder()
+		srv.proxy.ServeHTTP(rec, req)
+		resp := rec.Result()
 		got, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil || resp.StatusCode != http.StatusOK || string(got) != body || resp.Header.Get("X-Cache") != cacheState {
