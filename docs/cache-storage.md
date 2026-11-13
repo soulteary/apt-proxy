@@ -70,10 +70,16 @@ with bounded probes, cooldown and `GET /api/mirrors/status` observability.
 Unknown/divergent snapshots and private requests cannot switch automatically.
 Benchmark results
 are not persisted, so **a restart re-elects**, and so do `SIGHUP` and `POST
-/api/mirrors/refresh`. A mirror timing out during benchmarking is dropped from
-that run's candidates. If an election fails during refresh, the complete previous
-routing remains active and the refresh reports an error; new match patterns and
-cache rules take effect only after a successful retry.
+/api/mirrors/refresh`. An election probes every candidate. A mirror that times
+out, redirects, answers with anything but `200` or serves an HTML page is
+dropped from that run's candidates, and a mirror that answers over both HTTP and
+HTTPS is used over HTTPS. If a distribution's election fails during refresh,
+that distribution keeps its previous mirror, so its cache keys do not change,
+while its reloaded match patterns and cache rules take effect. The refresh
+reports an error, and the complete previous routing remains active, only when a
+distribution without a previous mirror (one the reload adds, for example)
+cannot elect one; the reloaded match patterns and cache rules then take effect
+only after a successful retry.
 
 By default, entries are not shared between mirrors because their contents may
 differ. An explicit [shared_cache mapping](../docs/shared-repository-cache.md) can
