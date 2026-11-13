@@ -15,12 +15,20 @@
 package proxy
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	httpcache "github.com/soulteary/httpcache-kit/v4"
+	logger "github.com/soulteary/logger-kit/v3"
+
+	"github.com/soulteary/apt-proxy/internal/distro"
+	"github.com/soulteary/apt-proxy/internal/storage"
 )
 
 const (
@@ -29,6 +37,41 @@ const (
 	mutableTestIndex      = "/ubuntu/dists/jammy/InRelease"
 	immutableTestModified = "Wed, 01 Jan 2020 00:00:00 GMT"
 )
+
+// failingOriginTestServer is downloadTestServer without the retry layer, whose
+// backoff would only delay tests that make the origin fail on purpose.
+func failingOriginTestServer(t *testing.T, upstream string) (*httptest.Server, httpcache.ExtendedCache) {
+	t.Helper()
+	st := newTestState()
+	st.SetMirror(distro.TypeUbuntu, upstream+"/ubuntu/")
+	ps, err := NewPackageStruct(Options{
+		State: st, Registry: newTestRegistry(), Mode: distro.TypeUbuntu, Logger: logger.Default(),
+		TransportOverride: NewUpstreamTransport(false),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := httpcache.NewDiskCacheWithConfig(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached := httpcache.NewHandlerWithOptions(&storage.VerifiedCache{ExtendedCache: backend}, ps.Handler, &httpcache.HandlerOptions{Logger: logger.Default()})
+	cached.Shared = true
+	ps.Handler = cached
+	server := httptest.NewServer(ps)
+	t.Cleanup(func() {
+		server.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := cached.Shutdown(ctx); err != nil {
+			t.Error(err)
+		}
+		if err := backend.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return server, backend
+}
 
 func immutableTestGet(t *testing.T, server *httptest.Server, path string, header http.Header) (int, string, http.Header) {
 	t.Helper()
@@ -124,5 +167,108 @@ func TestImmutableCacheOnlyRequestStaysCacheOnly(t *testing.T) {
 	status, body, header := immutableTestGet(t, server, path, cacheOnly)
 	if status != http.StatusOK || body != "index" || header.Get("X-Cache") != "HIT" || hits.Load() != 1 {
 		t.Fatalf("cache-only hit: status=%d body=%q cache=%s origin requests=%d", status, body, header.Get("X-Cache"), hits.Load())
+	}
+}
+
+func TestExpiredEntryDuringUpstreamFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		path      string
+		validator bool
+		served    bool
+	}{
+		{"immutable package", immutableTestPackage, true, true},
+		{"mutable index", mutableTestIndex, true, false},
+		// The cache refetches an entry without validators unconditionally.
+		{"immutable package without validators", immutableTestPackage, false, false},
+	} {
+		for _, unreachable := range []bool{false, true} {
+			failure, wantFailure := "status 503", http.StatusServiceUnavailable
+			if unreachable {
+				failure, wantFailure = "unreachable", http.StatusBadGateway
+			}
+			t.Run(tc.name+"/"+failure, func(t *testing.T) {
+				var failing atomic.Bool
+				var conditional, unconditional atomic.Int64
+				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if failing.Load() {
+						if r.Header.Get("If-Modified-Since") != "" {
+							conditional.Add(1)
+						} else {
+							unconditional.Add(1)
+						}
+						http.Error(w, "mirror unavailable", http.StatusServiceUnavailable)
+						return
+					}
+					// Age beyond max-age: the entry is expired as soon as it is
+					// stored, without waiting or replacing the cache clock.
+					w.Header().Set("Cache-Control", "max-age=60")
+					w.Header().Set("Age", "3600")
+					if tc.validator {
+						w.Header().Set("Last-Modified", immutableTestModified)
+					}
+					_, _ = io.WriteString(w, "payload")
+				}))
+				defer upstream.Close()
+				server, cache := failingOriginTestServer(t, upstream.URL)
+				if status, body, _ := immutableTestGet(t, server, tc.path, nil); status != http.StatusOK || body != "payload" {
+					t.Fatalf("fill: status=%d body=%q", status, body)
+				}
+				waitForReviewCache(t, func() int { return cache.Stats().ItemCount })
+				failing.Store(true)
+				if unreachable {
+					upstream.Close()
+				}
+				wantConditional, wantUnconditional := int64(0), int64(0)
+				if !unreachable {
+					if tc.validator {
+						wantConditional = 1
+					} else {
+						wantUnconditional = 1
+					}
+				}
+				status, body, header := immutableTestGet(t, server, tc.path, nil)
+				if conditional.Load() != wantConditional || unconditional.Load() != wantUnconditional {
+					t.Fatalf("origin requests: conditional=%d unconditional=%d", conditional.Load(), unconditional.Load())
+				}
+				if !tc.served {
+					if status != wantFailure || body == "payload" {
+						t.Fatalf("upstream failure hidden: status=%d body=%q", status, body)
+					}
+					return
+				}
+				if status != http.StatusOK || body != "payload" || header.Get("X-Cache") != "HIT" {
+					t.Fatalf("expired entry not served: status=%d body=%q header=%v", status, body, header)
+				}
+				// The accepted 304 starts a new freshness lifetime for the entry.
+				status, body, header = immutableTestGet(t, server, tc.path, nil)
+				if status != http.StatusOK || body != "payload" || header.Get("X-Cache") != "HIT" || conditional.Load() != wantConditional {
+					t.Fatalf("freshened entry: status=%d body=%q cache=%s conditional=%d", status, body, header.Get("X-Cache"), conditional.Load())
+				}
+			})
+		}
+	}
+}
+
+// A client that revalidates its own copy of an immutable artifact is told it
+// is current. The same request for mutable metadata still fails.
+func TestClientRevalidationDuringUpstreamFailure(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "mirror unavailable", http.StatusServiceUnavailable)
+	}))
+	defer upstream.Close()
+	server, cache := failingOriginTestServer(t, upstream.URL)
+	conditional := http.Header{"If-Modified-Since": {immutableTestModified}}
+	if status, body, _ := immutableTestGet(t, server, immutableTestPackage, conditional); status != http.StatusNotModified || body != "" {
+		t.Errorf("immutable artifact: status=%d body=%q", status, body)
+	}
+	if status, _, _ := immutableTestGet(t, server, mutableTestIndex, conditional); status != http.StatusServiceUnavailable {
+		t.Errorf("mutable index: status=%d", status)
+	}
+	if status, _, _ := immutableTestGet(t, server, immutableTestPackage, nil); status != http.StatusServiceUnavailable {
+		t.Errorf("unconditional request: status=%d", status)
+	}
+	if cache.Stats().ItemCount != 0 {
+		t.Errorf("failed upstream responses stored: %d", cache.Stats().ItemCount)
 	}
 }
