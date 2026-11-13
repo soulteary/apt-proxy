@@ -25,9 +25,11 @@ digits and hyphens. Arbitrary archive downloads outside the pool, bare generic
 tarballs, appended executable suffixes, unsupported compression and arbitrary
 signature extensions are not enabled by this change.
 
-Matched source artifacts receive the same fallback `max-age=100000` policy as
-versioned binary packages, while `Sources` indexes retain their separate
-`max-age=3600` policy. Explicit upstream Cache-Control or Expires, including no-store,
+Matched source artifacts receive the same fallback `max-age=100000, immutable`
+policy as versioned binary packages (see
+[freshness and immutable artifacts](cache-storage.md#freshness-and-immutable-artifacts)),
+while `Sources` indexes retain their separate `max-age=3600` policy. Explicit
+upstream Cache-Control or Expires, including no-store,
 continues to take precedence. Existing private-request isolation, upstream
 connection controls, cache length checks and interrupted-download handling also
 apply to these paths. Cache migration is unnecessary.

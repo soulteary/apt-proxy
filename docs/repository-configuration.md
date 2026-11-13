@@ -171,7 +171,7 @@ distributions:
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
     cache_rules:
       - pattern: "deb$"
-        cache_control: "max-age=100000"
+        cache_control: "max-age=100000, immutable"
         rewrite: true
     mirrors:
       official:
@@ -206,7 +206,7 @@ returns `404` rather than falling through to another repository.
 - `host_pattern` — optional regex matched against the original request host, lower-cased and including any explicit port. An entry matching both host and `url_pattern` takes priority over generic path-only routes. If no distribution path matches, host-only fallback treats the entire request path as relative to the mirror root (for example `security.debian.org` or `apt.armbian.com`). Anchor it (`^...$`) to avoid matching lookalike hosts. This is a routing hint, not a host allowlist: path aliases still work with the proxy's host name. Omitting it inherits the built-in matcher for that distro type (Debian keeps `security.debian.org`); setting it replaces the built-in. Only the built-in Debian security host routes to the dedicated Debian Security mirror; a custom type `3` host resolves to that entry's own mirror.
 - `benchmark_url` — relative path probed during mirror benchmarking.
 - `geo_mirror_api` — optional URL returning a list of geo-located mirrors (Ubuntu-style `mirrors.txt`).
-- `cache_rules[]` — per-pattern cache directives. `cache_control` supplies a default response `Cache-Control` for matched paths when the upstream omits both `Cache-Control` and `Expires` (`200` uses the configured value; `404` uses `public, max-age=30`). Explicit upstream directives and expiration dates, including past or invalid `Expires` dates, shorter freshness lifetimes, `private`, and `no-store`, are preserved. Defaults are applied before cache storage; `rewrite: true` enables URL rewriting for that pattern.
+- `cache_rules[]` — per-pattern cache directives. `cache_control` supplies a default response `Cache-Control` for matched paths when the upstream omits both `Cache-Control` and `Expires` (`200` uses the configured value; `404` uses `public, max-age=30`). Explicit upstream directives and expiration dates, including past or invalid `Expires` dates, shorter freshness lifetimes, `private`, and `no-store`, are preserved. Defaults are applied before cache storage; `rewrite: true` enables URL rewriting for that pattern. A `cache_control` containing the `immutable` directive (for example `max-age=100000, immutable`) also declares that the matched URLs never change content: a zero `max-age` in the request is ignored and an expired entry survives an upstream failure. Use it only for versioned or content-addressed paths; see [freshness and immutable artifacts](cache-storage.md#freshness-and-immutable-artifacts).
 - `mirrors.official` / `mirrors.custom` — mirror host lists. Aliases of the form `cn:<name>` are auto-generated from each mirror's host (e.g. `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`).
 - `aliases` — explicit name-to-mirror mapping that overrides/augments the auto-generated aliases.
 
@@ -291,6 +291,7 @@ Notes that save a round of debugging:
 - Keep `type` stable across reloads — mirror election and rewriter state are keyed by it.
 - `benchmark_url` must be a small file that exists on every mirror in the list; it is fetched to rank them.
 - `cache_rules` are tried in order, first match wins, and **a path matching no rule is a `404`** — not a pass-through. `apt update` fetches package indexes (`Packages.xz`, `by-hash/...`) as well as `InRelease`, so end with a catch-all `".*"` unless you are deliberately serving only certain file types.
+- A custom distribution gets only the lifetimes written in its rules. To treat versioned packages or `by-hash` paths like the built-in Debian-family rules do, add `immutable` to that rule's `cache_control` (for example `max-age=100000, immutable`) and keep the rule ahead of the catch-all.
 - Run with `--mode=all` (the default). `--mode` only names the built-in distributions; a custom one is served whenever the mode is `all`.
 - Only requests matching `url_pattern` (or `host_pattern`) are proxied; everything else still returns `404`.
 - The file has to be somewhere apt-proxy looks: one of the search paths above, or named with `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG`. A file the server never loads is an entry that silently does nothing. The startup log names the file in effect and every distribution that registered (`distributions registered config=... distributions=[...]`), which is the quickest way to confirm yours did.
@@ -523,6 +524,18 @@ Direct DEP-11 component indexes, content-ID indexes and known icon archives
 now use the mirror and cache, including clients that fall back from by-hash URLs.
 Rules stay confined to `dists/<suite>/<component>/dep11/`; this does not allow
 arbitrary YAML/JSON files or tarballs. See [AppStream coverage](../docs/apt-appstream.md).
+
+### Immutable artifacts and upstream failures
+
+The built-in Ubuntu, Ubuntu Ports and Debian rules give versioned pool artifacts
+(`.deb`, `.udeb`, source artifacts) and `by-hash` paths the fallback policy
+`max-age=100000, immutable`. For these paths a zero `max-age` in the request is
+ignored, so APT's `by-hash` index requests are answered from the cache, and an
+expired cached entry is still served while the mirror fails. Mutable indexes
+such as `InRelease` keep `max-age=3600` and still need the mirror. Custom
+distributions opt in by adding `immutable` to a rule's `cache_control`. See
+[freshness and immutable artifacts](cache-storage.md#freshness-and-immutable-artifacts)
+for the conditions, the limits and the relation to the backend TTL.
 
 ### Temporary resources and cache integrity
 
