@@ -249,6 +249,62 @@ func TestUpstreamTLSPreservesAuthority(t *testing.T) {
 	}
 }
 
+// The daemon's transports carry no TLS settings, so they negotiate HTTP/2 with
+// an origin that supports it. The guarded copy inherits the TLS configuration
+// that offers h2 and has to answer in kind: the server below speaks HTTP/2 to
+// a client that offered it. A base that does not negotiate HTTP/2 keeps
+// HTTP/1.1 under the guard.
+func TestUpstreamGuardedTransportFollowsBaseProtocol(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, r.Proto)
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(server.Certificate())
+
+	for _, tc := range []struct {
+		name string
+		base *http.Transport
+		want string
+	}{
+		{"base negotiates HTTP/2", &http.Transport{}, "HTTP/2.0"},
+		{"base has HTTP/2 disabled", &http.Transport{TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}}, "HTTP/1.1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := mustPolicy(t, UpstreamConfig{Enabled: true, AllowedPorts: []int{port}, AllowCIDRs: []string{"127.0.0.1/32"}})
+			transport := p.Transport(tc.base)
+			// Trust the fixture certificate without giving the base a TLS
+			// configuration, which would change what it negotiates.
+			guarded := transport.(*upstreamTransport).base.(*http.Transport)
+			if guarded.TLSClientConfig == nil {
+				guarded.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+			}
+			guarded.TLSClientConfig.RootCAs = pool
+			defer guarded.CloseIdleConnections()
+
+			resp, err := transport.RoundTrip(mustRequest(t, server.URL+"/file"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil || resp.StatusCode != http.StatusOK || string(body) != tc.want {
+				t.Fatalf("status=%d served over %q err=%v, want %s", resp.StatusCode, body, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestUpstreamDNSDeadlineAndPolicySnapshot(t *testing.T) {
 	cfg := UpstreamConfig{Enabled: true, AllowedHosts: []string{"mirror.example"}, AllowedPorts: []int{443}, AllowCIDRs: []string{"10.42.0.0/16"}}
 	p := mustPolicy(t, cfg)

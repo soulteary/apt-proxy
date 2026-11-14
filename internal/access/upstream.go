@@ -320,5 +320,13 @@ func (p *Upstream) Transport(base *http.Transport) http.RoundTripper {
 	guarded.DialContext = p.DialContext
 	guarded.DialTLSContext = nil
 	guarded.DialTLS = nil //nolint:staticcheck // Clear legacy TLS hooks so they cannot bypass the guarded dialer.
+	// Clone sets base up for HTTP/2 when base negotiates it and copies the
+	// TLS configuration, which then offers h2 to servers. A transport with a
+	// dialer of its own does not enable HTTP/2 by itself: the copy would read
+	// the HTTP/2 frames of a server that accepted the offer as a malformed
+	// HTTP/1 response.
+	if _, negotiates := base.TLSNextProto["h2"]; negotiates {
+		guarded.ForceAttemptHTTP2 = true
+	}
 	return &upstreamTransport{policy: p, base: guarded}
 }
