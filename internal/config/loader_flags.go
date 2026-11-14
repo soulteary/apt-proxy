@@ -109,6 +109,9 @@ func defineFlags(flags *flag.FlagSet) {
 	// Configuration file (only honored by ParseFlagsWithConfigFile)
 	flags.String("config", "", "path to YAML configuration file")
 
+	// Passthrough: follow the redirects of allowlisted origins (default true)
+	flags.Bool("passthrough-follow-redirects", true, "follow redirects from passthrough origins, including to public hosts outside the allowlist")
+
 	// Upstream: keep-alive to mirrors (default true)
 	flags.Bool("upstream-keep-alive", true, "enable HTTP keep-alive to upstream mirrors")
 
@@ -146,7 +149,7 @@ var flagGroups = []struct {
 	},
 	{
 		title: "Mirrors",
-		flags: []string{"ubuntu", "ubuntu-ports", "debian", "debian-security", "centos", "alpine", "passthrough"},
+		flags: []string{"ubuntu", "ubuntu-ports", "debian", "debian-security", "centos", "alpine", "passthrough", "passthrough-follow-redirects"},
 	},
 	{
 		title: "TLS",
@@ -282,6 +285,7 @@ type cliExplicit struct {
 	APIRateLimitPerMinute bool
 	TrustedProxies        bool
 	Passthrough           bool
+	PassthroughRedirects  bool
 	UpstreamKeepAlive     bool
 	DistributionsConfig   bool
 
@@ -368,6 +372,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 		APIRateLimitPerMinute: flagOrEnvValueSet(flags, "api-rate-limit", EnvAPIRateLimitPerMinute),
 		TrustedProxies:        flagOrEnvSet(flags, "trusted-proxies", EnvTrustedProxies),
 		Passthrough:           flagOrEnvSet(flags, "passthrough", EnvPassthrough),
+		PassthroughRedirects:  flagOrEnvValueSet(flags, "passthrough-follow-redirects", EnvPassthroughFollowRedirects),
 		UpstreamKeepAlive:     flagOrEnvValueSet(flags, "upstream-keep-alive", EnvUpstreamKeepAlive),
 		DistributionsConfig:   flagOrEnvSet(flags, "distributions-config", EnvDistributionsConfig),
 
@@ -435,6 +440,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	trustedProxies := splitCommaList(trustedProxiesRaw)
 	passthrough := splitCommaList(
 		configutil.ResolveString(flags, "passthrough", EnvPassthrough, "", true))
+	passthroughFollowRedirects := configutil.ResolveBool(flags, "passthrough-follow-redirects", EnvPassthroughFollowRedirects, true)
 
 	// Resolve storage backend configuration
 	storageBackend := configutil.ResolveString(flags, "storage-backend", EnvStorageBackend, DefaultStorageBackend, true)
@@ -494,8 +500,9 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 				TempDir:      s3TempDir,
 			},
 		},
-		DistributionsConfigPath: distributionsConfig,
-		Passthrough:             passthrough,
+		DistributionsConfigPath:    distributionsConfig,
+		Passthrough:                passthrough,
+		PassthroughFollowRedirects: passthroughFollowRedirects,
 	}
 
 	// Set mode if specified

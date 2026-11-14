@@ -49,7 +49,7 @@ func clearConfigEnv(t *testing.T) {
 		EnvCacheMaxSize, EnvCacheTTL, EnvCacheCleanupInterval,
 		EnvDebug, EnvUbuntu, EnvUbuntuPorts, EnvDebian, EnvDebianSecurity,
 		EnvCentOS, EnvAlpine,
-		EnvTLSEnabled, EnvTLSCertFile, EnvTLSKeyFile, EnvPassthrough,
+		EnvTLSEnabled, EnvTLSCertFile, EnvTLSKeyFile, EnvPassthrough, EnvPassthroughFollowRedirects,
 		EnvAPIKey, EnvAPIRateLimitPerMinute, EnvEnableAPIAuth, EnvTrustedProxies,
 		EnvUpstreamKeepAlive, EnvDistributionsConfig,
 		EnvStorageBackend, EnvS3Endpoint, EnvS3Region, EnvS3Bucket, EnvS3Prefix,
@@ -407,6 +407,7 @@ type valueSettings struct {
 	EnableAPIAuth         bool
 	APIRateLimitPerMinute int
 	UpstreamKeepAlive     bool
+	FollowRedirects       bool
 	S3UseSSL              bool
 	S3UsePathStyle        bool
 	S3InlineMaxMB         int64
@@ -423,6 +424,7 @@ func valueSettingsOf(cfg *Config) valueSettings {
 		EnableAPIAuth:         cfg.Security.EnableAPIAuth,
 		APIRateLimitPerMinute: cfg.Security.APIRateLimitPerMinute,
 		UpstreamKeepAlive:     cfg.UpstreamKeepAlive,
+		FollowRedirects:       cfg.PassthroughFollowRedirects,
 		S3UseSSL:              cfg.Storage.S3.UseSSL,
 		S3UsePathStyle:        cfg.Storage.S3.UsePathStyle,
 		S3InlineMaxMB:         cfg.Storage.S3.InlineMaxMB,
@@ -438,6 +440,7 @@ func TestEmptyEnvironmentValueKeepsFileSetting(t *testing.T) {
 	// Every setting differs from its default.
 	const file = `mode: debian
 upstream_keep_alive: false
+passthrough_follow_redirects: false
 server:
   debug: true
 cache:
@@ -467,6 +470,7 @@ storage:
 		EnableAPIAuth:         true,
 		APIRateLimitPerMinute: 30,
 		UpstreamKeepAlive:     false,
+		FollowRedirects:       false,
 		S3UseSSL:              false,
 		S3UsePathStyle:        true,
 		S3InlineMaxMB:         3,
@@ -484,6 +488,8 @@ storage:
 		EnvS3UseSSL:              "true",
 		EnvS3UsePathStyle:        "false",
 		EnvS3InlineMaxMB:         "8",
+
+		EnvPassthroughFollowRedirects: "true",
 	}
 	fromEnvironment := valueSettings{
 		Mode:                  distro.TypeUbuntu,
@@ -495,6 +501,7 @@ storage:
 		EnableAPIAuth:         false,
 		APIRateLimitPerMinute: 0,
 		UpstreamKeepAlive:     true,
+		FollowRedirects:       true,
 		S3UseSSL:              true,
 		S3UsePathStyle:        false,
 		S3InlineMaxMB:         8,

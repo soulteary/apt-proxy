@@ -28,6 +28,7 @@ YAML also exposes policies without CLI flags; see the YAML section and the
 | `-alpine` | Alpine mirror URL or shortcut | (auto-select) |
 | `-distributions-config` | Path to distributions/mirrors YAML (distributions.yaml) | (optional) |
 | `-passthrough` | Comma-separated third-party origins to fetch and cache unrewritten | (empty) |
+| `-passthrough-follow-redirects` | Follow redirects from passthrough origins, including to public hosts outside the allowlist | `true` |
 | `-cache-max-size` | Maximum cache size in GB (0 to disable) | `10` |
 | `-cache-ttl` | Cache TTL in hours (0 to disable) | `168` (7 days) |
 | `-cache-cleanup-interval` | Cache cleanup interval in minutes (0 to disable) | `60` |
@@ -144,6 +145,7 @@ Every CLI flag has an equivalent environment variable. Plus a few extras for log
 | `APT_PROXY_CONFIG_FILE` | `-config` | Path to `apt-proxy.yaml` |
 | `APT_PROXY_DISTRIBUTIONS_CONFIG` | `-distributions-config` | Path to `distributions.yaml` |
 | `APT_PROXY_PASSTHROUGH` | `-passthrough` | Allowlisted third-party origins |
+| `APT_PROXY_PASSTHROUGH_FOLLOW_REDIRECTS` | `-passthrough-follow-redirects` | Follow redirects from passthrough origins |
 
 **Logging & Tracing** (no CLI equivalent)
 
@@ -238,6 +240,11 @@ upstream_access:
 
 # Upstream transport
 upstream_keep_alive: true
+
+# Third-party origins, and whether apt-proxy follows their redirects
+# passthrough:
+#   - https://pkgs.k8s.io
+passthrough_follow_redirects: true
 
 # Optional: external distributions/mirrors config (hot-reloadable)
 distributions_config: ./config/distributions.yaml

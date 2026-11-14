@@ -113,6 +113,15 @@ func NewUpstream(cfg *UpstreamConfig) (*Upstream, error) {
 	return p, nil
 }
 
+// PublicOnly returns a policy that names no hosts: it admits any host on
+// ports 80 and 443 whose addresses are all public. It is for destinations the
+// operator did not name, such as the target of a redirect.
+func PublicOnly() *Upstream {
+	// A configuration without entries has nothing that can fail validation.
+	p, _ := NewUpstream(&UpstreamConfig{Enabled: true})
+	return p
+}
+
 func (p *Upstream) authority(host, port string) error {
 	normalized, err := canonicalHost(host)
 	if err != nil {
