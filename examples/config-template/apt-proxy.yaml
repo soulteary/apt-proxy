@@ -119,6 +119,14 @@ storage:
 #   - https://download.docker.com
 #   - archive.internal.example:8080
 
+# An origin listed above may answer with a redirect to another host, as
+# pkgs.k8s.io does to its CDN. apt-proxy follows it and caches the file under
+# the URL the client asked for. The target does not have to be listed, but it
+# must resolve to public addresses. Set this to false to pass redirects to the
+# client and keep upstream fetches within the list.
+#
+# passthrough_follow_redirects: true
+
 # Mirror configuration
 # Use full URLs or shortcuts (e.g., cn:tsinghua, cn:ustc, cn:aliyun)
 mirrors:

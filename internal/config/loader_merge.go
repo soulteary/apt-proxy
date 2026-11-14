@@ -122,6 +122,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	if ex.Passthrough {
 		result.Passthrough = append([]string(nil), override.Passthrough...)
 	}
+	if ex.PassthroughRedirects {
+		result.PassthroughFollowRedirects = override.PassthroughFollowRedirects
+	}
 	if ex.DistributionsConfig && override.DistributionsConfigPath != "" {
 		result.DistributionsConfigPath = override.DistributionsConfigPath
 	}
@@ -290,6 +293,11 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 	if override.DistributionsConfigPath != "" {
 		result.DistributionsConfigPath = override.DistributionsConfigPath
+	}
+	// As with UpstreamKeepAlive below, only a true value can be taken from
+	// override here.
+	if override.PassthroughFollowRedirects {
+		result.PassthroughFollowRedirects = true
 	}
 	// UpstreamKeepAlive: override only when override is true (its non-zero
 	// value). The legacy non-explicit merge cannot tell "user wrote false"

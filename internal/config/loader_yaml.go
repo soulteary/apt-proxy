@@ -105,6 +105,8 @@ type YAMLConfig struct {
 	Mode                string   `yaml:"mode"`
 	DistributionsConfig string   `yaml:"distributions_config"`
 	Passthrough         []string `yaml:"passthrough"`
+	// Pointer keeps the default of true when the key is omitted.
+	PassthroughFollowRedirects *bool `yaml:"passthrough_follow_redirects"`
 
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors.
 	// Pointer to distinguish "user did not set" (nil → leave to defaults
@@ -311,6 +313,9 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 		DistributionsConfigPath: yamlCfg.DistributionsConfig,
 		Passthrough:             append([]string(nil), yamlCfg.Passthrough...),
 	}
+
+	// Redirects are followed unless the file says otherwise, as on the command line.
+	cfg.PassthroughFollowRedirects = yamlCfg.PassthroughFollowRedirects == nil || *yamlCfg.PassthroughFollowRedirects
 
 	// Apply UpstreamKeepAlive: default to true (matches CLI default) so the
 	// merged base does not silently flip a CLI default of true to YAML's

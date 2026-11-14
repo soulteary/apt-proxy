@@ -90,6 +90,14 @@ Acquire::https::Proxy::ppa.launchpad.net "DIRECT";
 
 apt-cacher-ng 风格的主机名前缀不受影响：发行版路径段前只有单独一段主机名时（`/ftp.uni-kl.de/debian/...`）依然正常路由。
 
+### 白名单源站的重定向到了客户端
+
+apt-proxy 会自己跟随白名单源站的重定向。无法跟随时，客户端会收到这个重定向，通常随之
+失败。日志里的 `redirect from an allowlisted origin was not followed and is passed to
+the client` 一行带有原因。常见原因是 apt-proxy 与外网之间有正向代理或 fake-IP DNS，
+目标地址无从校验。把目标主机加入 `passthrough` 即可解决这两种情况，详见
+[缓存第三方软件源](repository-configuration.zh-CN.md#缓存第三方软件源passthrough)。
+
 ### 调试模式
 
 启用调试日志来排查问题：
