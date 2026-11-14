@@ -57,6 +57,22 @@ failed to load distributions config; using built-in defaults  error="invalid dis
 如果 `config=` 里出现了你没有预期的文件，把它移走或删除，或者显式指定你真正
 想用的那一个。
 
+### 启动失败并提示 `invalid mode`
+
+`mode` 列出要提供的发行版，启动时会把每个取值与已注册的发行版逐一核对：
+
+```text
+invalid mode: unknown distribution "debain"; accepted values are "all" and the registered distribution IDs: alpine, centos, debian, ubuntu, ubuntu-ports
+```
+
+错误信息会列出实际存在的 ID。请先检查取值是否有拼写错误。如果它是 `distributions.yaml` 里的某个 `id`，而列表中只有内置 ID，
+说明该文件没有被加载：启动日志中的 `distributions registered` 一行会给出实际生效的文件，上一节说明了如何区分
+“没有找到文件”和“文件被拒绝”。
+
+更早的版本不会报告这类取值，而是改为提供所有发行版，因此 `mode` 拼写错误或写成逗号分隔列表的配置也能启动，
+行为等同于 `mode: all`。这类配置现在要么按写法生效（`mode: debian,ubuntu` 只提供这两个发行版），要么在启动时报出上述错误。
+`all` 与其他值同时出现同样会被拒绝。完整规则见[配置参考](configuration-reference.zh-CN.md#模式mode)。
+
 ### PPA 或厂商软件源返回 `404`
 
 apt-proxy 只代理已配置的发行版。路径里**碰巧含有**发行版路径段，并不代表它是该发行版的镜像 —— 那是另一个仓库，会返回 `404`：

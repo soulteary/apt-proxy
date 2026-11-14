@@ -16,36 +16,12 @@ package cli
 
 import (
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/cli-kit/testutil"
 )
-
-func TestModeToInt(t *testing.T) {
-	tests := []struct {
-		name     string
-		mode     string
-		expected int
-	}{
-		{"ubuntu", distro.DistroUbuntu, distro.TypeUbuntu},
-		{"ubuntu-ports", distro.DistroUbuntuPorts, distro.TypeUbuntuPorts},
-		{"debian", distro.DistroDebian, distro.TypeDebian},
-		{"centos", distro.DistroCentOS, distro.TypeCentOS},
-		{"alpine", distro.DistroAlpine, distro.TypeAlpine},
-		{"all", distro.DistroAll, distro.TypeAllDistros},
-		{"unknown defaults to all", "unknown", distro.TypeAllDistros},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := modeToInt(tt.mode)
-			if result != tt.expected {
-				t.Errorf("modeToInt(%q) = %d, want %d", tt.mode, result, tt.expected)
-			}
-		})
-	}
-}
 
 func TestParseFlagsWithEnvVars(t *testing.T) {
 	// Save original args and restore after test
@@ -76,8 +52,8 @@ func TestParseFlagsWithEnvVars(t *testing.T) {
 	if config.Listen != "127.0.0.1:8080" {
 		t.Errorf("Listen = %q, want %q", config.Listen, "127.0.0.1:8080")
 	}
-	if config.Mode != distro.TypeDebian {
-		t.Errorf("Mode = %d, want %d", config.Mode, distro.TypeDebian)
+	if !reflect.DeepEqual(config.Modes, []string{"debian"}) {
+		t.Errorf("Modes = %q, want [debian]", config.Modes)
 	}
 	if config.CacheDir != "/tmp/aptcache" {
 		t.Errorf("CacheDir = %q, want %q", config.CacheDir, "/tmp/aptcache")
@@ -116,8 +92,8 @@ func TestParseFlagsCLIPriority(t *testing.T) {
 	if config.Listen != "192.168.1.1:9090" {
 		t.Errorf("Listen = %q, want %q (CLI should override ENV)", config.Listen, "192.168.1.1:9090")
 	}
-	if config.Mode != distro.TypeUbuntu {
-		t.Errorf("Mode = %d, want %d (CLI should override ENV)", config.Mode, distro.TypeUbuntu)
+	if !reflect.DeepEqual(config.Modes, []string{"ubuntu"}) {
+		t.Errorf("Modes = %q, want [ubuntu] (CLI should override ENV)", config.Modes)
 	}
 }
 
@@ -149,8 +125,9 @@ func TestParseFlagsDefaults(t *testing.T) {
 	if config.Listen != "0.0.0.0:3142" {
 		t.Errorf("Listen = %q, want %q (default)", config.Listen, "0.0.0.0:3142")
 	}
-	if config.Mode != distro.TypeAllDistros {
-		t.Errorf("Mode = %d, want %d (default)", config.Mode, distro.TypeAllDistros)
+	// No mode at all is the default: every distribution.
+	if config.Mode != distro.TypeAllDistros || len(config.Modes) != 0 {
+		t.Errorf("Mode = %d, Modes = %q; want neither set (default)", config.Mode, config.Modes)
 	}
 	if config.CacheDir != DefaultCacheDir {
 		t.Errorf("CacheDir = %q, want %q (default)", config.CacheDir, DefaultCacheDir)
@@ -160,7 +137,11 @@ func TestParseFlagsDefaults(t *testing.T) {
 	}
 }
 
-func TestParseFlagsInvalidModeFallback(t *testing.T) {
+// A mode that names no built-in distribution is kept as written. It used to
+// be dropped in favour of the default, which served every distribution for a
+// misspelled name. Whether the value is an ID from distributions.yaml or a
+// typo is decided when the server starts; see TestServerRejectsUnknownMode.
+func TestParseFlagsKeepsUnknownMode(t *testing.T) {
 	// Save original args and restore after test
 	originalArgs := os.Args
 	defer func() { os.Args = originalArgs }()
@@ -168,25 +149,23 @@ func TestParseFlagsInvalidModeFallback(t *testing.T) {
 	// Use testutil to manage environment variables
 	envMgr := testutil.NewEnvManager()
 	defer envMgr.Cleanup()
+	os.Unsetenv(EnvMode)
 
-	// Set invalid mode via CLI
-	// Note: cli-kit's ResolveEnum uses graceful degradation - when CLI value is invalid,
-	// it falls back to ENV, then to default value. This is the expected behavior for
-	// robust configuration handling.
 	os.Args = []string{"apt-proxy", "-mode", "invalid-mode"}
 
 	config, err := ParseFlags()
 	if err != nil {
-		t.Fatalf("ParseFlags() error = %v (graceful degradation should not error)", err)
+		t.Fatalf("ParseFlags() error = %v", err)
 	}
-
-	// Invalid mode should fall back to default (all)
-	if config.Mode != distro.TypeAllDistros {
-		t.Errorf("Mode = %d, want %d (should fallback to default 'all')", config.Mode, distro.TypeAllDistros)
+	if !reflect.DeepEqual(config.Modes, []string{"invalid-mode"}) {
+		t.Errorf("Modes = %q, want the value as written", config.Modes)
 	}
 }
 
-func TestParseFlagsInvalidModeEnvFallback(t *testing.T) {
+// The flag takes precedence over the environment variable also when its value
+// is unknown. Falling back to the variable, as before, would start the proxy
+// with a mode the command line did not ask for.
+func TestParseFlagsUnknownModeFlagIsNotReplacedByEnv(t *testing.T) {
 	// Save original args and restore after test
 	originalArgs := os.Args
 	defer func() { os.Args = originalArgs }()
@@ -195,7 +174,6 @@ func TestParseFlagsInvalidModeEnvFallback(t *testing.T) {
 	envMgr := testutil.NewEnvManager()
 	defer envMgr.Cleanup()
 
-	// Set valid mode via ENV and invalid mode via CLI
 	envMgr.Set(EnvMode, "debian")
 	os.Args = []string{"apt-proxy", "-mode", "invalid-mode"}
 
@@ -203,10 +181,8 @@ func TestParseFlagsInvalidModeEnvFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
-
-	// Invalid CLI mode should fall back to valid ENV mode
-	if config.Mode != distro.TypeDebian {
-		t.Errorf("Mode = %d, want %d (should fallback to ENV 'debian')", config.Mode, distro.TypeDebian)
+	if !reflect.DeepEqual(config.Modes, []string{"invalid-mode"}) {
+		t.Errorf("Modes = %q, want the flag's value", config.Modes)
 	}
 }
 
@@ -481,33 +457,4 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
-}
-
-func TestAllowedModes(t *testing.T) {
-	// Verify allowedModes contains all expected values
-	expectedModes := []string{
-		distro.DistroAll,
-		distro.DistroUbuntu,
-		distro.DistroUbuntuPorts,
-		distro.DistroDebian,
-		distro.DistroCentOS,
-		distro.DistroAlpine,
-	}
-
-	if len(allowedModes) != len(expectedModes) {
-		t.Errorf("allowedModes has %d items, want %d", len(allowedModes), len(expectedModes))
-	}
-
-	for _, expected := range expectedModes {
-		found := false
-		for _, mode := range allowedModes {
-			if mode == expected {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("allowedModes missing %q", expected)
-		}
-	}
 }

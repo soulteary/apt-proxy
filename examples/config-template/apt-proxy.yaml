@@ -240,6 +240,11 @@ upstream_keep_alive: true
 #   refresh_seconds: 600
 #   timeout_seconds: 15
 
-# Distribution mode
-# Options: all, ubuntu, ubuntu-ports, debian, centos, alpine
+# Distribution mode: the distributions to serve.
+# "all" (the default) serves every registered distribution. To serve only some,
+# name them by ID: ubuntu, ubuntu-ports, debian, centos, alpine, or an id from
+# distributions.yaml. One ID or a list is accepted. Everything else answers 404
+# and has no mirror elected. An ID that is not registered stops startup.
+#   mode: debian
+#   mode: [debian, proxmox-pbs-client]
 mode: all

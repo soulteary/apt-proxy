@@ -111,7 +111,7 @@ func TestBuiltinDistrosUnaffectedByCustomRegistration(t *testing.T) {
 func TestModesToInitIncludesRegistryTypes(t *testing.T) {
 	reg := registryWithCustomDistro(t, "example.com/deepin/")
 
-	modes := modesToInit(distro.TypeAllDistros, reg)
+	modes := modesToInit(distro.ModeOf(distro.TypeAllDistros), reg)
 	found := false
 	for _, m := range modes {
 		if m == customDistroType {
@@ -123,17 +123,17 @@ func TestModesToInitIncludesRegistryTypes(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		if got := modesToInit(distro.TypeAllDistros, reg); len(got) != len(modes) {
+		if got := modesToInit(distro.ModeOf(distro.TypeAllDistros), reg); len(got) != len(modes) {
 			t.Fatalf("modesToInit not deterministic: %v vs %v", got, modes)
 		}
 	}
 
 	// A specific mode still resolves to just that mode.
-	if got := modesToInit(distro.TypeDebian, reg); len(got) != 1 || got[0] != distro.TypeDebian {
+	if got := modesToInit(distro.ModeOf(distro.TypeDebian), reg); len(got) != 1 || got[0] != distro.TypeDebian {
 		t.Errorf("modesToInit(debian) = %v, want [%d]", got, distro.TypeDebian)
 	}
 	// A nil registry must not panic and must yield the built-ins.
-	if got := modesToInit(distro.TypeAllDistros, nil); len(got) != len(distroModesOrder) {
+	if got := modesToInit(distro.ModeOf(distro.TypeAllDistros), nil); len(got) != len(distroModesOrder) {
 		t.Errorf("modesToInit(all, nil) = %v, want the %d built-ins", got, len(distroModesOrder))
 	}
 }

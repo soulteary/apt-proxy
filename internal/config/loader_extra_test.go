@@ -16,6 +16,7 @@ package config
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -71,8 +72,9 @@ func TestParseFlagsDefaults(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseFlags: %v", err)
 		}
-		if cfg.Mode != distro.TypeAllDistros {
-			t.Errorf("Mode = %d, want TypeAllDistros (%d)", cfg.Mode, distro.TypeAllDistros)
+		// No mode is every distribution.
+		if cfg.Mode != distro.TypeAllDistros || len(cfg.Modes) != 0 {
+			t.Errorf("Mode = %d, Modes = %q; want neither set", cfg.Mode, cfg.Modes)
 		}
 		if cfg.Listen == "" {
 			t.Error("Listen should default to host:port, got empty")
@@ -137,7 +139,7 @@ func TestParseFlagsDebianSecurityMirror(t *testing.T) {
 }
 
 // TestParseFlagsModeOverride drives ParseFlags with --mode=ubuntu and
-// asserts the validated mode is preserved through the resolver.
+// asserts the mode is preserved through the resolver.
 func TestParseFlagsModeOverride(t *testing.T) {
 	clearConfigEnv(t)
 	withArgs(t, []string{"apt-proxy", "--mode=ubuntu", "--port=12345"}, func() {
@@ -145,8 +147,8 @@ func TestParseFlagsModeOverride(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseFlags: %v", err)
 		}
-		if cfg.Mode != distro.TypeUbuntu {
-			t.Errorf("Mode = %d, want TypeUbuntu (%d)", cfg.Mode, distro.TypeUbuntu)
+		if !reflect.DeepEqual(cfg.Modes, []string{"ubuntu"}) {
+			t.Errorf("Modes = %q, want [ubuntu]", cfg.Modes)
 		}
 		if !strings.HasSuffix(cfg.Listen, ":12345") {
 			t.Errorf("Listen = %q, want suffix :12345", cfg.Listen)
@@ -154,23 +156,27 @@ func TestParseFlagsModeOverride(t *testing.T) {
 	})
 }
 
-// TestParseFlagsInvalidModeFallsBackToDefault documents the current
-// (cli-kit) fallback behaviour: an invalid CLI/ENV value is silently
-// dropped and the default mode is used. This pins the contract so a
-// future cli-kit upgrade that switches to hard-failing on invalid
-// enums would surface as an explicit, conscious change here.
-func TestParseFlagsInvalidModeFallsBackToDefault(t *testing.T) {
+// TestParseFlagsKeepsUnknownMode covers a mode that names no built-in
+// distribution. The parser cannot tell a typo from an ID that
+// distributions.yaml defines, so it keeps the value; it used to drop it and
+// serve every distribution. The value is rejected when it is resolved against
+// the registry.
+func TestParseFlagsKeepsUnknownMode(t *testing.T) {
 	clearConfigEnv(t)
-	withArgs(t, []string{"apt-proxy", "--mode=fakedistro"}, func() {
-		cfg, err := ParseFlags()
-		if err != nil {
-			t.Fatalf("ParseFlags returned error %v; cli-kit currently silently falls back instead", err)
-		}
-		if cfg.Mode != distro.TypeAllDistros {
-			t.Errorf("Mode = %d, want fallback to TypeAllDistros (%d)",
-				cfg.Mode, distro.TypeAllDistros)
-		}
-	})
+	for _, parse := range []func() (*Config, error){ParseFlags, ParseFlagsWithConfigFile} {
+		withArgs(t, []string{"apt-proxy", "--mode=fakedistro"}, func() {
+			cfg, err := parse()
+			if err != nil {
+				t.Fatalf("parsing: %v", err)
+			}
+			if !reflect.DeepEqual(cfg.Modes, []string{"fakedistro"}) {
+				t.Fatalf("Modes = %q, want the value as written", cfg.Modes)
+			}
+			if _, err := ResolveMode(cfg, distro.NewBuiltinRegistry()); err == nil || !strings.Contains(err.Error(), `"fakedistro"`) {
+				t.Fatalf("ResolveMode error = %v, want the unknown value named", err)
+			}
+		})
+	}
 }
 
 // TestParseFlagsWithConfigFile exercises the file+CLI merge: when a
@@ -197,8 +203,8 @@ cache:
 			t.Fatalf("ParseFlagsWithConfigFile: %v", err)
 		}
 		// CLI mode wins over YAML.
-		if cfg.Mode != distro.TypeUbuntu {
-			t.Errorf("Mode = %d, want TypeUbuntu", cfg.Mode)
+		if !reflect.DeepEqual(cfg.Modes, []string{"ubuntu"}) {
+			t.Errorf("Modes = %q, want [ubuntu]", cfg.Modes)
 		}
 		// YAML listen survives because CLI didn't set it.
 		if cfg.Listen != "0.0.0.0:6789" {
@@ -281,8 +287,8 @@ func TestApplyToStatePopulatesMirrors(t *testing.T) {
 		got.String() != "http://example.com/ubuntu/" {
 		t.Errorf("Ubuntu mirror = %v, want example.com/ubuntu/", got)
 	}
-	if st.GetProxyMode() != distro.TypeUbuntu {
-		t.Errorf("ProxyMode = %d, want TypeUbuntu", st.GetProxyMode())
+	if got := st.GetProxyMode().Types(nil); !reflect.DeepEqual(got, []int{distro.TypeUbuntu}) {
+		t.Errorf("ProxyMode enables %v, want Ubuntu only", got)
 	}
 	if !st.MirrorElection() {
 		t.Error("mirror election is off for a config that does not disable it")
@@ -312,37 +318,6 @@ func TestApplyToStateNilArguments(t *testing.T) {
 	}
 	if err := ApplyToState(&Config{}, nil, nil); err == nil {
 		t.Error("expected error for nil AppState, got nil")
-	}
-}
-
-// TestGetAllowedModes pins the public list returned to CLI/help output.
-// It must contain every distro the proxy actually knows how to mirror;
-// drift here would silently break --mode validation.
-func TestGetAllowedModes(t *testing.T) {
-	got := GetAllowedModes()
-	want := []string{
-		distro.DistroAll,
-		distro.DistroUbuntu,
-		distro.DistroUbuntuPorts,
-		distro.DistroDebian,
-		distro.DistroCentOS,
-		distro.DistroAlpine,
-	}
-	if len(got) != len(want) {
-		t.Fatalf("len = %d, want %d (got=%v)", len(got), len(want), got)
-	}
-	for i, m := range want {
-		if got[i] != m {
-			t.Errorf("[%d] = %q, want %q", i, got[i], m)
-		}
-	}
-}
-
-// TestModeToInt covers the default fallback branch for unknown modes,
-// previously unexercised. The other branches are hit by the parse tests.
-func TestModeToIntUnknown(t *testing.T) {
-	if got := ModeToInt("not-a-mode"); got != distro.TypeAllDistros {
-		t.Errorf("ModeToInt(unknown) = %d, want TypeAllDistros (%d)", got, distro.TypeAllDistros)
 	}
 }
 
@@ -477,9 +452,10 @@ func TestEmptyAPIKeyKeepsFileAuthentication(t *testing.T) {
 }
 
 // valueSettings holds the options that have no empty value: booleans, numbers
-// and the mode enumeration.
+// and the mode. The mode is the comma-joined list, which keeps the struct
+// comparable.
 type valueSettings struct {
-	Mode                  int
+	Mode                  string
 	Debug                 bool
 	CacheMaxSize          int64
 	CacheTTL              time.Duration
@@ -497,7 +473,7 @@ type valueSettings struct {
 
 func valueSettingsOf(cfg *Config) valueSettings {
 	return valueSettings{
-		Mode:                  cfg.Mode,
+		Mode:                  strings.Join(cfg.Modes, ","),
 		Debug:                 cfg.Debug,
 		CacheMaxSize:          cfg.Cache.MaxSize,
 		CacheTTL:              cfg.Cache.TTL,
@@ -545,7 +521,7 @@ storage:
     inline_max_mb: 3
 `
 	fromFile := valueSettings{
-		Mode:                  distro.TypeDebian,
+		Mode:                  "debian",
 		Debug:                 true,
 		CacheMaxSize:          4 << 30,
 		CacheTTL:              12 * time.Hour,
@@ -578,7 +554,7 @@ storage:
 		EnvPassthroughFollowRedirects: "true",
 	}
 	fromEnvironment := valueSettings{
-		Mode:                  distro.TypeUbuntu,
+		Mode:                  "ubuntu",
 		Debug:                 false,
 		CacheMaxSize:          9 << 30,
 		CacheTTL:              5 * time.Hour,

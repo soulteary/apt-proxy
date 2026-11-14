@@ -59,6 +59,16 @@ type Config struct {
 	// False passes every redirect to the client and keeps upstream fetches
 	// within Passthrough.
 	PassthroughFollowRedirects bool `yaml:"passthrough_follow_redirects"`
+	// Modes is the mode setting as written in --mode, APT_PROXY_MODE or the
+	// config file: "all", or the IDs of the distributions to serve. The IDs
+	// are not checked by the loaders, because those from distributions.yaml
+	// are unknown until the distribution registry is loaded; ResolveMode
+	// checks them.
+	//
+	// When Modes is not empty it takes precedence over Mode. Mode is the form
+	// for code that builds a Config directly: one distribution type
+	// (distro.Type*), or distro.TypeAllDistros for every distribution.
+	Modes []string `yaml:"-"`
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors (default true).
 	UpstreamKeepAlive bool `yaml:"upstream_keep_alive"`
 }

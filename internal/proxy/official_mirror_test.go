@@ -159,13 +159,13 @@ func TestMirrorElectionOffUsesOfficialMirrors(t *testing.T) {
 		build func(st *state.AppState, reg *distro.Registry, engine *benchmarks.Engine) (*URLRewriters, error)
 	}{
 		{"synchronous startup", func(st *state.AppState, reg *distro.Registry, engine *benchmarks.Engine) (*URLRewriters, error) {
-			return CreateNewRewritersWithEngine(distro.TypeAllDistros, st, reg, engine), nil
+			return CreateNewRewritersWithEngine(distro.ModeOf(distro.TypeAllDistros), st, reg, engine), nil
 		}},
 		{"asynchronous startup", func(st *state.AppState, reg *distro.Registry, engine *benchmarks.Engine) (*URLRewriters, error) {
-			return CreateNewRewritersAsyncWithEngine(distro.TypeAllDistros, st, reg, engine), nil
+			return CreateNewRewritersAsyncWithEngine(distro.ModeOf(distro.TypeAllDistros), st, reg, engine), nil
 		}},
 		{"refresh", func(st *state.AppState, reg *distro.Registry, engine *benchmarks.Engine) (*URLRewriters, error) {
-			return buildRewriters(nil, distro.TypeAllDistros, st, reg, engine)
+			return buildRewriters(nil, distro.ModeOf(distro.TypeAllDistros), st, reg, engine)
 		}},
 		{"refresh of an elected set", func(st *state.AppState, reg *distro.Registry, engine *benchmarks.Engine) (*URLRewriters, error) {
 			// Every distribution is being served from a mirror that an
@@ -174,7 +174,7 @@ func TestMirrorElectionOffUsesOfficialMirrors(t *testing.T) {
 			for mode := range want {
 				elected.set(mode, &URLRewriter{mirror: mirrorURL("http://elected.example/archive/")})
 			}
-			return elected, RefreshRewritersWithEngine(elected, distro.TypeAllDistros, st, reg, engine)
+			return elected, RefreshRewritersWithEngine(elected, distro.ModeOf(distro.TypeAllDistros), st, reg, engine)
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -340,7 +340,7 @@ func TestAsyncElectionStartsOnOfficialMirror(t *testing.T) {
 	st.SetMirror(distro.TypeDebian, "") // Elect rather than pin the mirror.
 	st.SetMirror(distro.TypeCentOS, "")
 
-	rewriters := CreateNewRewritersAsyncWithEngine(distro.TypeAllDistros, st, reg, benchmarks.NewEngine())
+	rewriters := CreateNewRewritersAsyncWithEngine(distro.ModeOf(distro.TypeAllDistros), st, reg, benchmarks.NewEngine())
 	if mirror, security := mirrorOf(rewriters, distro.TypeDebian); mirror != officialDebian || security != officialDebianSecurity {
 		t.Errorf("Debian before its election: mirror=%q security=%q, want the official %q and %q", mirror, security, officialDebian, officialDebianSecurity)
 	}
@@ -371,7 +371,7 @@ func TestAsyncElectionFailureKeepsOfficialMirror(t *testing.T) {
 	st := newTestState()
 	st.SetMirror(distro.TypeAlpine, "") // Elect rather than pin the mirror.
 	engine := benchmarks.NewEngine()
-	rewriters := CreateNewRewritersAsyncWithEngine(distro.TypeAlpine, st, reg, engine)
+	rewriters := CreateNewRewritersAsyncWithEngine(distro.ModeOf(distro.TypeAlpine), st, reg, engine)
 
 	awaitLogEntries(t, logs, "async benchmark failed", 1)
 	if mirror, _ := mirrorOf(rewriters, distro.TypeAlpine); mirror != officialAlpine {
@@ -586,7 +586,7 @@ func TestMirrorElectionOffWithoutAnyMirror(t *testing.T) {
 	}
 	previous := &URLRewriters{}
 	previous.set(customDistroType, &URLRewriter{mirror: mirrorURL("http://elected.example/bare/")})
-	if _, err := buildRewriters(previous, distro.TypeAllDistros, st, reg, offlineEngine(t)); err == nil || !strings.Contains(err.Error(), "no usable mirror") {
+	if _, err := buildRewriters(previous, distro.ModeOf(distro.TypeAllDistros), st, reg, offlineEngine(t)); err == nil || !strings.Contains(err.Error(), "no usable mirror") {
 		t.Errorf("refresh = %v, want it to report the distribution without a mirror", err)
 	}
 	warned := logEntries(t, logs, "mirror election is off and the distribution has no official or listed mirror")

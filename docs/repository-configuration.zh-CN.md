@@ -186,11 +186,12 @@ distributions:
 匹配规则与缓存规则，同时记录一条带发行版名称的 warning，热重载不会因此失败。
 没有原有镜像的发行版（例如本次重载新增的发行版）选优失败时，改用它的 `official_url`。
 配置加载失败，或这样的发行版选优失败且没有配置 `official_url` 时，
-热重载保留原有路由与缓存规则。
+热重载保留原有路由与缓存规则。[`mode`](configuration-reference.zh-CN.md#模式mode) 中的某个 `id`
+在重载后的文件里不再定义时，热重载同样失败并保留原有路由，API 返回 `400`。
 
 **字段说明：**
 
-- `id` — 稳定、唯一的注册标识符，也会出现在 URL 重写调试日志中；实际匹配的 URL 路径由 `url_pattern` 决定。
+- `id` — 稳定、唯一的注册标识符，也会出现在 URL 重写调试日志中；[`mode`](configuration-reference.zh-CN.md#模式mode) 通过它选择发行版。实际匹配的 URL 路径由 `url_pattern` 决定。
 - `name` — 显示名。
 - `type` — 整数类型。`1` Ubuntu、`2` UbuntuPorts、`3` Debian、`4` CentOS、`5` Alpine 用于覆盖内置发行版的配置，`0` 保留给 "all"。**填写其它正整数即可注册一个 apt-proxy 未内置的发行版** —— 参见[添加 apt-proxy 未内置的发行版](#添加-apt-proxy-未内置的发行版)。已被占用的类型在加载时会直接报错，所以请挑一个未使用的数字（`6`、`7`……）并保持稳定：镜像选择与 rewriter 状态都以它为键跨重载保存。
 - `url_pattern` — 用于匹配请求路径的正则；最后一个捕获组会拼到上游镜像根目录后。
@@ -281,10 +282,31 @@ distributions:
 - `benchmark_url` 必须是镜像列表里每个站点都存在的小文件，测速时会实际请求它。
 - `cache_rules` 按顺序匹配，命中第一条即停，而且**未命中任何规则的路径会直接返回 `404`**，不会透传。`apt update` 除了 `InRelease` 还会拉取软件包索引（`Packages.xz`、`by-hash/...`），所以除非你刻意只想代理特定类型的文件，否则请以兜底规则 `".*"` 结尾。
 - 自定义发行版只使用其规则中写明的有效期。希望带版本的软件包或 `by-hash` 路径与内置 Debian 系规则行为一致时，请在对应规则的 `cache_control` 中加入 `immutable`（例如 `max-age=100000, immutable`），并把该规则放在兜底规则之前。
-- 以 `--mode=all`（默认值）运行。`--mode` 只接受内置发行版的名字，自定义发行版在 `all` 模式下才会启用。
-- 模式未选中的发行版不提供服务：无论哪种请求形式，其路径都返回 `404`，代理模式下客户端点名其他主机时也一样——apt-proxy 不会从客户端点名的主机获取发行版路径。
+- 模式必须包含该发行版。`--mode=all`（默认值）提供所有已注册的发行版；`--mode=debian,deepin` 这样的列表只提供按 `id` 列出的发行版，内置与自定义均可。参见[只提供部分发行版](#只提供部分发行版)。
+- 模式未选中的发行版不提供服务，也不参与请求匹配：无论哪种请求形式，其路径都返回 `404`，代理模式下客户端点名其他主机时也一样——apt-proxy 不会从客户端点名的主机获取发行版路径。有两种情况仍会被提供：已启用发行版的 `url_pattern` 同样匹配的路径，交给那个发行版；发往 [`passthrough`](#缓存第三方软件源passthrough) 白名单中源站的请求，交给该源站。
 - 只有匹配 `url_pattern`（或 `host_pattern`）的请求才会被代理，其余仍然返回 `404`。
-- 文件必须放在 apt-proxy 会去找的位置：上面列出的查找路径之一，或用 `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG` 指定。服务端根本没加载的文件，等于这条配置静默失效。启动日志会打印实际生效的文件和所有已注册的发行版（`distributions registered config=... distributions=[...]`），是确认配置是否生效最快的方式。
+- 文件必须放在 apt-proxy 会去找的位置：上面列出的查找路径之一，或用 `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG` 指定。服务端根本没加载的文件，等于这条配置静默失效。启动日志会打印实际生效的文件和所有已注册的发行版（`distributions registered config=... distributions=[...]`），是确认配置是否生效最快的方式。紧随其后的 `distributions enabled mode=[...]` 一行列出模式实际提供的发行版。
+
+### 只提供部分发行版
+
+`mode` 把 apt-proxy 限定在它按 `id` 列出的发行版上，内置发行版与自定义发行版可以混用。
+未列出的发行版返回 `404`，不会为它选择镜像或测速，它的镜像设置也不生效。
+
+```bash
+# 只提供 Debian 与 distributions.yaml 中的 Deepin
+./apt-proxy --mode=debian,deepin --distributions-config=./distributions.yaml
+```
+
+```yaml
+# apt-proxy.yaml
+mode: [debian, deepin]
+distributions_config: ./distributions.yaml
+```
+
+环境变量的写法是 `APT_PROXY_MODE=debian,deepin`。这些 ID 在启动时对照内置发行版与已加载的
+`distributions.yaml` 校验：未注册的 ID 会使启动失败，错误信息会列出已注册的 ID；`all` 不能与其他值
+同时使用。完整规则见[配置参考](configuration-reference.zh-CN.md#模式mode)，其中也说明了已启用的 `id`
+被从文件中删除后重载的行为。
 
 ### 自定义镜像选择
 

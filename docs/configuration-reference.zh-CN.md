@@ -17,7 +17,7 @@
 |------|------|--------|
 | `-host` | 绑定的网络接口 | `0.0.0.0` |
 | `-port` | 监听端口 | `3142` |
-| `-mode` | 发行版模式：`all`、`ubuntu`、`ubuntu-ports`、`debian`、`centos`、`alpine` | `all` |
+| `-mode` | 要提供的发行版：`all`，或以逗号分隔的发行版 ID 列表（见[模式](#模式mode)） | `all` |
 | `-cachedir` | 缓存目录 | `./.aptcache` |
 | `-ubuntu` | Ubuntu 镜像 URL 或快捷方式 | （自动选择） |
 | `-ubuntu-ports` | Ubuntu Ports 镜像 URL 或快捷方式 | （自动选择） |
@@ -81,7 +81,7 @@
 |--------|--------------|------|
 | `APT_PROXY_HOST` | `-host` | 监听的网络接口 |
 | `APT_PROXY_PORT` | `-port` | 监听端口 |
-| `APT_PROXY_MODE` | `-mode` | 发行版模式（`all`/`ubuntu`/`ubuntu-ports`/`debian`/`centos`/`alpine`） |
+| `APT_PROXY_MODE` | `-mode` | 要提供的发行版：`all`，或以逗号分隔的发行版 ID 列表（见[模式](#模式mode)） |
 | `APT_PROXY_DEBUG` | `-debug` | 启用详细调试日志 |
 | `APT_PROXY_UBUNTU` | `-ubuntu` | Ubuntu 镜像 URL 或快捷方式 |
 | `APT_PROXY_UBUNTU_PORTS` | `-ubuntu-ports` | Ubuntu Ports 镜像 |
@@ -233,7 +233,7 @@ security:
     - 10.0.0.0/8
     - 192.168.0.0/16
 
-mode: all
+mode: all                              # 或发行版 ID 列表，例如 [debian, proxmox-pbs-client]
 
 # 可选仓库连接策略：仅支持 YAML，变更后重启。
 # 关闭时限制列表必须为空；启用后忽略前置代理环境变量。
@@ -279,3 +279,37 @@ distributions_config: ./config/distributions.yaml
 3. `/etc/apt-proxy/apt-proxy.yaml`（系统配置）
 4. `~/.config/apt-proxy/apt-proxy.yaml`（用户配置）
 5. `~/.apt-proxy.yaml`（用户配置）
+
+### 模式（mode）
+
+`mode` 决定 apt-proxy 提供哪些发行版。取值为 `all`（默认值），或一组发行版 ID：内置的 `ubuntu`、
+`ubuntu-ports`、`debian`、`centos`、`alpine`，以及
+[`distributions.yaml`](repository-configuration.zh-CN.md#发行版与镜像配置文件distributionsyaml)
+中定义的每一个 `id`。
+
+| 来源 | 写法 | 示例 |
+|------|------|------|
+| `-mode` | 逗号分隔 | `--mode=debian,proxmox-pbs-client` |
+| `APT_PROXY_MODE` | 逗号分隔 | `APT_PROXY_MODE=debian,proxmox-pbs-client` |
+| YAML `mode` | 单个 ID、逗号分隔的值或列表 | `mode: [debian, proxmox-pbs-client]` |
+
+- `all` 提供所有已注册的发行版，包括之后重载 `distributions.yaml` 时新增的发行版。它不能与其他值同时使用：
+  `all,debian` 会报错。
+- ID 的比较不区分大小写。值两侧的空格会被忽略，空值会被跳过，重复的值只计一次。
+- 优先级最高的来源给出的集合会整体替换其他来源的集合，CLI 参数不会与配置文件中的集合合并。
+  值为空或只含分隔符的参数与环境变量视为未设置。
+- 取值在启动时、`distributions.yaml` 加载完成之后校验。既不是 `all` 也不是已注册 ID 的值会使启动失败，
+  错误信息会指出该值并列出已注册的 ID。拼写错误因此会被报告出来，而不是变成提供另一组发行版：
+
+  ```text
+  invalid mode: unknown distribution "debain"; accepted values are "all" and the registered distribution IDs: alpine, centos, debian, ubuntu, ubuntu-ports
+  ```
+
+  未知的 `-mode` 同样报错，不会回退到 `APT_PROXY_MODE` 或配置文件。`distributions.yaml` 未被找到或被拒绝时，
+  其中的 ID 也属于未知，请查看启动日志中的 `distributions registered` 一行。
+- 模式之外的发行版不参与请求路由：其路径在任何请求形式下都返回 `404`，不会为它选择镜像，
+  它的镜像设置（`-ubuntu`、`mirrors.debian` 等）也不生效。启动日志会列出实际启用的发行版
+  （`distributions enabled mode=[...]`）。
+- `SIGHUP` 与 `POST /api/mirrors/refresh` 会重新加载 `distributions.yaml` 并重新解析这些 ID。
+  如果文件不再定义某个已启用的 ID，重载失败，错误信息会指出该 ID（API 返回 `400`，错误码
+  `CONFIG_INVALID`），原有路由保持不变。`mode` 本身只在启动时读取，修改后需要重启 apt-proxy。

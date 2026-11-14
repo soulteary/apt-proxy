@@ -18,7 +18,7 @@ YAML also exposes policies without CLI flags; see the YAML section and the
 |--------|-------------|---------|
 | `-host` | Network interface to bind to | `0.0.0.0` |
 | `-port` | Port to listen on | `3142` |
-| `-mode` | Distribution mode: `all`, `ubuntu`, `ubuntu-ports`, `debian`, `centos`, `alpine` | `all` |
+| `-mode` | Distributions to serve: `all`, or a comma-separated list of distribution IDs (see [Mode](#mode)) | `all` |
 | `-cachedir` | Directory to store cached packages | `./.aptcache` |
 | `-ubuntu` | Ubuntu mirror URL or shortcut | (auto-select) |
 | `-ubuntu-ports` | Ubuntu Ports mirror URL or shortcut | (auto-select) |
@@ -82,7 +82,7 @@ Every CLI flag has an equivalent environment variable. Plus a few extras for log
 |----------|-----------------|-------------|
 | `APT_PROXY_HOST` | `-host` | Network interface to bind to |
 | `APT_PROXY_PORT` | `-port` | Port to listen on |
-| `APT_PROXY_MODE` | `-mode` | Distribution mode (`all`/`ubuntu`/`ubuntu-ports`/`debian`/`centos`/`alpine`) |
+| `APT_PROXY_MODE` | `-mode` | Distributions to serve: `all`, or a comma-separated list of distribution IDs (see [Mode](#mode)) |
 | `APT_PROXY_DEBUG` | `-debug` | Enable verbose debug logging |
 | `APT_PROXY_UBUNTU` | `-ubuntu` | Ubuntu mirror URL or shortcut |
 | `APT_PROXY_UBUNTU_PORTS` | `-ubuntu-ports` | Ubuntu Ports mirror URL or shortcut |
@@ -235,7 +235,7 @@ security:
     - 10.0.0.0/8
     - 192.168.0.0/16
 
-mode: all
+mode: all                              # or distribution IDs, e.g. [debian, proxmox-pbs-client]
 
 # Optional repository connection policy (YAML-only; restart after changes).
 # Lists must be empty while disabled. Enabling this ignores environment proxies.
@@ -286,3 +286,47 @@ cache size limit; `APT_PROXY_CACHE_MAX_SIZE=0` does.
 3. `/etc/apt-proxy/apt-proxy.yaml`
 4. `~/.config/apt-proxy/apt-proxy.yaml`
 5. `~/.apt-proxy.yaml`
+
+### Mode
+
+`mode` selects the distributions apt-proxy serves. Its value is `all`, the
+default, or a set of distribution IDs: the built-in `ubuntu`, `ubuntu-ports`,
+`debian`, `centos` and `alpine`, and every `id` defined in
+[`distributions.yaml`](repository-configuration.md#distributions-and-mirrors-config-distributionsyaml).
+
+| Source | Form | Example |
+|--------|------|---------|
+| `-mode` | comma-separated | `--mode=debian,proxmox-pbs-client` |
+| `APT_PROXY_MODE` | comma-separated | `APT_PROXY_MODE=debian,proxmox-pbs-client` |
+| YAML `mode` | one ID, a comma-separated value, or a list | `mode: [debian, proxmox-pbs-client]` |
+
+- `all` serves every registered distribution, including one that a later
+  reload of `distributions.yaml` adds. It cannot be combined with other
+  values: `all,debian` is an error.
+- IDs are compared without regard to letter case. Spaces around a value are
+  ignored, an empty value is skipped and a repeated value counts once.
+- The set from the source with the highest priority replaces the others as a
+  whole; a flag does not add to the set in the config file. A flag or variable
+  that is empty, or holds nothing but separators, counts as not set.
+- The value is checked at startup, after `distributions.yaml` has been loaded.
+  A value that is neither `all` nor a registered ID stops startup with an
+  error that names the value and lists the registered IDs, so a misspelled ID
+  is reported instead of serving a different set of distributions:
+
+  ```text
+  invalid mode: unknown distribution "debain"; accepted values are "all" and the registered distribution IDs: alpine, centos, debian, ubuntu, ubuntu-ports
+  ```
+
+  An unknown `-mode` is an error as well; it does not fall back to
+  `APT_PROXY_MODE` or the config file. An ID from a `distributions.yaml` that
+  was not found or was rejected is unknown too: check the
+  `distributions registered` line of the startup log.
+- A distribution outside the mode takes no part in request routing. Its paths
+  answer `404` in every request form, no mirror is elected for it, and its
+  mirror setting (`-ubuntu`, `mirrors.debian`, ...) has no effect. The startup
+  log lists the distributions in effect (`distributions enabled mode=[...]`).
+- `SIGHUP` and `POST /api/mirrors/refresh` reload `distributions.yaml` and
+  resolve the IDs again. If the file no longer defines an enabled ID, the
+  reload fails with an error that names it (the API answers `400` with code
+  `CONFIG_INVALID`) and the previous routing stays in effect. `mode` itself is
+  read at startup only; restart apt-proxy to change it.

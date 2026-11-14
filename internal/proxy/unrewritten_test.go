@@ -127,7 +127,7 @@ func TestRuleWithoutRewriteIsNotServed(t *testing.T) {
 
 func TestRewriteToMirrorReportsWhetherItRewrote(t *testing.T) {
 	st := newTestState()
-	rewriters := newRewriters(distro.TypeUbuntu, st, newTestRegistry(), false, nil)
+	rewriters := newRewriters(distro.ModeOf(distro.TypeUbuntu), st, newTestRegistry(), false, nil)
 	for _, tc := range []struct {
 		name string
 		mode int

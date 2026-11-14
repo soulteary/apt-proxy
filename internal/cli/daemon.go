@@ -276,10 +276,14 @@ func (s *Server) initialize() error {
 	s.logRegisteredDistributions()
 
 	// Build the per-Server AppState and apply config (proxy mode, mirrors).
+	// The mode is validated here, now that the registry holds the IDs from
+	// distributions.yaml: an ID it does not have stops the startup instead of
+	// serving a different set of distributions than the one configured.
 	s.state = state.NewAppState()
 	if err := config.ApplyToState(s.config, s.state, s.registry); err != nil {
 		return wrapErr(apperrors.ErrServerInit, "failed to apply config to state", err)
 	}
+	s.logEnabledDistributions()
 
 	// Initialize proxy with async benchmark for faster startup.
 	// This uses default mirrors immediately and updates to the fastest mirror
@@ -311,7 +315,7 @@ func (s *Server) initialize() error {
 		DownloadTotalBytes: s.config.Download.TotalSpoolMB * (1 << 20),
 		DownloadTimeout:    time.Duration(s.config.Download.TimeoutSeconds) * time.Second,
 		Logger:             s.log,
-		Mode:               s.state.GetProxyMode(),
+		ModeSet:            s.state.GetProxyMode(),
 		EnableKeepAlive:    s.config.UpstreamKeepAlive,
 		Async:              true,
 		Passthrough:        allowlist,
@@ -596,6 +600,24 @@ func (s *Server) logRegisteredDistributions() {
 		Msg("distributions registered")
 }
 
+// logEnabledDistributions reports which of the registered distributions the
+// mode serves. The registered list alone does not show that, and a mode given
+// in another letter case is reported under the ID it was resolved to.
+func (s *Server) logEnabledDistributions() {
+	mode := s.state.GetProxyMode()
+	enabled := []string{distro.DistroAll}
+	if !mode.All() {
+		enabled = enabled[:0]
+		for id, d := range s.registry.GetAll() {
+			if mode.Has(d.Type) {
+				enabled = append(enabled, id)
+			}
+		}
+		sort.Strings(enabled)
+	}
+	s.log.Info().Strs("mode", enabled).Msg("distributions enabled")
+}
+
 // logPassthrough reports the allowlisted origins at startup. Widening what a
 // shared proxy will fetch is worth a line in the log, and it is the only way
 // to tell a list that parsed from one that was never read.
@@ -647,13 +669,22 @@ func (s *Server) refreshMirrors() error {
 		}
 	}
 	if s.state != nil {
+		// The mode is resolved against the reloaded registry here. An enabled
+		// ID that distributions.yaml no longer defines is an error naming it.
+		// Nothing has been applied at that point and the proxy is not
+		// refreshed, so the distribution stays served by the previous routing.
 		if err := config.ApplyToState(s.config, s.state, s.registry); err != nil {
 			s.log.Warn().Err(logsafe.Error(err)).Msg("failed to re-apply config to state during reload")
-			return apperrors.Wrap(apperrors.ErrConfigInvalid, "Failed to apply mirror configuration; previous routing retained", err)
+			return apperrors.Wrap(apperrors.ErrConfigInvalid, "Failed to apply mode and mirror configuration; previous routing retained", err).
+				WithDetails("reason", logsafe.Error(err).Error())
 		}
 	}
 	if s.proxy != nil {
-		if err := s.proxy.RefreshMirrors(); err != nil {
+		// ApplyToState stored the mode, resolved against the reloaded
+		// registry, in the state the proxy also reads its mirrors from. The
+		// proxy is handed that set instead of keeping its own, because the
+		// reload can have given an enabled ID another type.
+		if err := s.proxy.RefreshMirrorsWithMode(s.proxy.State().GetProxyMode()); err != nil {
 			return apperrors.Wrap(apperrors.ErrMirrorBenchmark, "Mirror election failed; previous routing retained", err).WithHTTPStatus(http.StatusServiceUnavailable)
 		}
 	}

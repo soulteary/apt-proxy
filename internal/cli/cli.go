@@ -111,9 +111,6 @@ const (
 	DefaultS3Prefix       = config.DefaultS3Prefix
 )
 
-// Backward compatibility wrapper for internal function
-var allowedModes = config.GetAllowedModes()
-
 // ParseFlags parses command-line flags and (when present) loads configuration
 // from a YAML file. Priority: CLI > ENV > Config File > Default.
 // Wrapper around config.ParseFlagsWithConfigFile, preserving the legacy entry name.
@@ -125,11 +122,6 @@ func ParseFlags() (*Config, error) {
 // This is a wrapper around config.ValidateConfig for backward compatibility.
 func ValidateConfig(cfg *Config) error {
 	return config.ValidateConfig(cfg)
-}
-
-// modeToInt converts mode string to int for backward compatibility in tests
-func modeToInt(mode string) int {
-	return config.ModeToInt(mode)
 }
 
 // Build metadata, set by SetBuildInfo from the main package at startup.

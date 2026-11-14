@@ -130,7 +130,9 @@ func (m *MirrorState) Clone() *MirrorState {
 // AppState manages the complete runtime state for a single Server: the
 // proxy mode and the mirror configuration for every supported distro.
 type AppState struct {
-	proxyMode      atomic.Int64
+	// proxyMode holds the enabled distributions. A nil pointer stands for
+	// the zero ModeSet, which enables every registered distribution.
+	proxyMode      atomic.Pointer[distro.ModeSet]
 	Ubuntu         *MirrorState
 	UbuntuPorts    *MirrorState
 	Debian         *MirrorState
@@ -155,14 +157,24 @@ func NewAppState() *AppState {
 	}
 }
 
-// SetProxyMode sets the active proxy mode (one of distro.Type*).
+// SetProxyMode enables a single distribution type (one of distro.Type*), or
+// every registered distribution for distro.TypeAllDistros. It is the
+// single-value form of SetProxyModeSet.
 func (s *AppState) SetProxyMode(mode int) {
-	s.proxyMode.Store(int64(mode))
+	s.SetProxyModeSet(distro.ModeOf(mode))
 }
 
-// GetProxyMode returns the active proxy mode.
-func (s *AppState) GetProxyMode() int {
-	return int(s.proxyMode.Load())
+// SetProxyModeSet sets the distributions the proxy serves.
+func (s *AppState) SetProxyModeSet(mode distro.ModeSet) {
+	s.proxyMode.Store(&mode)
+}
+
+// GetProxyMode returns the distributions the proxy serves.
+func (s *AppState) GetProxyMode() distro.ModeSet {
+	if mode := s.proxyMode.Load(); mode != nil {
+		return *mode
+	}
+	return distro.ModeSet{}
 }
 
 // SetMirrorElection turns mirror election on or off. With election off, a

@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 
@@ -255,36 +254,14 @@ var distroModesOrder = func() []int {
 	return out
 }()
 
-// modesToInit lists the distro types to build rewriters for. For
-// TypeAllDistros this is the built-in set plus every additional type the
-// registry knows about (distributions.yaml entries), so custom distros are
-// initialised alongside the built-ins. Custom types are sorted to keep
-// construction order deterministic across reloads.
-func modesToInit(mode int, reg *distro.Registry) []int {
-	if mode != distro.TypeAllDistros {
-		return []int{mode}
-	}
-	out := append([]int(nil), distroModesOrder...)
-	if reg == nil {
-		return out
-	}
-	seen := make(map[int]struct{}, len(out))
-	for _, m := range out {
-		seen[m] = struct{}{}
-	}
-	var extra []int
-	for _, d := range reg.GetAll() {
-		if d.Type == distro.TypeAllDistros || d.URLPattern == nil {
-			continue
-		}
-		if _, ok := seen[d.Type]; ok {
-			continue
-		}
-		seen[d.Type] = struct{}{}
-		extra = append(extra, d.Type)
-	}
-	sort.Ints(extra)
-	return append(out, extra...)
+// modesToInit lists the distro types to build rewriters for: the types the
+// mode enables. When it enables every distribution this is the built-in set
+// plus every additional type the registry knows about (distributions.yaml
+// entries), so custom distros are initialised alongside the built-ins. The
+// order is the one distro.ModeSet.Types documents, which keeps construction
+// deterministic across reloads.
+func modesToInit(mode distro.ModeSet, reg *distro.Registry) []int {
+	return mode.Types(reg)
 }
 
 // builtinField returns the dedicated struct field backing a built-in distro
@@ -555,13 +532,17 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 // benchmark. May block startup for up to 30 seconds; prefer
 // CreateNewRewritersAsync. Uses the process-wide default benchmarks.Engine;
 // PackageStruct callers route through CreateNewRewritersWithEngine instead.
+//
+// mode is one distribution type, or distro.TypeAllDistros for every
+// distribution. The engine-aware variant takes a set of types.
 func CreateNewRewriters(mode int, st *state.AppState, reg *distro.Registry) *URLRewriters {
-	return CreateNewRewritersWithEngine(mode, st, reg, nil)
+	return CreateNewRewritersWithEngine(distro.ModeOf(mode), st, reg, nil)
 }
 
 // CreateNewRewritersWithEngine is the engine-aware variant of
 // CreateNewRewriters. A nil engine falls back to benchmarks.Default().
-func CreateNewRewritersWithEngine(mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriters {
+// Only the distributions mode enables get a rewriter.
+func CreateNewRewritersWithEngine(mode distro.ModeSet, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriters {
 	rewriters := &URLRewriters{}
 	for _, m := range modesToInit(mode, reg) {
 		if rw := createRewriter(m, st, reg, bench); rw != nil {
@@ -572,14 +553,16 @@ func CreateNewRewritersWithEngine(mode int, st *state.AppState, reg *distro.Regi
 }
 
 // CreateNewRewritersAsync initializes rewriters based on mode using async benchmark.
-// Recommended for production use to minimize startup time.
+// Recommended for production use to minimize startup time. mode is one
+// distribution type or distro.TypeAllDistros, as for CreateNewRewriters.
 func CreateNewRewritersAsync(mode int, st *state.AppState, reg *distro.Registry) *URLRewriters {
-	return CreateNewRewritersAsyncWithEngine(mode, st, reg, nil)
+	return CreateNewRewritersAsyncWithEngine(distro.ModeOf(mode), st, reg, nil)
 }
 
 // CreateNewRewritersAsyncWithEngine is the engine-aware variant of
 // CreateNewRewritersAsync. A nil engine falls back to benchmarks.Default().
-func CreateNewRewritersAsyncWithEngine(mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriters {
+// Only the distributions mode enables get a rewriter and a mirror election.
+func CreateNewRewritersAsyncWithEngine(mode distro.ModeSet, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriters {
 	rewriters := &URLRewriters{}
 	// A fast benchmark may finish before its initial rewriter is installed.
 	// Publish every initial pointer before allowing callbacks to replace it.
@@ -741,7 +724,7 @@ func MatchingRule(path string, rules []distro.Rule) (*distro.Rule, bool) {
 // official address. Only a required mirror that can be neither elected, kept
 // nor taken from an official address is an error, and callers then retain the
 // old set instead of publishing a partial one.
-func buildRewriters(previous *URLRewriters, mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) (*URLRewriters, error) {
+func buildRewriters(previous *URLRewriters, mode distro.ModeSet, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) (*URLRewriters, error) {
 	log := logger.Default()
 	log.Info().Msg("refreshing mirror configurations...")
 
@@ -780,14 +763,17 @@ func buildRewriters(previous *URLRewriters, mode int, st *state.AppState, reg *d
 // IMPORTANT: This function creates new rewriters outside the lock to avoid
 // blocking request processing during potentially slow network operations
 // (benchmark tests). The lock is only held briefly during the pointer swap.
+//
+// mode is one distribution type or distro.TypeAllDistros, as for
+// CreateNewRewriters.
 func RefreshRewriters(rewriters *URLRewriters, mode int, st *state.AppState, reg *distro.Registry) error {
-	return RefreshRewritersWithEngine(rewriters, mode, st, reg, nil)
+	return RefreshRewritersWithEngine(rewriters, distro.ModeOf(mode), st, reg, nil)
 }
 
 // RefreshRewritersWithEngine is the engine-aware variant of RefreshRewriters.
 // A nil engine falls back to benchmarks.Default(). Only the supplied engine's
 // cache is cleared; per-Server engines no longer interfere with each other.
-func RefreshRewritersWithEngine(rewriters *URLRewriters, mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) error {
+func RefreshRewritersWithEngine(rewriters *URLRewriters, mode distro.ModeSet, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) error {
 	if rewriters == nil {
 		return nil
 	}

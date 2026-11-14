@@ -132,8 +132,10 @@ deb http://apt-proxy.example:3142/armbian bookworm main bookworm-utils bookworm-
 - **Keep the catch-all cache rule last.** A path matching no rule returns `404`,
   not a pass-through, and `apt update` fetches package indexes (`Packages.xz`,
   `by-hash/…`) as well as `InRelease`.
-- **`--mode=all`** (the default). `--mode` only names built-in distributions;
-  custom ones are served whenever the mode is `all`.
+- **The mode has to include the distribution.** `--mode=all` (the default)
+  serves every registered distribution. A list such as `--mode=deepin,armbian`
+  serves only the named IDs; see the
+  [mode reference](../../docs/configuration-reference.md#mode).
 
 ## Reloading
 

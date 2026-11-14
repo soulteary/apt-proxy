@@ -20,8 +20,8 @@ docker compose up --build -d
 ```
 
 The example builds `docker/Dockerfile` from this checkout, mounts
-[`distributions.yaml`](distributions.yaml) explicitly and enables custom
-distributions with `--mode=all`.
+[`distributions.yaml`](distributions.yaml) explicitly and serves every
+registered distribution with `--mode=all`, the default.
 
 Alternatively, build and run the binary from the repository root:
 
@@ -30,6 +30,17 @@ make build
 ./dist/apt-proxy --mode=all \
   --distributions-config=./examples/proxmox/distributions.yaml
 ```
+
+To serve Debian and this repository and nothing else, name the two by ID.
+`proxmox-pbs-client` is the `id` in `distributions.yaml`:
+
+```bash
+./dist/apt-proxy --mode=debian,proxmox-pbs-client \
+  --distributions-config=./examples/proxmox/distributions.yaml
+```
+
+Ubuntu, CentOS and Alpine paths then answer `404` and no mirror is elected for
+them. See the [mode reference](../../docs/configuration-reference.md#mode).
 
 ## Client setup: keep the official source
 
@@ -103,7 +114,7 @@ configuration was not loaded.
 For the original-source form, confirm that the client sends
 `Host: download.proxmox.com` (an optional port is allowed) and that the running
 binary contains the routing fix. Also check the explicit configuration path
-and `--mode=all`.
+and that the mode includes `proxmox-pbs-client`, which `--mode=all` does.
 
 ## Repository scope and configuration details
 

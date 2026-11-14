@@ -56,7 +56,11 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 		result.CacheDir = override.CacheDir
 	}
 	if ex.Mode {
+		// Mode and Modes are two forms of one setting. Both are replaced, so
+		// that the form the override does not use cannot keep its value from
+		// base and decide the mode.
 		result.Mode = override.Mode
+		result.Modes = slices.Clone(override.Modes)
 	}
 	if ex.Listen && override.Listen != "" {
 		result.Listen = override.Listen
@@ -212,8 +216,10 @@ func MergeConfigs(base, override *Config) *Config {
 	if override.CacheDir != "" {
 		result.CacheDir = override.CacheDir
 	}
-	if override.Mode != 0 {
+	if override.Mode != 0 || len(override.Modes) > 0 {
+		// Both forms are replaced, as in MergeConfigsWithExplicit.
 		result.Mode = override.Mode
+		result.Modes = slices.Clone(override.Modes)
 	}
 	if override.Listen != "" {
 		result.Listen = override.Listen
