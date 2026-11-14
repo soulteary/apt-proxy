@@ -97,6 +97,34 @@ func TestUpstreamAddressPolicy(t *testing.T) {
 		t.Fatal("exception scope incorrect")
 	}
 }
+
+// PublicOnly names no hosts. What it admits is decided by the port and by the
+// addresses a host resolves to.
+func TestPublicOnlyPolicy(t *testing.T) {
+	p := PublicOnly()
+	for _, tc := range []struct {
+		url     string
+		allowed bool
+	}{
+		{"https://cdn.example.net/file", true},
+		{"http://cdn.example.net/file", true},
+		{"https://cdn.example.net:8443/file", false},
+		{"ftp://cdn.example.net/file", false},
+	} {
+		if err := p.CheckURL(mustRequest(t, tc.url).URL); (err == nil) != tc.allowed {
+			t.Errorf("CheckURL(%s) = %v, want allowed=%t", tc.url, err, tc.allowed)
+		}
+	}
+	for address, allowed := range map[string]bool{
+		"93.184.216.34": true, "2606:2800:220:1:248:1893:25c8:1946": true,
+		"127.0.0.1": false, "10.0.0.8": false, "169.254.169.254": false, "198.18.0.1": false, "::1": false, "fd00::1": false,
+	} {
+		if got := p.addressAllowed(netip.MustParseAddr(address)); got != allowed {
+			t.Errorf("addressAllowed(%s) = %t, want %t", address, got, allowed)
+		}
+	}
+}
+
 func TestUpstreamDNSPinningAndRebinding(t *testing.T) {
 	p := mustPolicy(t, UpstreamConfig{Enabled: true})
 	lookups, dials := 0, 0

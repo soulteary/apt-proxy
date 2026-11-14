@@ -28,6 +28,10 @@
 // those are fetched unrewritten. The list is the security boundary, so parsing
 // is strict -- an entry that is not plainly a public origin is rejected at
 // startup rather than tolerated at request time.
+//
+// The proxy may follow the redirects of a listed origin to hosts that are not
+// listed. Such a hop is limited to public addresses instead; see the redirect
+// follower in package proxy.
 package passthrough
 
 import (
