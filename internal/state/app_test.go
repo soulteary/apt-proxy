@@ -71,6 +71,37 @@ func TestAppStateProxyMode(t *testing.T) {
 	}
 }
 
+// Election is on unless it is turned off, in a zero AppState too, and the
+// setting follows a clone without being shared with it.
+func TestAppStateMirrorElection(t *testing.T) {
+	if !new(AppState).MirrorElection() {
+		t.Error("zero AppState has mirror election off")
+	}
+	st := NewAppState()
+	if !st.MirrorElection() {
+		t.Error("NewAppState() has mirror election off")
+	}
+
+	st.SetMirrorElection(false)
+	if st.MirrorElection() {
+		t.Error("MirrorElection() = true after SetMirrorElection(false)")
+	}
+	// Election is not a per-distribution mirror state.
+	st.ResetAll()
+	if st.MirrorElection() {
+		t.Error("ResetAll() turned mirror election back on")
+	}
+
+	clone := st.Clone()
+	if clone.MirrorElection() {
+		t.Error("clone lost the mirror election setting")
+	}
+	clone.SetMirrorElection(true)
+	if st.MirrorElection() || !clone.MirrorElection() {
+		t.Error("clone shares the mirror election setting with its original")
+	}
+}
+
 func TestAppStateSetMirror(t *testing.T) {
 	st := NewAppState()
 

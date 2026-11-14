@@ -20,6 +20,9 @@ import (
 
 const (
 	UbuntuPortsGeoMirrorAPI = "http://mirrors.ubuntu.com/mirrors.txt"
+	// UbuntuPortsOfficialURL is the ports archive of Ubuntu itself, over http
+	// like UbuntuOfficialURL.
+	UbuntuPortsOfficialURL = "http://ports.ubuntu.com/ubuntu-ports/"
 	// dists/devel aliases the current development series, so unlike a codename
 	// the path survives every release reaching end of life. The suite-level
 	// Release file is the same for all architectures.
@@ -56,6 +59,6 @@ var UbuntuPortsCustomMirrors = []string{
 	"mirrors.163.com/ubuntu-ports/",
 }
 
-var BuiltinUbuntuPortsMirrors = GenerateBuildInList(UbuntuPortsOfficialMirrors, UbuntuPortsCustomMirrors)
+var BuiltinUbuntuPortsMirrors = withOfficialMirror(UbuntuPortsOfficialURL, GenerateBuildInList(UbuntuPortsOfficialMirrors, UbuntuPortsCustomMirrors))
 
 var UbuntuPortsDefaultCacheRules = newDebStyleRules(TypeUbuntuPorts)

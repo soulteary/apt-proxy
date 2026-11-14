@@ -139,6 +139,9 @@ type AppState struct {
 	DebianSecurity *MirrorState
 	CentOS         *MirrorState
 	Alpine         *MirrorState
+	// electionOff is the negation of the mirror election setting, so that
+	// election is on in an AppState nobody configured.
+	electionOff atomic.Bool
 }
 
 // NewAppState constructs a fresh AppState with empty MirrorStates for
@@ -172,6 +175,19 @@ func (s *AppState) GetProxyMode() distro.ModeSet {
 		return *mode
 	}
 	return distro.ModeSet{}
+}
+
+// SetMirrorElection turns mirror election on or off. With election off, a
+// distribution without a pinned mirror uses its official address instead of
+// the fastest candidate.
+func (s *AppState) SetMirrorElection(enabled bool) {
+	s.electionOff.Store(!enabled)
+}
+
+// MirrorElection reports whether distributions without a pinned mirror elect
+// one. It is true unless SetMirrorElection turned it off.
+func (s *AppState) MirrorElection() bool {
+	return !s.electionOff.Load()
 }
 
 // SetMirror sets the mirror URL for a specific distro type. Unknown
@@ -257,5 +273,6 @@ func (s *AppState) Clone() *AppState {
 		Alpine:         s.Alpine.Clone(),
 	}
 	clone.proxyMode.Store(s.proxyMode.Load())
+	clone.electionOff.Store(s.electionOff.Load())
 	return clone
 }

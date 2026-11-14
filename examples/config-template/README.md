@@ -52,7 +52,8 @@ So a flag (e.g. `--port=8000`) always wins over the same key in this YAML.
 - `download:` — upstream fetch deadline and unknown-length spool budgets;
   zero selects bounded defaults, not unlimited downloads.
 - `mirrors:` — pin upstream mirrors per distro (full URL or shortcut like
-  `cn:tsinghua`).
+  `cn:tsinghua`), and turn mirror election off for the rest with
+  `election: false`.
 - `tls:` — terminate HTTPS at apt-proxy itself.
 - `security:` — management API authentication/rate limiting and independent
   connection-peer CIDR lists for package downloads.

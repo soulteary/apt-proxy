@@ -109,7 +109,7 @@ curl -X POST -H "X-API-Key: YOUR_API_KEY" \
   http://localhost:3142/api/mirrors/refresh
 ```
 
-Both paths are equivalent: they reload `distributions.yaml` and re-run mirror selection. SIGHUP signals are debounced (consecutive signals within ~500ms are coalesced) and queued (at most one extra reload is scheduled while a reload is in progress), so it is safe to invoke them rapidly from scripts.
+Both paths are equivalent: they reload `distributions.yaml` and re-run mirror selection. A distribution with a pinned mirror is not re-elected, and with mirror election off (`--mirror-election=false`) no mirror is probed. SIGHUP signals are debounced (consecutive signals within ~500ms are coalesced) and queued (at most one extra reload is scheduled while a reload is in progress), so it is safe to invoke them rapidly from scripts.
 
 A reload does not interrupt serving. Mirror re-election is network-bound and can take a while, and for that whole window requests continue to be answered from the previous configuration; the new distributions and their mirrors become visible together, in one step, once the election finishes. A distribution added by the reload is simply not routable until then, rather than matching a rule whose mirror does not exist yet.
 

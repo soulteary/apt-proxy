@@ -106,6 +106,14 @@ Acquire::https::Proxy::ppa.launchpad.net "DIRECT";
 
 apt-cacher-ng 风格的主机名前缀不受影响：发行版路径段前只有单独一段主机名时（`/ftp.uni-kl.de/debian/...`）依然正常路由。
 
+### 白名单源站的重定向到了客户端
+
+apt-proxy 会自己跟随白名单源站的重定向。无法跟随时，客户端会收到这个重定向，通常随之
+失败。日志里的 `redirect from an allowlisted origin was not followed and is passed to
+the client` 一行带有原因。常见原因是 apt-proxy 与外网之间有正向代理或 fake-IP DNS，
+目标地址无从校验。把目标主机加入 `passthrough` 即可解决这两种情况，详见
+[缓存第三方软件源](repository-configuration.zh-CN.md#缓存第三方软件源passthrough)。
+
 ### 调试模式
 
 启用调试日志来排查问题：
@@ -140,7 +148,10 @@ http_proxy=http://192.168.33.1:3142 \
 **解决方案**：这是预期行为 - 首次下载会填充缓存。后续下载会更快。
 
 **问题**：重启之后缓存像是空的，所有东西又重新下载了一遍
-**解决方案**：缓存条目以所选镜像的 URL 为键，而镜像选优在重启时会重新执行。用 `--ubuntu=…`、`--debian=…` 显式指定镜像即可让缓存键保持稳定。参见「缓存键与镜像选择」。
+**解决方案**：缓存条目以所选镜像的 URL 为键，而镜像选优在重启时会重新执行。用 `--ubuntu=…`、`--debian=…` 显式指定镜像即可让缓存键保持稳定；也可以用 `--mirror-election=false` 关闭镜像选优，改用官方地址。参见「缓存键与镜像选择」。
+
+**问题**：选出的镜像离服务器很远，或者速度很慢
+**解决方案**：内置候选列表包含位于中国的镜像，以及除 CentOS 外各发行版的官方地址。服务器不在中国时，可以用 `--mirror-election=false` 关闭镜像选优，让所有没有固定镜像的发行版使用官方地址；也可以固定一个离服务器较近的镜像。参见[自定义镜像选择](repository-configuration.zh-CN.md#自定义镜像选择)。
 
 **问题**：缓存目录过大
 **解决方案**：使用 `--cache-max-size` 配置缓存限制，或使用清理 API 端点。

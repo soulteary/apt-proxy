@@ -170,12 +170,14 @@ distributions:
     url_pattern: "/ubuntu/(.+)$"
     benchmark_url: "dists/devel/Release"
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+    official_url: "http://archive.ubuntu.com/ubuntu/"
     cache_rules:
       - pattern: "deb$"
         cache_control: "max-age=100000, immutable"
         rewrite: true
     mirrors:
       official:
+        - "http://archive.ubuntu.com/ubuntu/"
         - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
         - "mirrors.ustc.edu.cn/ubuntu/"
       custom:
@@ -190,9 +192,10 @@ After editing the file, send **SIGHUP** or call **POST /api/mirrors/refresh** to
 Reload is published only after the configuration loads and every distribution
 that needs a mirror has one. A distribution whose mirror election fails keeps
 the mirror it was using, takes its reloaded match patterns and cache rules, and
-is named in a warning; that alone does not fail the reload. The reload fails
-when a distribution with no previous mirror, such as one the reload adds, cannot
-elect one. It also fails when [`mode`](configuration-reference.md#mode) names an
+is named in a warning; that alone does not fail the reload. A distribution with
+no previous mirror, such as one the reload adds, falls back to its
+`official_url`. The reload fails when such a distribution cannot elect a mirror
+and has no `official_url`. It also fails when [`mode`](configuration-reference.md#mode) names an
 `id` that the reloaded file no longer defines. A failed reload keeps the
 previous routing and cache rules;
 the API returns a structured error (`500` for configuration loading failures,
@@ -214,11 +217,12 @@ returns `404` rather than falling through to another repository.
 - `host_pattern` — optional regex matched against the original request host, lower-cased and including any explicit port. An entry matching both host and `url_pattern` takes priority over generic path-only routes. If no distribution path matches, host-only fallback treats the entire request path as relative to the mirror root (for example `security.debian.org` or `apt.armbian.com`). Anchor it (`^...$`) to avoid matching lookalike hosts. This is a routing hint, not a host allowlist: path aliases still work with the proxy's host name. Omitting it inherits the built-in matcher for that distro type (Debian keeps `security.debian.org`); setting it replaces the built-in. Only the built-in Debian security host routes to the dedicated Debian Security mirror; a custom type `3` host resolves to that entry's own mirror.
 - `benchmark_url` — path, relative to each mirror root, probed during mirror benchmarking. A mirror is eligible only if it answers `200` itself: a redirect, any other status or an HTML page disqualifies it.
 - `geo_mirror_api` — optional URL returning a list of geo-located mirrors (Ubuntu-style `mirrors.txt`).
+- `official_url` — optional address of the distribution's own archive, as a full `http(s)` URL or, like a mirror list entry, without a scheme (then `https`). It is used without being probed: when [mirror election is off](#custom-mirror-selection), until the first election has finished, and when an election finds no usable mirror and there is no previous mirror to keep. An entry without it uses its first listed mirror in the first two cases and has no fallback in the third. An entry does not inherit the official address of a built-in type it reconfigures, and the address takes part in the election only if it is also listed under `mirrors`.
 - `cache_rules[]` — per-pattern cache directives. `cache_control` supplies a default response `Cache-Control` for matched paths when the upstream omits both `Cache-Control` and `Expires` (`200` uses the configured value; `404` uses `public, max-age=30`). Explicit upstream directives and expiration dates, including past or invalid `Expires` dates, shorter freshness lifetimes, `private`, and `no-store`, are preserved. Defaults are applied before cache storage. `rewrite: true` points a matched request at the distribution's mirror, and a rule needs it to be served: a distribution request is fetched from that mirror only, never from the host named in the request, so a rule without it answers `404`. A `cache_control` containing the `immutable` directive (for example `max-age=100000, immutable`) also declares that the matched URLs never change content: a zero `max-age` in the request is ignored and an expired entry survives an upstream failure. Use it only for versioned or content-addressed paths; see [freshness and immutable artifacts](cache-storage.md#freshness-and-immutable-artifacts).
 - `mirrors.official` / `mirrors.custom` — mirror host lists. Aliases of the form `cn:<name>` are auto-generated from each mirror's host (e.g. `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`).
 - `aliases` — explicit name-to-mirror mapping that overrides/augments the auto-generated aliases.
 
-**Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases` (plus `host_pattern` for a host-root archive or a repository whose path overlaps another distribution). The repo includes `config/distributions.yaml` and a [Proxmox example](../examples/proxmox) that you can extend.
+**Adding or editing a distribution:** Add or edit an entry under `distributions` with `id`, `name`, `type`, `url_pattern`, `benchmark_url`, `cache_rules`, `mirrors`, and `aliases` (plus `host_pattern` for a host-root archive or a repository whose path overlaps another distribution, and `official_url` for an address to use without an election). The repo includes `config/distributions.yaml` and a [Proxmox example](../examples/proxmox) that you can extend.
 
 ### Adding a distribution apt-proxy does not ship
 
@@ -332,7 +336,72 @@ the file.
 
 ### Custom Mirror Selection
 
-By default, APT Proxy automatically benchmarks available mirrors and selects the fastest one. However, you can specify custom mirrors if needed.
+Each distribution is fetched from one mirror. apt-proxy chooses it in this order:
+
+1. **The pinned mirror.** A mirror set with `--ubuntu`, `--ubuntu-ports`, `--debian`, `--centos` or `--alpine`, the matching environment variable or the matching `mirrors` key in `apt-proxy.yaml` is used as it is. Pinning a mirror disables election for that distribution: its candidates are not probed, at startup or on refresh.
+2. **The official address, when mirror election is off.** A distribution without a pinned mirror then uses its official address. Nothing is probed and the Ubuntu geo mirror API is not queried.
+3. **The elected mirror.** Otherwise apt-proxy probes the candidate mirrors of the distribution and uses the fastest one. This is the default.
+
+**Official addresses:**
+
+| Distribution | Official address |
+|--------------|------------------|
+| Ubuntu | `http://archive.ubuntu.com/ubuntu/` |
+| Ubuntu Ports | `http://ports.ubuntu.com/ubuntu-ports/` |
+| Debian | `https://deb.debian.org/debian/` |
+| Alpine | `https://dl-cdn.alpinelinux.org/alpine/` |
+| CentOS | none |
+
+Debian security requests go to the dedicated `--debian-security` mirror when one
+is set. Otherwise they go to the `/debian-security/` archive on the Debian mirror
+in use, which for the official address is `https://deb.debian.org/debian-security/`.
+
+CentOS has no official address, because no host of the CentOS project serves the
+tree of the listed mirrors together with the `TIME` file that the election
+probes: `mirror.centos.org/centos/` no longer carries a release,
+`vault.centos.org/centos/` carries the releases but no `TIME` file, and
+`mirror.stream.centos.org` serves CentOS Stream 9 and 10 under other paths.
+Where an official address would be used, CentOS uses the first mirror of its
+list instead, and with election off it logs a warning that names that mirror.
+To use a host of the project, pin it: `--centos=https://vault.centos.org/centos/`
+for CentOS 7 and 8, or `--centos=https://mirror.stream.centos.org/` for CentOS
+Stream as shown under [CentOS](#centos).
+
+A `distributions.yaml` entry has an official address only if it sets
+`official_url`; this includes an entry that reconfigures a built-in distribution.
+
+**Mirror election:**
+
+The candidates of a built-in distribution are its official address followed by
+its built-in mirror list. Ubuntu first asks the geo mirror API
+(`http://mirrors.ubuntu.com/mirrors.txt`) for mirrors near the server and uses
+its built-in list only when that request fails or returns no mirror. A
+distribution with a `distributions.yaml` entry uses the mirrors listed there. An
+election runs in the background at startup, and again on `SIGHUP` and
+`POST /api/mirrors/refresh`.
+
+- Until the first election has finished, requests are fetched from the official
+  address.
+- When an election finds no usable mirror, the distribution keeps the mirror it
+  was using. A distribution that has no mirror yet uses its official address.
+- A probe does not follow redirects. A candidate is eligible only if it answers
+  `200` itself with something other than an HTML page.
+
+**Turning election off:**
+
+```bash
+./apt-proxy --mirror-election=false
+```
+
+`APT_PROXY_MIRROR_ELECTION=false` and, in `apt-proxy.yaml`, `mirrors.election: false`
+do the same. Every distribution without a pinned mirror then uses its official
+address at startup and on refresh, and a pinned mirror is still used for its
+distribution. The startup log names the mirror of each distribution with the
+`mirror election is off, using official mirror` message.
+
+The environment variable takes `true` or `false` (also `1` or `0`). A value that
+is not a boolean, such as `off`, leaves election on, as it does for the other
+boolean variables; check the startup log after setting it.
 
 **Using Full URLs:**
 
@@ -433,6 +502,61 @@ signatures regardless of transport.
 An entry without a port matches ports 80 and 443 only — an allowlisted archive
 host should not also expose whatever else listens on that machine.
 
+**Redirects.** An origin may answer with a redirect to another host instead of
+the file; `pkgs.k8s.io` sends every index and package request to a CDN. A
+client cannot act on that answer through apt-proxy, so apt-proxy follows the
+redirect itself and caches the file under the URL the client asked for. The
+CDN host does not have to be on the allowlist:
+
+```bash
+./apt-proxy --passthrough=https://pkgs.k8s.io
+```
+
+```text
+deb http://pkgs.k8s.io/core:/stable:/v1.31/deb/ /
+```
+
+Up to five redirects are followed per request. A redirect to another
+allowlisted origin is followed the way a client request for that origin is
+served. A redirect to any other host is followed only if all of these hold:
+
+- The host resolves to public addresses only, and apt-proxy connects to an
+  address it checked. Loopback, private, link-local and other special-purpose
+  addresses are refused, so a redirect cannot lead to the machine apt-proxy
+  runs on or to the network behind it.
+- The port is 80 or 443.
+- The redirect does not go from `https` to `http`.
+- apt-proxy connects directly. Behind a forward proxy (`HTTP_PROXY`,
+  `HTTPS_PROXY`) the proxy resolves the name and the address cannot be
+  checked. The same applies where DNS answers with placeholder addresses, as
+  transparent proxies in fake-IP mode do (`198.18.0.0/15`).
+- [`upstream_access`](upstream-access.md), if enabled, allows the host.
+
+Otherwise the redirect is passed to the client unchanged and a warning in the
+log gives the reason. A host on the allowlist is not subject to the first four
+conditions; its entry decides the port and the scheme. Credentials a client
+sent for the origin are not sent on to a different host.
+
+Following redirects means the allowlist no longer bounds what apt-proxy
+fetches: an allowlisted origin can send it to any public host. The startup log
+says so. To keep fetches within the allowlist, turn it off:
+
+```bash
+./apt-proxy --passthrough=https://prod-cdn.packages.k8s.io --passthrough-follow-redirects=false
+```
+
+```yaml
+passthrough_follow_redirects: false
+```
+
+`APT_PROXY_PASSTHROUGH_FOLLOW_REDIRECTS=false` does the same. Every redirect
+then reaches the client, as in earlier versions. A client behind the proxy can
+use a redirecting origin only by naming the host that serves the files:
+
+```text
+deb http://prod-cdn.packages.k8s.io/repositories/isv:/kubernetes:/core:/stable:/v1.31/deb/ /
+```
+
 **What it does not do:**
 
 - Wildcards are not supported. Name each origin; a typo is rejected at startup
@@ -441,6 +565,7 @@ host should not also expose whatever else listens on that machine.
   entries. A *hostname* that resolves into your network is still accepted — the
   allowlist is the security boundary, not a network-level control. Only put
   origins there that you are willing to let any client of this proxy reach.
+  With redirects followed, that includes the public hosts they redirect to.
 - `GET` and `HEAD` only. apt fetches; it does not write.
 - Cache lifetime is the origin's: apt-proxy knows a distribution's index and
   package TTLs, but nothing about a third-party archive, so its

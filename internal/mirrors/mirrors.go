@@ -36,6 +36,8 @@ type builtinDistro struct {
 	mirrors      []distro.URLWithAlias
 	benchmarkURL string
 	hostPattern  *regexp.Regexp
+	// officialURL is empty for a distribution without an official address.
+	officialURL string
 }
 
 // builtinByMode is the single source of truth for built-in (compile-time)
@@ -46,16 +48,19 @@ var builtinByMode = map[int]builtinDistro{
 		mirrors:      distro.BuiltinUbuntuMirrors,
 		benchmarkURL: distro.UbuntuBenchmarkURL,
 		hostPattern:  distro.UbuntuHostPattern,
+		officialURL:  distro.UbuntuOfficialURL,
 	},
 	distro.TypeUbuntuPorts: {
 		mirrors:      distro.BuiltinUbuntuPortsMirrors,
 		benchmarkURL: distro.UbuntuPortsBenchmarkURL,
 		hostPattern:  distro.UbuntuPortsHostPattern,
+		officialURL:  distro.UbuntuPortsOfficialURL,
 	},
 	distro.TypeDebian: {
 		mirrors:      distro.BuiltinDebianMirrors,
 		benchmarkURL: distro.DebianBenchmarkURL,
 		hostPattern:  distro.DebianHostPattern,
+		officialURL:  distro.DebianOfficialURL,
 	},
 	distro.TypeCentOS: {
 		mirrors:      distro.BuiltinCentosMirrors,
@@ -66,6 +71,7 @@ var builtinByMode = map[int]builtinDistro{
 		mirrors:      distro.BuiltinAlpineMirrors,
 		benchmarkURL: distro.AlpineBenchmarkURL,
 		hostPattern:  distro.AlpineHostPattern,
+		officialURL:  distro.AlpineOfficialURL,
 	},
 }
 
@@ -119,6 +125,36 @@ func GetGeoMirrorUrlsByModeWithLookup(reg *distro.Registry, mode int, lookup fun
 	return mirrors
 }
 
+// GetListedMirrorUrlsByMode returns the mirrors listed for mode itself, in
+// list order: those of its registry entry, or else the built-in ones. Unlike
+// GetGeoMirrorUrlsByMode it makes no request and never returns the mirrors of
+// other distributions, so its first entry can stand in for an official
+// address.
+func GetListedMirrorUrlsByMode(reg *distro.Registry, mode int) []string {
+	if reg != nil {
+		if d, ok := reg.GetByType(mode); ok && len(d.Mirrors) > 0 {
+			return builtinMirrorURLs(d.Mirrors)
+		}
+	}
+	if b, ok := builtinByMode[mode]; ok {
+		return builtinMirrorURLs(b.mirrors)
+	}
+	return nil
+}
+
+// GetOfficialMirrorURL returns the official address of the distribution, or
+// "" when it has none. A registry entry decides for its type: one loaded from
+// distributions.yaml without official_url has no official address, also when
+// its type is a built-in one.
+func GetOfficialMirrorURL(reg *distro.Registry, mode int) string {
+	if reg != nil {
+		if d, ok := reg.GetByType(mode); ok {
+			return d.OfficialURL
+		}
+	}
+	return builtinByMode[mode].officialURL
+}
+
 func GetFullMirrorURL(mirror distro.URLWithAlias) string {
 	if mirror.HTTP() {
 		if strings.HasPrefix(mirror.URL, "http://") {
@@ -150,6 +186,12 @@ func normalizeAliasURL(raw string) string {
 // When reg is non-nil, config-loaded aliases are checked first.
 // Returns "" when the alias cannot be resolved.
 func GetMirrorURLByAliases(reg *distro.Registry, osType int, alias string) string {
+	// The official addresses are listed without an alias, and an empty name
+	// must not resolve to them.
+	if alias == "" {
+		return ""
+	}
+
 	// Prefer registry (config-loaded) aliases when present
 	if reg != nil {
 		if d, ok := reg.GetByType(osType); ok && len(d.Aliases) > 0 {

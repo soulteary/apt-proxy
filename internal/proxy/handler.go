@@ -234,6 +234,7 @@ type Options struct {
 	TransportWrapper   func(http.RoundTripper) http.RoundTripper // trusted verification after policy and mirror selection
 	TransportOverride  http.RoundTripper                         // optional: caller-supplied transport (mainly for tests)
 	Passthrough        *passthrough.List                         // optional: allowlisted third-party origins
+	FollowRedirects    bool                                      // follow the redirects of allowlisted origins instead of passing them to the client
 }
 
 // NewPackageStruct constructs a fully wired PackageStruct using the
@@ -265,14 +266,20 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 	}
 	transport := opts.TransportOverride
 	probeTransport := transport
+	var base *http.Transport
 	if transport == nil {
-		base := NewUpstreamTransport(opts.EnableKeepAlive)
+		base = NewUpstreamTransport(opts.EnableKeepAlive)
 		var upstream http.RoundTripper = base
 		if policy != nil {
 			upstream = policy.Transport(base)
 		}
 		probeTransport = upstream
 		transport = NewRetryableTransport(upstream)
+	}
+	if opts.FollowRedirects && !opts.Passthrough.Empty() {
+		// Innermost of the wrappers below, so that they see one response per
+		// client request: the one at the end of the redirect chain.
+		transport = newRedirectFollower(transport, base, policy, opts.Passthrough, log)
 	}
 	if opts.MirrorHealth != nil && opts.MirrorHealth.Enabled {
 		for _, repo := range opts.MirrorHealth.Repositories {

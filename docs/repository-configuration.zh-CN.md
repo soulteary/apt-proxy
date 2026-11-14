@@ -160,12 +160,14 @@ distributions:
     url_pattern: "/ubuntu/(.+)$"
     benchmark_url: "dists/devel/Release"
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+    official_url: "http://archive.ubuntu.com/ubuntu/"
     cache_rules:
       - pattern: "deb$"
         cache_control: "max-age=100000, immutable"
         rewrite: true
     mirrors:
       official:
+        - "http://archive.ubuntu.com/ubuntu/"
         - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
         - "mirrors.ustc.edu.cn/ubuntu/"
       custom:
@@ -182,7 +184,8 @@ distributions:
 选中发行版后使用第一条命中的 `cache_rules[]`；没有命中缓存规则时返回 `404`，
 不会继续尝试其他仓库。某个发行版镜像选优失败时，该发行版沿用原有镜像，并应用重载后的
 匹配规则与缓存规则，同时记录一条带发行版名称的 warning，热重载不会因此失败。
-配置加载失败，或没有原有镜像的发行版（例如本次重载新增的发行版）选优失败时，
+没有原有镜像的发行版（例如本次重载新增的发行版）选优失败时，改用它的 `official_url`。
+配置加载失败，或这样的发行版选优失败且没有配置 `official_url` 时，
 热重载保留原有路由与缓存规则。[`mode`](configuration-reference.zh-CN.md#模式mode) 中的某个 `id`
 在重载后的文件里不再定义时，热重载同样失败并保留原有路由，API 返回 `400`。
 
@@ -195,11 +198,12 @@ distributions:
 - `host_pattern` — 可选，用于匹配原始请求域名的正则，匹配前转为小写并保留显式端口。同时命中域名和 `url_pattern` 的条目优先于通用路径规则；没有任何发行版路径命中时，才按域名匹配，并把整个请求路径拼到镜像根目录后，适用于 `security.debian.org`、`apt.armbian.com` 等域名根仓库。请使用 `^...$` 锚定，避免匹配相似域名。它是路由提示，不是域名访问白名单：本地路径别名仍可使用代理自身的域名。省略时继承该类型的内置匹配器（Debian 保留 `security.debian.org`），显式设置则覆盖内置值。只有内置 Debian security 域名会路由到专用的 Debian Security 镜像；为 type `3` 配置的其他域名使用该条目自己的镜像。
 - `benchmark_url` — 镜像测速时请求的路径，相对于各镜像根目录。只有自身返回 `200` 的镜像才会参与选优：返回重定向、其他状态码或 HTML 页面的镜像都会被排除。
 - `geo_mirror_api` — 可选，返回地理镜像列表（Ubuntu 风格的 `mirrors.txt`）。
+- `official_url` — 可选，发行版自身软件源的地址。可以写完整的 `http(s)` URL，也可以像镜像列表条目一样省略协议（此时使用 `https`）。使用该地址前不做测速，它用于三种情况：[关闭镜像选优](#自定义镜像选择)时；首次选优完成之前；选优没有得到可用镜像、又没有原有镜像可以沿用时。未配置该字段的条目在前两种情况下使用列表中的第一个镜像，在第三种情况下没有可回退的地址。覆盖内置发行版的条目不会继承内置的官方地址；该地址只有同时写入 `mirrors` 列表才会参与选优。
 - `cache_rules[]` — 上游没有提供 `Cache-Control` 与 `Expires` 时，按规则补充默认值：`200` 使用配置值，`404` 使用 `public, max-age=30`。上游显式指令与过期时间（包括过去或无效的 `Expires`）、较短有效期、`private` 和 `no-store` 会被保留。默认值在写入缓存前应用。`rewrite: true` 把匹配的请求指向该发行版的镜像，规则必须开启它才会被提供：发行版请求只从该镜像获取，绝不从请求里点名的主机获取，因此未开启的规则返回 `404`。`cache_control` 含有 `immutable` 指令（例如 `max-age=100000, immutable`）时，还表示匹配的 URL 内容永不改变：请求中为零的 `max-age` 会被忽略，过期条目在上游故障时仍可使用。请只将其用于带版本或按内容寻址的路径，详见[新鲜度与不可变文件](cache-storage.zh-CN.md#新鲜度与不可变文件)。
 - `mirrors.official` / `mirrors.custom` — 镜像主机列表。基于主机末段会自动生成 `cn:<name>` 形式的别名（如 `mirrors.tuna.tsinghua.edu.cn` → `cn:tsinghua`）。
 - `aliases` — 显式别名映射，可覆盖/补充自动生成的别名。
 
-**添加或修改发行版：** 在 `distributions` 下增加或编辑一项，填写 `id`、`name`、`type`、`url_pattern`、`benchmark_url`、`cache_rules`、`mirrors`、`aliases` 即可；仓库位于域名根目录，或路径与其他发行版重叠时，再配置 `host_pattern`。可参考本仓库的 `config/distributions.yaml` 和 [Proxmox 示例](../examples/proxmox)。
+**添加或修改发行版：** 在 `distributions` 下增加或编辑一项，填写 `id`、`name`、`type`、`url_pattern`、`benchmark_url`、`cache_rules`、`mirrors`、`aliases` 即可；仓库位于域名根目录，或路径与其他发行版重叠时，再配置 `host_pattern`；需要一个不经选优即可使用的地址时，再配置 `official_url`。可参考本仓库的 `config/distributions.yaml` 和 [Proxmox 示例](../examples/proxmox)。
 
 ### 添加 apt-proxy 未内置的发行版
 
@@ -306,7 +310,61 @@ distributions_config: ./distributions.yaml
 
 ### 自定义镜像选择
 
-默认情况下，APT Proxy 会自动测试可用镜像并选择最快的一个。但如果需要，你可以指定自定义镜像。
+每个发行版只从一个镜像获取内容。apt-proxy 按以下顺序确定这个镜像：
+
+1. **固定的镜像。** 通过 `--ubuntu`、`--ubuntu-ports`、`--debian`、`--centos`、`--alpine`，对应的环境变量，或 `apt-proxy.yaml` 中对应的 `mirrors` 字段指定的镜像会被直接使用。为某个发行版固定镜像，就关闭了该发行版的镜像选优：启动和刷新时都不会探测它的候选镜像。
+2. **关闭镜像选优时的官方地址。** 此时没有固定镜像的发行版使用它的官方地址，不探测任何镜像，也不请求 Ubuntu 的地理镜像接口。
+3. **选优得到的镜像。** 其余情况下，apt-proxy 探测该发行版的候选镜像，并使用最快的一个。这是默认行为。
+
+**官方地址：**
+
+| 发行版 | 官方地址 |
+|--------|----------|
+| Ubuntu | `http://archive.ubuntu.com/ubuntu/` |
+| Ubuntu Ports | `http://ports.ubuntu.com/ubuntu-ports/` |
+| Debian | `https://deb.debian.org/debian/` |
+| Alpine | `https://dl-cdn.alpinelinux.org/alpine/` |
+| CentOS | 无 |
+
+配置了专用的 `--debian-security` 镜像时，Debian 安全更新请求发往该镜像；否则发往当前
+Debian 镜像所在主机的 `/debian-security/`，使用官方地址时即
+`https://deb.debian.org/debian-security/`。
+
+CentOS 没有官方地址：CentOS 项目没有哪台主机既提供列表中镜像的目录结构，又提供选优
+探测用的 `TIME` 文件。`mirror.centos.org/centos/` 已不再包含任何发行版本，
+`vault.centos.org/centos/` 包含各发行版本但没有 `TIME` 文件，`mirror.stream.centos.org`
+则以另一套路径提供 CentOS Stream 9 和 10。在本应使用官方地址的场合，CentOS 改用列表中的
+第一个镜像；关闭镜像选优时，还会记录一条写明该镜像的 warning。需要使用项目自己的主机时
+请固定镜像：CentOS 7 和 8 使用 `--centos=https://vault.centos.org/centos/`，CentOS Stream
+使用 `--centos=https://mirror.stream.centos.org/`，做法见 [CentOS](#centos)。
+
+`distributions.yaml` 中的条目只有配置了 `official_url` 才有官方地址，覆盖内置发行版的
+条目也是如此。
+
+**镜像选优：**
+
+内置发行版的候选镜像依次是它的官方地址和内置镜像列表。Ubuntu 先向地理镜像接口
+（`http://mirrors.ubuntu.com/mirrors.txt`）查询服务器附近的镜像，只有请求失败或没有返回
+镜像时才使用内置列表。在 `distributions.yaml` 中有对应条目的发行版使用该条目列出的镜像。
+选优在启动时后台进行，收到 `SIGHUP` 或 `POST /api/mirrors/refresh` 时再次进行。
+
+- 首次选优完成之前，请求从官方地址获取。
+- 选优没有得到可用镜像时，发行版沿用原有镜像；还没有镜像的发行版使用它的官方地址。
+- 探测不跟随重定向。候选镜像必须自身返回 `200`，且返回的不是 HTML 页面，才有资格当选。
+
+**关闭镜像选优：**
+
+```bash
+./apt-proxy --mirror-election=false
+```
+
+环境变量 `APT_PROXY_MIRROR_ELECTION=false` 和 `apt-proxy.yaml` 中的
+`mirrors.election: false` 效果相同。此时所有没有固定镜像的发行版在启动和刷新时都使用
+官方地址，已固定的镜像仍用于对应的发行版。启动日志通过
+`mirror election is off, using official mirror` 消息记录每个发行版使用的镜像。
+
+该环境变量的取值为 `true` 或 `false`（也可以写 `1` 或 `0`）。与其他布尔类环境变量一样，
+`off` 这类不是布尔值的写法不会关闭镜像选优；设置后请查看启动日志确认。
 
 **使用完整 URL：**
 
@@ -403,13 +461,61 @@ passthrough:
 不带端口的条目只匹配 80 和 443 —— 被放行的软件源主机，不应该顺带把那台机器上其它
 监听的服务也暴露出去。
 
+**重定向。** 源站可能不直接返回文件，而是重定向到另一台主机：`pkgs.k8s.io` 会把每个
+索引和软件包请求都重定向到 CDN。客户端无法经由 apt-proxy 处理这样的响应，因此
+apt-proxy 自己跟随重定向，并把文件缓存在客户端请求的 URL 之下。CDN 主机不需要写进
+白名单：
+
+```bash
+./apt-proxy --passthrough=https://pkgs.k8s.io
+```
+
+```text
+deb http://pkgs.k8s.io/core:/stable:/v1.31/deb/ /
+```
+
+每个请求最多跟随五次重定向。指向另一个白名单源站的重定向，按客户端直接请求该源站
+的方式处理。指向其它主机的重定向，只有同时满足以下条件才会跟随：
+
+- 该主机解析出的地址全部是公网地址，并且 apt-proxy 连接的就是校验过的地址。环回、
+  私有、链路本地及其它特殊用途地址一律拒绝，因此重定向到不了 apt-proxy 所在的机器，
+  也到不了它身后的网络。
+- 端口是 80 或 443。
+- 不是从 `https` 重定向到 `http`。
+- apt-proxy 是直连出去的。经过正向代理（`HTTP_PROXY`、`HTTPS_PROXY`）时，域名由代理
+  解析，地址无从校验。DNS 返回占位地址时同理，例如透明代理的 fake-IP 模式
+  （`198.18.0.0/15`）。
+- 启用了 [`upstream_access`](upstream-access.md) 时，该策略允许这台主机。
+
+否则重定向原样交给客户端，日志里有一条警告说明原因。白名单里的主机不受前四个条件
+约束，端口和协议由它的条目决定。客户端为源站发送的凭据不会转发给另一台主机。
+
+跟随重定向意味着白名单不再限定 apt-proxy 的抓取范围：白名单里的源站可以把它引到
+任意公网主机。启动日志会说明这一点。要把抓取限制在白名单内，请关闭它：
+
+```bash
+./apt-proxy --passthrough=https://prod-cdn.packages.k8s.io --passthrough-follow-redirects=false
+```
+
+```yaml
+passthrough_follow_redirects: false
+```
+
+环境变量 `APT_PROXY_PASSTHROUGH_FOLLOW_REDIRECTS=false` 效果相同。关闭后，所有
+重定向都交给客户端，与旧版本一致。代理后面的客户端要使用会重定向的源站，只能在源里
+直接写提供文件的那台主机：
+
+```text
+deb http://prod-cdn.packages.k8s.io/repositories/isv:/kubernetes:/core:/stable:/v1.31/deb/ /
+```
+
 **它不做的事：**
 
 - 不支持通配符。请逐个写明源站；写错的条目会在启动时直接报错，而不是悄悄放行多于
   或少于你所写的范围。
 - 环回地址、私有地址、链路本地地址和 `localhost` 不允许作为条目。但**域名**即使
   解析到内网也会被接受 —— 白名单是安全边界，不是网络层管控。只把你愿意让这个代理
-  的任意客户端访问的源站写进去。
+  的任意客户端访问的源站写进去。跟随重定向时，这也包括它们重定向到的公网主机。
 - 只放行 `GET` 和 `HEAD`。apt 只读取，不写入。
 - 缓存时长由源站决定：apt-proxy 清楚发行版的索引和软件包该缓存多久，但对第三方源
   一无所知，因此原样沿用它的 `Cache-Control`。

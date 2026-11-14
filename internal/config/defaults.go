@@ -27,6 +27,7 @@ const (
 	EnvDebianSecurity = "APT_PROXY_DEBIAN_SECURITY"
 	EnvCentOS         = "APT_PROXY_CENTOS"
 	EnvAlpine         = "APT_PROXY_ALPINE"
+	EnvMirrorElection = "APT_PROXY_MIRROR_ELECTION"
 
 	// Cache configuration environment variables
 	EnvCacheMaxSize         = "APT_PROXY_CACHE_MAX_SIZE"
@@ -48,6 +49,9 @@ const (
 	// and the variable is user-facing, so the name stays and the finding is
 	// waived here rather than the setting being renamed around a linter.
 	EnvPassthrough = "APT_PROXY_PASSTHROUGH" // #nosec G101 -- env var name, not a credential
+
+	// Whether redirects from passthrough origins are followed (default true).
+	EnvPassthroughFollowRedirects = "APT_PROXY_PASSTHROUGH_FOLLOW_REDIRECTS" // #nosec G101 -- env var name, not a credential
 
 	// Configuration file environment variable
 	EnvConfigFile = "APT_PROXY_CONFIG_FILE"

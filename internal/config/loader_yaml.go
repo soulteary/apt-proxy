@@ -62,6 +62,9 @@ type YAMLConfig struct {
 		DebianSecurity string `yaml:"debian_security"`
 		CentOS         string `yaml:"centos"`
 		Alpine         string `yaml:"alpine"`
+		// Pointer keeps the default of true when the key is omitted; an
+		// explicit false turns mirror election off.
+		Election *bool `yaml:"election"`
 	} `yaml:"mirrors"`
 
 	TLS struct {
@@ -105,6 +108,8 @@ type YAMLConfig struct {
 	Mode                modeList `yaml:"mode"`
 	DistributionsConfig string   `yaml:"distributions_config"`
 	Passthrough         []string `yaml:"passthrough"`
+	// Pointer keeps the default of true when the key is omitted.
+	PassthroughFollowRedirects *bool `yaml:"passthrough_follow_redirects"`
 
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors.
 	// Pointer to distinguish "user did not set" (nil → leave to defaults
@@ -281,6 +286,10 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 	if yamlCfg.Storage.S3.UseSSL != nil {
 		s3UseSSL = *yamlCfg.Storage.S3.UseSSL
 	}
+	mirrorElection := true
+	if yamlCfg.Mirrors.Election != nil {
+		mirrorElection = *yamlCfg.Mirrors.Election
+	}
 
 	cfg := &Config{
 		Metalink:     yamlCfg.Metalink,
@@ -295,6 +304,8 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			DebianSecurity: yamlCfg.Mirrors.DebianSecurity,
 			CentOS:         yamlCfg.Mirrors.CentOS,
 			Alpine:         yamlCfg.Mirrors.Alpine,
+			// The option is positive and the field its negation; see MirrorConfig.
+			DisableElection: !mirrorElection,
 		},
 		Cache: CacheConfig{
 			Integrity:          yamlCfg.Cache.Integrity,
@@ -337,6 +348,9 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 		DistributionsConfigPath: yamlCfg.DistributionsConfig,
 		Passthrough:             append([]string(nil), yamlCfg.Passthrough...),
 	}
+
+	// Redirects are followed unless the file says otherwise, as on the command line.
+	cfg.PassthroughFollowRedirects = yamlCfg.PassthroughFollowRedirects == nil || *yamlCfg.PassthroughFollowRedirects
 
 	// Apply UpstreamKeepAlive: default to true (matches CLI default) so the
 	// merged base does not silently flip a CLI default of true to YAML's

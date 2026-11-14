@@ -20,7 +20,7 @@ import (
 func TestMergeCompleteOperatorOverride(t *testing.T) {
 	override := &Config{
 		Debug: true, CacheDir: "operator-cache", Mode: distro.TypeDebian, Listen: "127.0.0.1:1234", UpstreamKeepAlive: true,
-		Mirrors:     MirrorConfig{Ubuntu: "u", UbuntuPorts: "up", Debian: "d", DebianSecurity: "ds", CentOS: "c", Alpine: "a"},
+		Mirrors:     MirrorConfig{Ubuntu: "u", UbuntuPorts: "up", Debian: "d", DebianSecurity: "ds", CentOS: "c", Alpine: "a", DisableElection: true},
 		Cache:       CacheConfig{MaxSize: 1024, TTL: time.Hour, CleanupInterval: time.Minute, Integrity: "sha256"},
 		TLS:         TLSConfig{Enabled: true, CertFile: "cert", KeyFile: "key"},
 		Security:    SecurityConfig{APIKey: "key", EnableAPIAuth: true, APIRateLimitPerMinute: 12, TrustedProxies: []string{"127.0.0.1/32"}},
@@ -49,8 +49,8 @@ func TestMergeCompleteOperatorOverride(t *testing.T) {
 }
 
 func TestExplicitOverridesCanDisableLimitsAndFeatures(t *testing.T) {
-	base := &Config{Debug: true, Mode: 3, UpstreamKeepAlive: true, Cache: CacheConfig{MaxSize: 1, TTL: time.Hour, CleanupInterval: time.Minute}, TLS: TLSConfig{Enabled: true}, Security: SecurityConfig{EnableAPIAuth: true, APIRateLimitPerMinute: 5, TrustedProxies: []string{"127.0.0.1"}}, Storage: StorageConfig{S3: S3Config{UseSSL: true, UsePathStyle: true, InlineMaxMB: 5}}, Passthrough: []string{"example.com"}}
-	ex := &cliExplicit{Debug: true, Mode: true, UpstreamKeepAlive: true, CacheMaxSize: true, CacheTTL: true, CacheCleanupInterval: true, TLSEnabled: true, EnableAPIAuth: true, APIRateLimitPerMinute: true, TrustedProxies: true, Passthrough: true, S3UseSSL: true, S3UsePathStyle: true, S3InlineMaxMB: true}
+	base := &Config{Debug: true, Mode: 3, UpstreamKeepAlive: true, Mirrors: MirrorConfig{DisableElection: true}, Cache: CacheConfig{MaxSize: 1, TTL: time.Hour, CleanupInterval: time.Minute}, TLS: TLSConfig{Enabled: true}, Security: SecurityConfig{EnableAPIAuth: true, APIRateLimitPerMinute: 5, TrustedProxies: []string{"127.0.0.1"}}, Storage: StorageConfig{S3: S3Config{UseSSL: true, UsePathStyle: true, InlineMaxMB: 5}}, Passthrough: []string{"example.com"}}
+	ex := &cliExplicit{Debug: true, Mode: true, UpstreamKeepAlive: true, MirrorElection: true, CacheMaxSize: true, CacheTTL: true, CacheCleanupInterval: true, TLSEnabled: true, EnableAPIAuth: true, APIRateLimitPerMinute: true, TrustedProxies: true, Passthrough: true, S3UseSSL: true, S3UsePathStyle: true, S3InlineMaxMB: true}
 	got := MergeConfigsWithExplicit(base, &Config{}, ex)
 	if !reflect.DeepEqual(got, &Config{}) {
 		t.Fatalf("explicit zero values not honored: %#v", got)

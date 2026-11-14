@@ -21,6 +21,14 @@ command: >-
   --debian=https://mirrors.ustc.edu.cn/debian/
 ```
 
+A pinned mirror is used as it is: its distribution takes no part in the mirror
+election. To use the official address of every distribution without pinning
+each one, turn the election off instead:
+
+```yaml
+command: --mirror-election=false
+```
+
 ## Run
 
 ```bash

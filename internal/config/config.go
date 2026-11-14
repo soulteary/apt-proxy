@@ -53,6 +53,12 @@ type Config struct {
 	// Empty (the default) means apt-proxy serves only the distributions it is
 	// configured for; it is never an open forward proxy.
 	Passthrough []string `yaml:"passthrough"`
+	// PassthroughFollowRedirects makes apt-proxy follow the redirects that
+	// passthrough origins answer with (default true). A redirect target does
+	// not have to be listed in Passthrough, but it must have public addresses.
+	// False passes every redirect to the client and keeps upstream fetches
+	// within Passthrough.
+	PassthroughFollowRedirects bool `yaml:"passthrough_follow_redirects"`
 	// Modes is the mode setting as written in --mode, APT_PROXY_MODE or the
 	// config file: "all", or the IDs of the distributions to serve. The IDs
 	// are not checked by the loaders, because those from distributions.yaml
@@ -147,6 +153,12 @@ type MirrorConfig struct {
 	DebianSecurity string `yaml:"debian_security"`
 	CentOS         string `yaml:"centos"`
 	Alpine         string `yaml:"alpine"`
+	// DisableElection turns mirror election off: a distribution without a
+	// pinned mirror then uses its official address and nothing is probed. The
+	// user-facing option is the positive mirrors.election / -mirror-election,
+	// default true. The field holds its negation so that a Config built
+	// without the loader keeps election on.
+	DisableElection bool `yaml:"-"`
 }
 
 // CacheConfig holds cache-specific configuration.

@@ -142,6 +142,16 @@ path prefix to match.
 The apt-cacher-ng host-prefixed form is unaffected: a single host segment in
 front of the distribution segment (`/ftp.uni-kl.de/debian/...`) still routes.
 
+### A redirect from a passthrough origin reaches the client
+
+apt-proxy follows the redirects of allowlisted origins. When it cannot follow
+one, the client receives the redirect and usually fails on it. The log line
+`redirect from an allowlisted origin was not followed and is passed to the
+client` carries the reason. The common ones are a forward proxy or fake-IP DNS
+between apt-proxy and the internet, where the address of the target cannot be
+checked. Adding the target host to `passthrough` resolves both; see
+[Caching Third-Party Archives](repository-configuration.md#caching-third-party-archives-passthrough).
+
 ### Debug Mode
 
 Enable debug logging to troubleshoot issues:
@@ -178,7 +188,15 @@ http_proxy=http://192.168.33.1:3142 \
 **Issue**: Cache appears empty after a restart, and everything downloads again
 **Solution**: Cache entries are keyed by the elected mirror's URL, and mirror
 election re-runs on restart. Pin the mirror (`--ubuntu=…`, `--debian=…`) to keep
-the keys stable. See *Cache Keys and Mirror Selection*.
+the keys stable, or turn election off with `--mirror-election=false` to use the
+official addresses. See *Cache Keys and Mirror Selection*.
+
+**Issue**: The elected mirror is far from the server, or slow
+**Solution**: The built-in candidate lists hold mirrors in China and, for every
+distribution but CentOS, its official address. Outside China, turn election off
+with `--mirror-election=false` so that every distribution without a pinned mirror
+uses its official address, or pin a mirror near the server. See
+[Custom Mirror Selection](repository-configuration.md#custom-mirror-selection).
 
 **Issue**: Cache directory growing too large
 **Solution**: Configure cache limits with `--cache-max-size` or use the cleanup API endpoint.
