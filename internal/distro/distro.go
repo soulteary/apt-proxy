@@ -151,9 +151,9 @@ func GenerateBuildInList(officialList []string, customList []string) []URLWithAl
 func appendBuiltins(mirrors []URLWithAlias, list []string, official bool) []URLWithAlias {
 	for _, url := range list {
 		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-			// https comes first: the first list entry is the default mirror
-			// until an election finishes, and an alias resolves to the first
-			// entry carrying it.
+			// https comes first: without an official address the first list
+			// entry is the default mirror until an election finishes, and an
+			// alias resolves to the first entry carrying it.
 			mirrors = append(mirrors, GenerateBuiltinMirrorItem("https://"+url, official))
 			mirrors = append(mirrors, GenerateBuiltinMirrorItem("http://"+url, official))
 			continue
@@ -161,4 +161,32 @@ func appendBuiltins(mirrors []URLWithAlias, list []string, official bool) []URLW
 		mirrors = append(mirrors, GenerateBuiltinMirrorItem(url, official))
 	}
 	return mirrors
+}
+
+// withOfficialMirror puts a distribution's official address at the head of its
+// built-in mirror list, so that it takes part in the election and can win it
+// where the listed mirrors are far away. The head of the list matters: probes
+// start in list order, and when most mirrors time out the election deadline
+// can pass before the tail is reached.
+//
+// An https address is also offered over http, as every list entry written
+// without a scheme is; the election uses the http variant only where https
+// fails. An http address is offered as written.
+//
+// The entries carry no alias. A generated one would be cn:ubuntu for
+// archive.ubuntu.com and cn:debian for deb.debian.org, which cn.archive.ubuntu.com
+// and ftp.cn.debian.org already answer to, and an alias resolves to the first
+// entry carrying it.
+func withOfficialMirror(official string, mirrors []URLWithAlias) []URLWithAlias {
+	candidates := []string{official}
+	if rest, ok := strings.CutPrefix(official, "https://"); ok {
+		candidates = append(candidates, "http://"+rest)
+	}
+	out := make([]URLWithAlias, 0, len(candidates)+len(mirrors))
+	for _, candidate := range candidates {
+		item := GenerateBuiltinMirrorItem(candidate, true)
+		item.Alias = ""
+		out = append(out, item)
+	}
+	return append(out, mirrors...)
 }

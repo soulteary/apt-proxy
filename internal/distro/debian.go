@@ -20,6 +20,10 @@ const (
 	// dists/stable aliases the current release, so unlike a codename the path
 	// survives a release moving to the archive.
 	DebianBenchmarkURL = "dists/stable/Release"
+	// DebianOfficialURL is Debian's own CDN. The same host serves
+	// /debian-security/, so the security mirror derived from it is official
+	// as well.
+	DebianOfficialURL = "https://deb.debian.org/debian/"
 )
 
 var DebianHostPattern = regexp.MustCompile(`/debian(-security)?/(.+)$`)
@@ -72,6 +76,6 @@ var DebianCustomMirrors = []string{
 	"mirror.nju.edu.cn/debian/",
 }
 
-var BuiltinDebianMirrors = GenerateBuildInList(DebianOfficialMirrors, DebianCustomMirrors)
+var BuiltinDebianMirrors = withOfficialMirror(DebianOfficialURL, GenerateBuildInList(DebianOfficialMirrors, DebianCustomMirrors))
 
 var DebianDefaultCacheRules = newDebStyleRules(TypeDebian)

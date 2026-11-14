@@ -20,6 +20,13 @@ var CentosHostPattern = regexp.MustCompile(`/centos/(.+)$`)
 
 const CentosBenchmarkURL = "TIME"
 
+// CentOS has no official address here, because no host of the project serves
+// the tree the mirrors below carry in a form that can stand in for them:
+// mirror.centos.org/centos/ has the layout and the TIME file but no release
+// any more, vault.centos.org/centos/ has the releases but no TIME file, and
+// mirror.stream.centos.org serves CentOS Stream under other paths. Pin one of
+// them with --centos to use it.
+
 // https://www.centos.org/download/mirrors/ 2022.11.19
 // Sites that contain protocol headers, restrict access to resources using that protocol
 var CentosOfficialMirrors = []string{

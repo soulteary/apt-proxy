@@ -68,9 +68,10 @@ func TestBuiltinBenchmarkURLsUseSuiteAliases(t *testing.T) {
 	}
 }
 
-// The first entry of a list is the default mirror while an election is
-// pending, and an alias resolves to the first entry carrying it. Both should
-// land on https when the mirror is listed without a scheme.
+// Without an official address, the first entry of a list is the default mirror
+// while an election is pending, and an alias resolves to the first entry
+// carrying it. Both should land on https when the mirror is listed without a
+// scheme.
 func TestBuiltinListOffersHTTPSFirst(t *testing.T) {
 	list := GenerateBuiltinList(
 		[]string{"mirror.example/ubuntu/", "http://plain.example/ubuntu/"},
