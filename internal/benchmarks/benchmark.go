@@ -539,7 +539,8 @@ func GetTheFastestMirrorAsync(distType int, mirrors []string, testURL string, ca
 }
 
 // GetDefaultMirror returns the first mirror from the list as a fallback.
-// This is used when async benchmark is in progress or when benchmark fails.
+// A distribution without an official address uses it while its async
+// benchmark is in progress and after that benchmark failed.
 func GetDefaultMirror(mirrors []string) string {
 	if len(mirrors) == 0 {
 		return ""

@@ -184,6 +184,40 @@ func TestLoadConfigFileRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+// mirrors.election defaults to true, so the file has to tell an omitted key
+// from an explicit false, and a value that is not a boolean must not pass for
+// either.
+func TestLoadConfigFileMirrorElection(t *testing.T) {
+	unsetEnv(t, "APT_PROXY_TEST_ELECTION")
+	for _, tc := range []struct {
+		name         string
+		yaml         string
+		wantDisabled bool
+	}{
+		{"no mirrors section", "mode: debian\n", false},
+		{"key omitted", "mirrors:\n  debian: https://mirror.example/debian/\n", false},
+		{"true", "mirrors:\n  election: true\n", false},
+		{"false", "mirrors:\n  election: false\n", true},
+		{"null", "mirrors:\n  election:\n", false},
+		{"default of an unset variable", "mirrors:\n  election: ${APT_PROXY_TEST_ELECTION:-false}\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := LoadConfigFile(writeConfigFile(t, tc.yaml))
+			if err != nil {
+				t.Fatalf("LoadConfigFile: %v", err)
+			}
+			if cfg.Mirrors.DisableElection != tc.wantDisabled {
+				t.Errorf("DisableElection = %v, want %v", cfg.Mirrors.DisableElection, tc.wantDisabled)
+			}
+		})
+	}
+
+	cfg, err := LoadConfigFile(writeConfigFile(t, "mirrors:\n  election: sometimes\n"))
+	if err == nil || !strings.Contains(err.Error(), "line 2") || cfg != nil {
+		t.Fatalf("LoadConfigFile = %+v, %v; want a type error naming the line", cfg, err)
+	}
+}
+
 func TestLoadConfigFileAcceptsEmptyDocument(t *testing.T) {
 	want := yamlConfigToConfig(&YAMLConfig{})
 	for _, body := range []string{"", "# no settings\n", "---\n", "null\n", "{}\n"} {

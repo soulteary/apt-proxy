@@ -53,6 +53,11 @@ type RegisteredDistribution struct {
 	CacheRules   []Rule
 	Mirrors      []URLWithAlias
 	Aliases      map[string]string
+	// OfficialURL is the distribution's own archive as a full URL, or "" when
+	// it has none. It is the mirror in use whenever none is pinned or elected:
+	// with election off, until the first election finishes, and after a failed
+	// election that has no previous mirror to keep.
+	OfficialURL string
 }
 
 // NewRegistry creates an empty registry. Call RegisterBuiltins to seed
@@ -214,6 +219,7 @@ func RegisterBuiltins(reg *Registry) {
 			URLPattern:   UbuntuHostPattern,
 			BenchmarkURL: UbuntuBenchmarkURL,
 			GeoMirrorAPI: UbuntuGeoMirrorAPI,
+			OfficialURL:  UbuntuOfficialURL,
 			CacheRules:   UbuntuDefaultCacheRules,
 			Mirrors:      BuiltinUbuntuMirrors,
 		},
@@ -225,6 +231,7 @@ func RegisterBuiltins(reg *Registry) {
 			URLPattern:   UbuntuPortsHostPattern,
 			BenchmarkURL: UbuntuPortsBenchmarkURL,
 			GeoMirrorAPI: UbuntuPortsGeoMirrorAPI,
+			OfficialURL:  UbuntuPortsOfficialURL,
 			CacheRules:   UbuntuPortsDefaultCacheRules,
 			Mirrors:      BuiltinUbuntuPortsMirrors,
 		},
@@ -236,6 +243,7 @@ func RegisterBuiltins(reg *Registry) {
 			URLPattern:   DebianHostPattern,
 			HostPattern:  DebianSecurityHostPattern,
 			BenchmarkURL: DebianBenchmarkURL,
+			OfficialURL:  DebianOfficialURL,
 			CacheRules:   DebianDefaultCacheRules,
 			Mirrors:      BuiltinDebianMirrors,
 		},
@@ -256,6 +264,7 @@ func RegisterBuiltins(reg *Registry) {
 			Builtin:      true,
 			URLPattern:   AlpineHostPattern,
 			BenchmarkURL: AlpineBenchmarkURL,
+			OfficialURL:  AlpineOfficialURL,
 			CacheRules:   AlpineDefaultCacheRules,
 			Mirrors:      BuiltinAlpineMirrors,
 		},
@@ -286,6 +295,11 @@ func (r *Registry) LoadFromConfig(config *DistributionConfig) error {
 		}
 	} else {
 		hostPattern = BuiltinHostPattern(config.Type)
+	}
+
+	officialURL, err := normalizeOfficialURL(config.OfficialURL)
+	if err != nil {
+		return err
 	}
 
 	cacheRules := make([]Rule, 0, len(config.CacheRules))
@@ -319,6 +333,7 @@ func (r *Registry) LoadFromConfig(config *DistributionConfig) error {
 		HostPattern:  hostPattern,
 		BenchmarkURL: config.BenchmarkURL,
 		GeoMirrorAPI: config.GeoMirrorAPI,
+		OfficialURL:  officialURL,
 		CacheRules:   cacheRules,
 		Mirrors:      mirrors,
 		Aliases:      config.Aliases,

@@ -2,6 +2,13 @@
 # Add or edit distributions and mirrors here. Reload with SIGHUP or POST /api/mirrors/refresh.
 # If mirrors.official/custom are empty for a distribution, built-in mirrors are used for that dist.
 #
+# official_url is optional. It names the distribution's own archive, which is
+# used without an election: when mirror election is off (--mirror-election=false),
+# until the first election has finished, and when an election finds no usable
+# mirror and there is no previous mirror to keep. An entry without it uses its
+# first listed mirror in the first two cases and has no fallback in the third.
+# The address takes part in the election only if it is also listed under mirrors.
+#
 # distributions:
 #   - id: ubuntu
 #     name: Ubuntu
@@ -9,6 +16,7 @@
 #     url_pattern: "/ubuntu/(.+)$"
 #     benchmark_url: "dists/devel/Release"
 #     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+#     official_url: "http://archive.ubuntu.com/ubuntu/"
 #     cache_rules:
 #       - pattern: "deb$"
 #         cache_control: "max-age=100000, immutable"
@@ -18,6 +26,7 @@
 #         rewrite: true
 #     mirrors:
 #       official:
+#         - "http://archive.ubuntu.com/ubuntu/"
 #         - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
 #         - "mirrors.ustc.edu.cn/ubuntu/"
 #       custom:
@@ -186,6 +195,7 @@ distributions:
     url_pattern: "/ubuntu/(.+)$"
     benchmark_url: "dists/devel/Release"
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+    official_url: "http://archive.ubuntu.com/ubuntu/"
     cache_rules:
       - pattern: "deb$"
         cache_control: "max-age=100000, immutable"
@@ -247,6 +257,7 @@ distributions:
         rewrite: true
     mirrors:
       official:
+        - "http://archive.ubuntu.com/ubuntu/"
         - "mirrors.cn99.com/ubuntu/"
         - "mirrors.tuna.tsinghua.edu.cn/ubuntu/"
         - "mirrors.ustc.edu.cn/ubuntu/"
@@ -269,6 +280,7 @@ distributions:
     url_pattern: "/ubuntu-ports/(.+)$"
     benchmark_url: "dists/devel/Release"
     geo_mirror_api: "http://mirrors.ubuntu.com/mirrors.txt"
+    official_url: "http://ports.ubuntu.com/ubuntu-ports/"
     cache_rules:
       - pattern: "deb$"
         cache_control: "max-age=100000, immutable"
@@ -330,6 +342,7 @@ distributions:
         rewrite: true
     mirrors:
       official:
+        - "http://ports.ubuntu.com/ubuntu-ports/"
         - "mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/"
         - "mirrors.ustc.edu.cn/ubuntu-ports/"
         - "mirrors.aliyun.com/ubuntu-ports/"
@@ -346,6 +359,7 @@ distributions:
     type: 3
     url_pattern: "/debian(-security)?/(.+)$"
     benchmark_url: "dists/stable/Release"
+    official_url: "https://deb.debian.org/debian/"
     cache_rules:
       - pattern: "deb$"
         cache_control: "max-age=100000, immutable"
@@ -407,6 +421,7 @@ distributions:
         rewrite: true
     mirrors:
       official:
+        - "deb.debian.org/debian/"
         - "http://ftp.cn.debian.org/debian/"
         - "mirrors.tuna.tsinghua.edu.cn/debian/"
         - "mirrors.ustc.edu.cn/debian/"
@@ -427,6 +442,9 @@ distributions:
     type: 4
     url_pattern: "/centos/(.+)$"
     benchmark_url: "TIME"
+    # No official_url: no CentOS project host serves this tree with both its
+    # releases and the TIME file. Pin one with --centos or, in apt-proxy.yaml,
+    # mirrors.centos.
     cache_rules:
       - pattern: "repomd.xml$"
         cache_control: "max-age=3600"
@@ -466,6 +484,7 @@ distributions:
     type: 5
     url_pattern: "/alpine/(.+)$"
     benchmark_url: "MIRRORS.txt"
+    official_url: "https://dl-cdn.alpinelinux.org/alpine/"
     cache_rules:
       - pattern: "APKINDEX.tar.gz$"
         cache_control: "max-age=3600"
@@ -481,6 +500,7 @@ distributions:
         rewrite: true
     mirrors:
       official:
+        - "dl-cdn.alpinelinux.org/alpine/"
         - "mirrors.tuna.tsinghua.edu.cn/alpine/"
         - "mirrors.ustc.edu.cn/alpine/"
         - "mirrors.aliyun.com/alpine/"

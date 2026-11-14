@@ -80,6 +80,9 @@ func MergeConfigsWithExplicit(base, override *Config, ex *cliExplicit) *Config {
 	if ex.AlpineMirror {
 		result.Mirrors.Alpine = override.Mirrors.Alpine
 	}
+	if ex.MirrorElection {
+		result.Mirrors.DisableElection = override.Mirrors.DisableElection
+	}
 
 	if ex.CacheMaxSize {
 		result.Cache.MaxSize = override.Cache.MaxSize
@@ -234,6 +237,9 @@ func MergeConfigs(base, override *Config) *Config {
 	}
 	if override.Mirrors.Alpine != "" {
 		result.Mirrors.Alpine = override.Mirrors.Alpine
+	}
+	if override.Mirrors.DisableElection {
+		result.Mirrors.DisableElection = override.Mirrors.DisableElection
 	}
 
 	// Merge CacheConfig

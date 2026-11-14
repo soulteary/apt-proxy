@@ -20,6 +20,11 @@ import (
 
 const (
 	UbuntuGeoMirrorAPI = "http://mirrors.ubuntu.com/mirrors.txt"
+	// UbuntuOfficialURL is Ubuntu's own archive. It is the http address
+	// although the host answers https too: the geo mirror API lists this
+	// exact URL, so the default mirror and an elected official mirror are the
+	// same and share their cache entries.
+	UbuntuOfficialURL = "http://archive.ubuntu.com/ubuntu/"
 	// dists/devel aliases the current development series, so unlike a codename
 	// the path survives every release reaching end of life.
 	UbuntuBenchmarkURL = "dists/devel/Release"
@@ -59,6 +64,6 @@ var UbuntuCustomMirrors = []string{
 	"mirrors.163.com/ubuntu/",
 }
 
-var BuiltinUbuntuMirrors = GenerateBuildInList(UbuntuOfficialMirrors, UbuntuCustomMirrors)
+var BuiltinUbuntuMirrors = withOfficialMirror(UbuntuOfficialURL, GenerateBuildInList(UbuntuOfficialMirrors, UbuntuCustomMirrors))
 
 var UbuntuDefaultCacheRules = newDebStyleRules(TypeUbuntu)

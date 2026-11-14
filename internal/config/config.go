@@ -143,6 +143,12 @@ type MirrorConfig struct {
 	DebianSecurity string `yaml:"debian_security"`
 	CentOS         string `yaml:"centos"`
 	Alpine         string `yaml:"alpine"`
+	// DisableElection turns mirror election off: a distribution without a
+	// pinned mirror then uses its official address and nothing is probed. The
+	// user-facing option is the positive mirrors.election / -mirror-election,
+	// default true. The field holds its negation so that a Config built
+	// without the loader keeps election on.
+	DisableElection bool `yaml:"-"`
 }
 
 // CacheConfig holds cache-specific configuration.

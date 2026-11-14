@@ -20,9 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -39,6 +41,12 @@ type DistributionConfig struct {
 	CacheRules   []CacheRuleConfig `yaml:"cache_rules"`
 	Mirrors      MirrorListConfig  `yaml:"mirrors"`
 	Aliases      map[string]string `yaml:"aliases,omitempty"`
+	// OfficialURL is the distribution's own archive. It is used without an
+	// election: when election is off, until the first election finishes, and
+	// when an election fails and there is no previous mirror to keep. An entry
+	// does not inherit the built-in address of its type: a file written
+	// before the field existed keeps starting on its first listed mirror.
+	OfficialURL string `yaml:"official_url,omitempty"`
 }
 
 // CacheRuleConfig represents a cache rule configuration
@@ -159,6 +167,11 @@ func (l *Loader) validateDistribution(dist *DistributionConfig) error {
 		}
 	}
 
+	// official_url is optional; validate it when present.
+	if _, err := normalizeOfficialURL(dist.OfficialURL); err != nil {
+		return err
+	}
+
 	// Validate cache rule patterns
 	for i, rule := range dist.CacheRules {
 		if rule.Pattern == "" {
@@ -170,6 +183,26 @@ func (l *Loader) validateDistribution(dist *DistributionConfig) error {
 	}
 
 	return nil
+}
+
+// normalizeOfficialURL returns the official_url of a distributions.yaml entry
+// as a full URL. Like a mirror list entry it may omit the scheme, which then
+// is https. It must name a host: the address is used without being probed.
+// The error does not repeat the value, which may carry credentials.
+func normalizeOfficialURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	full := raw
+	if !strings.Contains(raw, "://") {
+		full = "https://" + raw
+	}
+	parsed, err := url.Parse(full)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+		return "", errors.New("invalid official URL: expected an http(s) URL with a host")
+	}
+	return full, nil
 }
 
 // GetConfig returns the loaded configuration

@@ -283,7 +283,9 @@ func (s *Server) initialize() error {
 
 	// Initialize proxy with async benchmark for faster startup.
 	// This uses default mirrors immediately and updates to the fastest mirror
-	// in the background after benchmarking completes.
+	// in the background after benchmarking completes. A distribution with a
+	// pinned mirror, and every distribution when mirror election is off, has
+	// its final mirror from the start and runs no benchmark.
 	// ValidateConfig already rejected a malformed allowlist, so a failure here
 	// would mean the config changed underneath us; treat it as an init error
 	// rather than starting with a list that is not what was written.

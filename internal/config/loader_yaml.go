@@ -62,6 +62,9 @@ type YAMLConfig struct {
 		DebianSecurity string `yaml:"debian_security"`
 		CentOS         string `yaml:"centos"`
 		Alpine         string `yaml:"alpine"`
+		// Pointer keeps the default of true when the key is omitted; an
+		// explicit false turns mirror election off.
+		Election *bool `yaml:"election"`
 	} `yaml:"mirrors"`
 
 	TLS struct {
@@ -257,6 +260,10 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 	if yamlCfg.Storage.S3.UseSSL != nil {
 		s3UseSSL = *yamlCfg.Storage.S3.UseSSL
 	}
+	mirrorElection := true
+	if yamlCfg.Mirrors.Election != nil {
+		mirrorElection = *yamlCfg.Mirrors.Election
+	}
 
 	cfg := &Config{
 		Metalink:     yamlCfg.Metalink,
@@ -271,6 +278,8 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 			DebianSecurity: yamlCfg.Mirrors.DebianSecurity,
 			CentOS:         yamlCfg.Mirrors.CentOS,
 			Alpine:         yamlCfg.Mirrors.Alpine,
+			// The option is positive and the field its negation; see MirrorConfig.
+			DisableElection: !mirrorElection,
 		},
 		Cache: CacheConfig{
 			Integrity:          yamlCfg.Cache.Integrity,

@@ -95,12 +95,16 @@ are not persisted, so **a restart re-elects**, and so do `SIGHUP` and `POST
 /api/mirrors/refresh`. An election probes every candidate. A mirror that times
 out, redirects, answers with anything but `200` or serves an HTML page is
 dropped from that run's candidates, and a mirror that answers over both HTTP and
-HTTPS is used over HTTPS. If a distribution's election fails during refresh,
+HTTPS is used over HTTPS. Until the startup election has finished, requests are
+fetched from the distribution's
+[official address](repository-configuration.md#custom-mirror-selection) and
+stored under its URL. If a distribution's election fails during refresh,
 that distribution keeps its previous mirror, so its cache keys do not change,
-while its reloaded match patterns and cache rules take effect. The refresh
-reports an error, and the complete previous routing remains active, only when a
-distribution without a previous mirror (one the reload adds, for example)
-cannot elect one; the reloaded match patterns and cache rules then take effect
+while its reloaded match patterns and cache rules take effect. A distribution
+without a previous mirror (one the reload adds, for example) uses its official
+address. The refresh reports an error, and the complete previous routing
+remains active, only when such a distribution cannot elect a mirror and has no
+official address; the reloaded match patterns and cache rules then take effect
 only after a successful retry.
 
 By default, entries are not shared between mirrors because their contents may
@@ -117,7 +121,9 @@ rewarm after restart. To keep the default cache warm across restarts,
 ```
 
 A pinned mirror is used as-is with no benchmarking, so the keys are stable for
-the life of the deployment.
+the life of the deployment. Turning mirror election off with
+`--mirror-election=false` does the same for every distribution without a pinned
+mirror: each one is fetched from its official address.
 
 ## S3 Storage Backend
 
