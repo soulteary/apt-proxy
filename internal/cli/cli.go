@@ -50,6 +50,7 @@ const (
 	EnvDebianSecurity = config.EnvDebianSecurity
 	EnvCentOS         = config.EnvCentOS
 	EnvAlpine         = config.EnvAlpine
+	EnvMirrorElection = config.EnvMirrorElection
 
 	EnvCacheMaxSize         = config.EnvCacheMaxSize
 	EnvCacheTTL             = config.EnvCacheTTL

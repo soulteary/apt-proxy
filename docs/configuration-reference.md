@@ -26,6 +26,7 @@ YAML also exposes policies without CLI flags; see the YAML section and the
 | `-debian-security` | Dedicated Debian Security mirror URL or shortcut | (derived from `-debian`) |
 | `-centos` | CentOS mirror URL or shortcut | (auto-select) |
 | `-alpine` | Alpine mirror URL or shortcut | (auto-select) |
+| `-mirror-election` | Elect the fastest mirror for each distribution without a mirror option; `false` uses its official address and probes nothing (see [mirror selection](repository-configuration.md#custom-mirror-selection)) | `true` |
 | `-distributions-config` | Path to distributions/mirrors YAML (distributions.yaml) | (optional) |
 | `-passthrough` | Comma-separated third-party origins to fetch and cache unrewritten | (empty) |
 | `-cache-max-size` | Maximum cache size in GB (0 to disable) | `10` |
@@ -52,6 +53,10 @@ YAML also exposes policies without CLI flags; see the YAML section and the
 | `-s3-temp-dir` | Directory for spilled writes (default `os.TempDir()`) | |
 | `-config` | Path to YAML configuration file | |
 | `-debug` | Enable verbose debug logging (also dumps request headers/body to logs) | `false` |
+
+A mirror option (`-ubuntu`, `-ubuntu-ports`, `-debian`, `-centos`, `-alpine`)
+pins the mirror of its distribution and disables election for it. "Auto-select"
+is the mirror election, or with `-mirror-election=false` the official address.
 
 **Example with Custom Configuration:**
 
@@ -84,6 +89,7 @@ Every CLI flag has an equivalent environment variable. Plus a few extras for log
 | `APT_PROXY_DEBIAN_SECURITY` | `-debian-security` | Dedicated Debian Security mirror URL or shortcut |
 | `APT_PROXY_CENTOS` | `-centos` | CentOS mirror URL or shortcut |
 | `APT_PROXY_ALPINE` | `-alpine` | Alpine mirror URL or shortcut |
+| `APT_PROXY_MIRROR_ELECTION` | `-mirror-election` | Mirror election, `true` or `false` |
 | `APT_PROXY_UPSTREAM_KEEP_ALIVE` | `-upstream-keep-alive` | HTTP keep-alive to upstream mirrors |
 
 **Cache**
@@ -210,6 +216,7 @@ mirrors:
   debian_security: https://mirrors.ustc.edu.cn/debian-security/
   centos: ""
   alpine: ""
+  election: true       # false: distributions without a mirror above use their official address
 
 tls:
   enabled: false
@@ -255,9 +262,9 @@ environment values of `0` disable the corresponding backend control. This
 differs from the YAML-only `download`/`resources` limits, where `0` always selects
 a bounded default.
 
-Omitted `security.api_rate_limit_per_minute` and `storage.s3.use_ssl` keep the
-defaults of their flags (`60` and `true`); an explicit `0` or `false` in YAML is
-honored. An empty `-api-key` or `APT_PROXY_API_KEY` neither replaces
+Omitted `security.api_rate_limit_per_minute`, `storage.s3.use_ssl` and
+`mirrors.election` keep the defaults of their flags (`60`, `true` and `true`); an
+explicit `0` or `false` in YAML is honored. An empty `-api-key` or `APT_PROXY_API_KEY` neither replaces
 `security.api_key` nor turns off authentication that the file enables; use
 `-enable-api-auth=false` or `APT_PROXY_ENABLE_API_AUTH=false` for that.
 

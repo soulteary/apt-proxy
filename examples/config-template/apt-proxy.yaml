@@ -121,6 +121,8 @@ storage:
 
 # Mirror configuration
 # Use full URLs or shortcuts (e.g., cn:tsinghua, cn:ustc, cn:aliyun)
+# A mirror set here is used as it is: its distribution takes no part in the
+# mirror election. A distribution left empty elects its mirror.
 mirrors:
   # Ubuntu mirror
   ubuntu: cn:tsinghua
@@ -139,6 +141,12 @@ mirrors:
   
   # Alpine mirror
   alpine: ""
+
+  # Mirror election for the distributions left empty above (default: true).
+  # false uses the official address of each of them and probes no mirror:
+  # archive.ubuntu.com, ports.ubuntu.com, deb.debian.org, dl-cdn.alpinelinux.org.
+  # CentOS has no official address and then uses its first listed mirror.
+  election: true
 
 # TLS/HTTPS configuration
 tls:

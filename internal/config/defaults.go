@@ -27,6 +27,7 @@ const (
 	EnvDebianSecurity = "APT_PROXY_DEBIAN_SECURITY"
 	EnvCentOS         = "APT_PROXY_CENTOS"
 	EnvAlpine         = "APT_PROXY_ALPINE"
+	EnvMirrorElection = "APT_PROXY_MIRROR_ELECTION"
 
 	// Cache configuration environment variables
 	EnvCacheMaxSize         = "APT_PROXY_CACHE_MAX_SIZE"

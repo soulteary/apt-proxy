@@ -32,9 +32,9 @@ import (
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
-// ApplyToState writes the proxy mode and per-distro mirror URLs from
-// config into the supplied AppState. Aliases are resolved against reg
-// when reg is non-nil.
+// ApplyToState writes the proxy mode, the mirror election setting and the
+// per-distro mirror URLs from config into the supplied AppState. Aliases are
+// resolved against reg when reg is non-nil.
 //
 // This replaces the previous package-global UpdateGlobalState helper:
 // callers must now own (and supply) the AppState explicitly so that
@@ -49,6 +49,7 @@ func ApplyToState(config *Config, st *state.AppState, reg *distro.Registry) erro
 	}
 
 	st.SetProxyMode(config.Mode)
+	st.SetMirrorElection(!config.Mirrors.DisableElection)
 	st.SetMirrorWithRegistry(distro.TypeUbuntu, config.Mirrors.Ubuntu, reg)
 	st.SetMirrorWithRegistry(distro.TypeUbuntuPorts, config.Mirrors.UbuntuPorts, reg)
 	st.SetMirrorWithRegistry(distro.TypeDebian, config.Mirrors.Debian, reg)

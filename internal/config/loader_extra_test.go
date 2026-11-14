@@ -48,7 +48,7 @@ func clearConfigEnv(t *testing.T) {
 		EnvHost, EnvPort, EnvCacheDir, EnvMode,
 		EnvCacheMaxSize, EnvCacheTTL, EnvCacheCleanupInterval,
 		EnvDebug, EnvUbuntu, EnvUbuntuPorts, EnvDebian, EnvDebianSecurity,
-		EnvCentOS, EnvAlpine,
+		EnvCentOS, EnvAlpine, EnvMirrorElection,
 		EnvTLSEnabled, EnvTLSCertFile, EnvTLSKeyFile, EnvPassthrough,
 		EnvAPIKey, EnvAPIRateLimitPerMinute, EnvEnableAPIAuth, EnvTrustedProxies,
 		EnvUpstreamKeepAlive, EnvDistributionsConfig,
@@ -80,7 +80,46 @@ func TestParseFlagsDefaults(t *testing.T) {
 		if cfg.Cache.MaxSize == 0 {
 			t.Error("Cache.MaxSize should be defaulted, got 0")
 		}
+		if cfg.Mirrors.DisableElection {
+			t.Error("mirror election should be on by default")
+		}
 	})
+}
+
+// TestParseFlagsMirrorElection covers the loader without a config file: the
+// flag wins over the environment variable, and both can turn election off.
+func TestParseFlagsMirrorElection(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		args        []string
+		env         string
+		wantElected bool
+	}{
+		{name: "flag off", args: []string{"--mirror-election=false"}, wantElected: false},
+		{name: "environment off", env: "false", wantElected: false},
+		{name: "flag on over environment off", args: []string{"--mirror-election=true"}, env: "false", wantElected: true},
+		{name: "flag off over environment on", args: []string{"--mirror-election=false"}, env: "true", wantElected: false},
+		{name: "environment zero", env: "0", wantElected: false},
+		// Like every boolean variable, a value cli-kit cannot parse selects
+		// the default. The documentation says so; a change has to update it.
+		{name: "environment value that is not a boolean", env: "off", wantElected: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearConfigEnv(t)
+			if tc.env != "" {
+				t.Setenv(EnvMirrorElection, tc.env)
+			}
+			withArgs(t, append([]string{"apt-proxy"}, tc.args...), func() {
+				cfg, err := ParseFlags()
+				if err != nil {
+					t.Fatalf("ParseFlags: %v", err)
+				}
+				if got := !cfg.Mirrors.DisableElection; got != tc.wantElected {
+					t.Errorf("mirror election = %v, want %v", got, tc.wantElected)
+				}
+			})
+		})
+	}
 }
 
 func TestParseFlagsDebianSecurityMirror(t *testing.T) {
@@ -190,9 +229,9 @@ func TestMergeConfigsWithExplicitNilMask(t *testing.T) {
 // TestMergeConfigsWithExplicitOverridesZero exercises the "explicit
 // false beats true" path that the non-explicit merge can't express.
 func TestMergeConfigsWithExplicitOverridesZero(t *testing.T) {
-	base := &Config{Debug: true, UpstreamKeepAlive: true}
+	base := &Config{Debug: true, UpstreamKeepAlive: true, Mirrors: MirrorConfig{DisableElection: true}}
 	override := &Config{Debug: false, UpstreamKeepAlive: false}
-	ex := &cliExplicit{Debug: true, UpstreamKeepAlive: true}
+	ex := &cliExplicit{Debug: true, UpstreamKeepAlive: true, MirrorElection: true}
 
 	got := MergeConfigsWithExplicit(base, override, ex)
 	if got.Debug {
@@ -200,6 +239,12 @@ func TestMergeConfigsWithExplicitOverridesZero(t *testing.T) {
 	}
 	if got.UpstreamKeepAlive {
 		t.Error("UpstreamKeepAlive should have been overridden to false")
+	}
+	if got.Mirrors.DisableElection {
+		t.Error("an explicit mirror election setting should have turned election back on")
+	}
+	if got := MergeConfigsWithExplicit(base, override, &cliExplicit{}); !got.Mirrors.DisableElection {
+		t.Error("a defaulted mirror election setting replaced the file's")
 	}
 }
 
@@ -238,6 +283,26 @@ func TestApplyToStatePopulatesMirrors(t *testing.T) {
 	}
 	if st.GetProxyMode() != distro.TypeUbuntu {
 		t.Errorf("ProxyMode = %d, want TypeUbuntu", st.GetProxyMode())
+	}
+	if !st.MirrorElection() {
+		t.Error("mirror election is off for a config that does not disable it")
+	}
+
+	// The setting is applied in both directions: a reload re-applies the
+	// config to the state it configured before.
+	cfg.Mirrors.DisableElection = true
+	if err := ApplyToState(cfg, st, nil); err != nil {
+		t.Fatalf("ApplyToState: %v", err)
+	}
+	if st.MirrorElection() {
+		t.Error("mirror election is on for a config that disables it")
+	}
+	cfg.Mirrors.DisableElection = false
+	if err := ApplyToState(cfg, st, nil); err != nil {
+		t.Fatalf("ApplyToState: %v", err)
+	}
+	if !st.MirrorElection() {
+		t.Error("mirror election stayed off after the config enabled it again")
 	}
 }
 
@@ -295,11 +360,11 @@ func parseWithConfigFile(t *testing.T, body string, args ...string) (*Config, er
 	return cfg, err
 }
 
-// TestConfigFileKeepsNonZeroDefaults covers the two settings whose default is
-// not the zero value: an omitted YAML key keeps the default, an explicit YAML
+// TestConfigFileKeepsNonZeroDefaults covers the settings whose default is not
+// the zero value: an omitted YAML key keeps the default, an explicit YAML
 // 0/false is honored, and flags and environment variables still win.
 func TestConfigFileKeepsNonZeroDefaults(t *testing.T) {
-	const disabled = "security:\n  api_rate_limit_per_minute: 0\nstorage:\n  s3:\n    use_ssl: false\n"
+	const disabled = "security:\n  api_rate_limit_per_minute: 0\nstorage:\n  s3:\n    use_ssl: false\nmirrors:\n  election: false\n"
 	for _, tc := range []struct {
 		name          string
 		yaml          string
@@ -307,28 +372,41 @@ func TestConfigFileKeepsNonZeroDefaults(t *testing.T) {
 		env           map[string]string
 		wantRateLimit int
 		wantUseSSL    bool
+		wantElection  bool
 	}{
-		{name: "empty file", wantRateLimit: DefaultAPIRateLimitPerMinute, wantUseSSL: true},
+		{name: "empty file", wantRateLimit: DefaultAPIRateLimitPerMinute, wantUseSSL: true, wantElection: true},
 		{
 			name:          "sections without the keys",
-			yaml:          "security:\n  api_key: file-key\nstorage:\n  backend: s3\n  s3:\n    endpoint: s3.example.com\n",
+			yaml:          "security:\n  api_key: file-key\nstorage:\n  backend: s3\n  s3:\n    endpoint: s3.example.com\nmirrors:\n  debian: https://mirror.example/debian/\n",
 			wantRateLimit: DefaultAPIRateLimitPerMinute,
 			wantUseSSL:    true,
+			wantElection:  true,
 		},
-		{name: "explicit zero and false", yaml: disabled, wantRateLimit: 0, wantUseSSL: false},
+		{name: "explicit zero and false", yaml: disabled, wantRateLimit: 0, wantUseSSL: false, wantElection: false},
 		{
 			name:          "flags override the file",
 			yaml:          disabled,
-			args:          []string{"--api-rate-limit=30", "--s3-use-ssl=true"},
+			args:          []string{"--api-rate-limit=30", "--s3-use-ssl=true", "--mirror-election=true"},
 			wantRateLimit: 30,
 			wantUseSSL:    true,
+			wantElection:  true,
 		},
 		{
 			name:          "environment overrides the file",
-			yaml:          "security:\n  api_rate_limit_per_minute: 30\nstorage:\n  s3:\n    use_ssl: true\n",
-			env:           map[string]string{EnvAPIRateLimitPerMinute: "0", EnvS3UseSSL: "false"},
+			yaml:          "security:\n  api_rate_limit_per_minute: 30\nstorage:\n  s3:\n    use_ssl: true\nmirrors:\n  election: true\n",
+			env:           map[string]string{EnvAPIRateLimitPerMinute: "0", EnvS3UseSSL: "false", EnvMirrorElection: "false"},
 			wantRateLimit: 0,
 			wantUseSSL:    false,
+			wantElection:  false,
+		},
+		{
+			name:          "flags override the environment",
+			yaml:          disabled,
+			args:          []string{"--mirror-election=false"},
+			env:           map[string]string{EnvMirrorElection: "true"},
+			wantRateLimit: 0,
+			wantUseSSL:    false,
+			wantElection:  false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -345,6 +423,9 @@ func TestConfigFileKeepsNonZeroDefaults(t *testing.T) {
 			}
 			if got := cfg.Storage.S3.UseSSL; got != tc.wantUseSSL {
 				t.Errorf("S3.UseSSL = %v, want %v", got, tc.wantUseSSL)
+			}
+			if got := !cfg.Mirrors.DisableElection; got != tc.wantElection {
+				t.Errorf("mirror election = %v, want %v", got, tc.wantElection)
 			}
 		})
 	}
@@ -407,6 +488,7 @@ type valueSettings struct {
 	EnableAPIAuth         bool
 	APIRateLimitPerMinute int
 	UpstreamKeepAlive     bool
+	MirrorElection        bool
 	S3UseSSL              bool
 	S3UsePathStyle        bool
 	S3InlineMaxMB         int64
@@ -423,6 +505,7 @@ func valueSettingsOf(cfg *Config) valueSettings {
 		EnableAPIAuth:         cfg.Security.EnableAPIAuth,
 		APIRateLimitPerMinute: cfg.Security.APIRateLimitPerMinute,
 		UpstreamKeepAlive:     cfg.UpstreamKeepAlive,
+		MirrorElection:        !cfg.Mirrors.DisableElection,
 		S3UseSSL:              cfg.Storage.S3.UseSSL,
 		S3UsePathStyle:        cfg.Storage.S3.UsePathStyle,
 		S3InlineMaxMB:         cfg.Storage.S3.InlineMaxMB,
@@ -446,6 +529,7 @@ cache:
   cleanup_interval_min: 7
 mirrors:
   ubuntu: https://mirror.example/ubuntu/
+  election: false
 tls:
   enabled: true
 security:
@@ -467,6 +551,7 @@ storage:
 		EnableAPIAuth:         true,
 		APIRateLimitPerMinute: 30,
 		UpstreamKeepAlive:     false,
+		MirrorElection:        false,
 		S3UseSSL:              false,
 		S3UsePathStyle:        true,
 		S3InlineMaxMB:         3,
@@ -481,6 +566,7 @@ storage:
 		EnvEnableAPIAuth:         "false",
 		EnvAPIRateLimitPerMinute: "0",
 		EnvUpstreamKeepAlive:     "true",
+		EnvMirrorElection:        "true",
 		EnvS3UseSSL:              "true",
 		EnvS3UsePathStyle:        "false",
 		EnvS3InlineMaxMB:         "8",
@@ -495,6 +581,7 @@ storage:
 		EnableAPIAuth:         false,
 		APIRateLimitPerMinute: 0,
 		UpstreamKeepAlive:     true,
+		MirrorElection:        true,
 		S3UseSSL:              true,
 		S3UsePathStyle:        false,
 		S3InlineMaxMB:         8,

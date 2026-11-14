@@ -25,6 +25,7 @@
 | `-debian-security` | 独立的 Debian Security 镜像 URL 或快捷方式 | （从 `-debian` 推导） |
 | `-centos` | CentOS 镜像 URL 或快捷方式 | （自动选择） |
 | `-alpine` | Alpine 镜像 URL 或快捷方式 | （自动选择） |
+| `-mirror-election` | 为没有设置镜像选项的发行版选出最快的镜像；设为 `false` 时使用官方地址，不探测任何镜像（见[镜像选择](repository-configuration.zh-CN.md#自定义镜像选择)） | `true` |
 | `-distributions-config` | 发行版/镜像配置文件路径（distributions.yaml） | （可选） |
 | `-passthrough` | 逗号分隔的第三方源站白名单，原样抓取并缓存 | （空） |
 | `-cache-max-size` | 最大缓存大小（GB，0 表示禁用） | `10` |
@@ -52,6 +53,9 @@
 | `-s3-temp-dir` | 大对象上传时使用的临时目录 | （`os.TempDir()`） |
 | `-config` | YAML 配置文件路径 | |
 | `-debug` | 启用详细调试日志（同时把请求 header/body 打印到日志） | `false` |
+
+镜像选项（`-ubuntu`、`-ubuntu-ports`、`-debian`、`-centos`、`-alpine`）为对应的发行版固定镜像，
+并关闭该发行版的镜像选优。“自动选择”指镜像选优；设置 `-mirror-election=false` 时指官方地址。
 
 **自定义配置示例：**
 
@@ -84,6 +88,7 @@
 | `APT_PROXY_DEBIAN_SECURITY` | `-debian-security` | 独立的 Debian Security 镜像 |
 | `APT_PROXY_CENTOS` | `-centos` | CentOS 镜像 |
 | `APT_PROXY_ALPINE` | `-alpine` | Alpine 镜像 |
+| `APT_PROXY_MIRROR_ELECTION` | `-mirror-election` | 镜像选优，`true` 或 `false` |
 | `APT_PROXY_UPSTREAM_KEEP_ALIVE` | `-upstream-keep-alive` | 上游 HTTP keep-alive |
 
 **缓存**
@@ -209,6 +214,7 @@ mirrors:
   debian_security: https://mirrors.ustc.edu.cn/debian-security/
   centos: ""
   alpine: ""
+  election: true       # false：上面未设置镜像的发行版使用官方地址
 
 tls:
   enabled: false
@@ -252,8 +258,8 @@ distributions_config: ./config/distributions.yaml
 （10 GiB、168 小时、60 分钟）；通过 CLI 或环境变量显式设置 `0` 才会关闭对应后端控制。
 这与仅支持 YAML 的 `download` / `resources` 限制不同，后者的 `0` 始终选择有界默认值。
 
-省略 `security.api_rate_limit_per_minute` 与 `storage.s3.use_ssl` 时，沿用对应 CLI 参数的默认值
-（`60` 与 `true`）；在 YAML 中显式写 `0` 或 `false` 会生效。`-api-key` 或 `APT_PROXY_API_KEY` 为空时，
+省略 `security.api_rate_limit_per_minute`、`storage.s3.use_ssl` 与 `mirrors.election` 时，沿用对应 CLI 参数的默认值
+（`60`、`true` 与 `true`）；在 YAML 中显式写 `0` 或 `false` 会生效。`-api-key` 或 `APT_PROXY_API_KEY` 为空时，
 既不会替换 `security.api_key`，也不会关闭配置文件已启用的鉴权；需要关闭鉴权时请使用
 `-enable-api-auth=false` 或 `APT_PROXY_ENABLE_API_AUTH=false`。
 

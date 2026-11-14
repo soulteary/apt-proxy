@@ -118,6 +118,11 @@ deb http://apt-proxy.example:3142/armbian bookworm main bookworm-utils bookworm-
   `bookworm`) — change it to the release you run.
 - **Mirrors.** The lists here are CN mirrors, matching apt-proxy's built-in
   defaults. Replace them with mirrors near you.
+- **Official address.** `official_url` is optional and names the distribution's
+  own archive. It is used without an election: with `--mirror-election=false`,
+  until the first election has finished, and when an election finds no usable
+  mirror and there is no previous mirror to keep. An entry without it uses its
+  first listed mirror in the first two cases.
 - **Keep `type` stable.** Mirror election and rewriter state are keyed by it.
 - **Use the documented YAML keys.** Unknown keys are rejected: write
   `cache_control`, not `cache-control`. Use one YAML document per file. YAML

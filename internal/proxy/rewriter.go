@@ -332,7 +332,8 @@ func resolveDescriptor(mode int, reg *distro.Registry) (descriptor *distroDescri
 		defaultRules: rd.CacheRules,
 		// Custom distros have no dedicated CLI/env mirror flag, so AppState
 		// has no slot for them; GetMirror returns nil and selection falls
-		// through to the benchmark over the configured mirror list.
+		// through to the benchmark over the configured mirror list, or with
+		// election off to the official address or the first listed mirror.
 		getMirror: func(s *state.AppState) *url.URL { return s.GetMirror(mode) },
 	}, label
 }
@@ -347,9 +348,76 @@ func benchEngine(e *benchmarks.Engine) *benchmarks.Engine {
 	return benchmarks.Default()
 }
 
-// createRewriter creates a new URLRewriter for a specific distribution.
-// It uses the cached benchmark result if available, otherwise runs a synchronous benchmark.
+// mirrorURL parses raw as the root of a mirror. It returns nil when raw names
+// no host, so that a rewriter never points requests at an empty URL.
+func mirrorURL(raw string) *url.URL {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return nil
+	}
+	return parsed
+}
+
+// officialMirror returns the official address of a distribution, or nil when
+// it has none.
+func officialMirror(reg *distro.Registry, mode int) *url.URL {
+	return mirrorURL(mirrors.GetOfficialMirrorURL(reg, mode))
+}
+
+// useUnelectedMirror gives rewriter its mirror when the distribution does not
+// elect one, and reports whether that is the case: a mirror is pinned, or
+// election is off. With election off the mirror is the official address, or
+// for a distribution without one its first listed mirror. No candidate is
+// probed and the geo API is not queried. The mirror stays nil when election
+// is off and the distribution has neither.
+func useUnelectedMirror(rewriter *URLRewriter, d *distroDescriptor, name string, st *state.AppState, reg *distro.Registry) bool {
+	log := logger.Default()
+	if mirror := d.getMirror(st); mirror != nil {
+		log.Info().Str("distro", name).Str("mirror", logsafe.URL(mirror.String())).Msg("using specified mirror")
+		rewriter.mirror = mirror
+		attachDebianSecurityMirror(d.mode, st, rewriter)
+		return true
+	}
+	if st.MirrorElection() {
+		return false
+	}
+
+	if official := officialMirror(reg, d.mode); official != nil {
+		log.Info().Str("distro", name).Str("mirror", logsafe.URL(official.String())).Msg("mirror election is off, using official mirror")
+		rewriter.mirror = official
+		attachDebianSecurityMirror(d.mode, st, rewriter)
+		return true
+	}
+	// The operator asked for the regular servers and this distribution has
+	// none on record, so say which mirror takes their place.
+	if listed := mirrors.GetListedMirrorUrlsByMode(reg, d.mode); len(listed) > 0 {
+		rewriter.mirror = mirrorURL(listed[0])
+	}
+	if rewriter.mirror == nil {
+		log.Warn().Str("distro", name).Msg("mirror election is off and the distribution has no official or listed mirror")
+		return true
+	}
+	log.Warn().Str("distro", name).Str("mirror", logsafe.URL(rewriter.mirror.String())).Msg("mirror election is off and the distribution has no official mirror, using its first listed mirror")
+	attachDebianSecurityMirror(d.mode, st, rewriter)
+	return true
+}
+
+// createRewriter creates the URLRewriter of one distribution at startup. See
+// replaceRewriter for how its mirror is chosen.
 func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriter {
+	return replaceRewriter(nil, mode, st, reg, bench)
+}
+
+// replaceRewriter creates the URLRewriter of one distribution. previous is the
+// rewriter it replaces during a refresh, and nil at startup.
+//
+// The mirror is the pinned one, with election off the one useUnelectedMirror
+// selects, and otherwise the winner of a synchronous election, taken from the
+// benchmark cache when it holds a result. A distribution whose election finds
+// no usable mirror keeps the mirror of previous, so that a refresh does not
+// move it off a mirror it is being served from. Without a previous mirror it
+// uses its official address, and without that either its mirror stays nil.
+func replaceRewriter(previous *URLRewriter, mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) *URLRewriter {
 	log := logger.Default()
 	d, name := resolveDescriptor(mode, reg)
 	if d == nil {
@@ -358,12 +426,8 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 
 	benchmarkURL, pattern := mirrors.GetPredefinedConfiguration(reg, mode)
 	rewriter := &URLRewriter{pattern: pattern, hostPattern: hostPatternForMode(reg, mode), securityHostPattern: distro.BuiltinHostPattern(mode)}
-	mirror := d.getMirror(st)
-
-	if mirror != nil {
-		log.Info().Str("distro", name).Str("mirror", logsafe.URL(mirror.String())).Msg("using specified mirror")
-		rewriter.mirror = mirror
-		return attachDebianSecurityMirror(mode, st, rewriter)
+	if useUnelectedMirror(rewriter, d, name, st, reg) {
+		return rewriter
 	}
 
 	mirrorURLs := benchEngine(bench).MirrorCandidates(reg, mode)
@@ -371,6 +435,18 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 	fastest, err := benchEngine(bench).GetTheFastestMirrorWithCache(mode, mirrorURLs, benchmarkURL)
 	if err != nil {
 		log.Error().Err(logsafe.Error(err)).Str("distro", name).Msg("error finding fastest mirror")
+		official := officialMirror(reg, mode)
+		switch {
+		case previous != nil && previous.mirror != nil:
+			// rewriter is not published yet, so it can take over the previous
+			// mirrors in place. Its patterns stay those of the reloaded registry.
+			log.Warn().Str("distro", name).Str("mirror", logsafe.URL(previous.mirror.String())).Msg("mirror election failed, keeping previous mirror")
+			rewriter.mirror, rewriter.securityMirror = previous.mirror, previous.securityMirror
+		case official != nil:
+			log.Warn().Str("distro", name).Str("mirror", logsafe.URL(official.String())).Msg("mirror election failed, using official mirror")
+			rewriter.mirror = official
+			attachDebianSecurityMirror(mode, st, rewriter)
+		}
 		return rewriter
 	}
 
@@ -384,6 +460,7 @@ func createRewriter(mode int, st *state.AppState, reg *distro.Registry, bench *b
 
 // createRewriterAsync creates a new URLRewriter for a specific distribution using async benchmark.
 // It immediately returns with a default mirror and updates the mirror in the background.
+// A distribution that does not elect its mirror gets it at once and starts no benchmark.
 func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rewriters *URLRewriters, bench *benchmarks.Engine) *URLRewriter {
 	log := logger.Default()
 	d, name := resolveDescriptor(mode, reg)
@@ -395,12 +472,8 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 
 	benchmarkURL, pattern := mirrors.GetPredefinedConfiguration(reg, mode)
 	rewriter := &URLRewriter{pattern: pattern, hostPattern: hostPatternForMode(reg, mode), securityHostPattern: distro.BuiltinHostPattern(mode)}
-	mirror := d.getMirror(st)
-
-	if mirror != nil {
-		log.Info().Str("distro", name).Str("mirror", logsafe.URL(mirror.String())).Msg("using specified mirror")
-		rewriter.mirror = mirror
-		return attachDebianSecurityMirror(mode, st, rewriter)
+	if useUnelectedMirror(rewriter, d, name, st, reg) {
+		return rewriter
 	}
 
 	mirrorURLs := benchEngine(bench).MirrorCandidates(reg, mode)
@@ -414,7 +487,13 @@ func createRewriterAsync(mode int, st *state.AppState, reg *distro.Registry, rew
 		}
 	}
 
-	defaultMirror := benchmarks.GetDefaultMirror(mirrorURLs)
+	// The official address serves the requests that arrive before the election
+	// finishes, and stays in use when the election fails. A distribution
+	// without one starts on its first candidate.
+	defaultMirror := mirrors.GetOfficialMirrorURL(reg, mode)
+	if defaultMirror == "" {
+		defaultMirror = benchmarks.GetDefaultMirror(mirrorURLs)
+	}
 	if parsedMirror, err := url.Parse(defaultMirror); err == nil {
 		log.Info().Str("distro", name).Str("mirror", logsafe.URL(defaultMirror)).Msg("using default mirror (async benchmark pending)")
 		rewriter.mirror = parsedMirror
@@ -658,9 +737,10 @@ func MatchingRule(path string, rules []distro.Rule) (*distro.Rule, bool) {
 //
 // A distribution whose election fails keeps the mirror it has in previous, the
 // set being replaced, so its unreachable candidates do not fail the refresh
-// for every other distribution. Only a required mirror that can be neither
-// elected nor kept is an error, and callers then retain the old set instead of
-// publishing a partial one.
+// for every other distribution. One without a previous mirror uses its
+// official address. Only a required mirror that can be neither elected, kept
+// nor taken from an official address is an error, and callers then retain the
+// old set instead of publishing a partial one.
 func buildRewriters(previous *URLRewriters, mode int, st *state.AppState, reg *distro.Registry, bench *benchmarks.Engine) (*URLRewriters, error) {
 	log := logger.Default()
 	log.Info().Msg("refreshing mirror configurations...")
@@ -671,16 +751,7 @@ func buildRewriters(previous *URLRewriters, mode int, st *state.AppState, reg *d
 	rewriters := &URLRewriters{}
 	var errs []error
 	for _, m := range modesToInit(mode, reg) {
-		rw := createRewriter(m, st, reg, engine)
-		if rw != nil && rw.mirror == nil {
-			// rw is not published yet, so it can take over the previous
-			// mirrors in place. Its patterns stay those of the reloaded registry.
-			if old := previous.published(m); old != nil && old.mirror != nil {
-				_, name := resolveDescriptor(m, reg)
-				log.Warn().Str("distro", name).Str("mirror", logsafe.URL(old.mirror.String())).Msg("mirror election failed, keeping previous mirror")
-				rw.mirror, rw.securityMirror = old.mirror, old.securityMirror
-			}
-		}
+		rw := replaceRewriter(previous.published(m), m, st, reg, engine)
 		requiresMirror := false
 		for _, rule := range GetRewriteRulesByMode(reg, m) {
 			requiresMirror = requiresMirror || rule.Rewrite
