@@ -165,13 +165,13 @@ func TestFailedMirrorElectionWithoutPreviousMirrorRetainsRouting(t *testing.T) {
 	if ps.routing.Load() != before {
 		t.Fatal("failed election replaced the working routing snapshot")
 	}
-	if err := RefreshRewritersWithEngine(before.rewriters, distro.TypeAllDistros, st, reg, ps.bench); err == nil {
+	if err := RefreshRewritersWithEngine(before.rewriters, distro.ModeOf(distro.TypeAllDistros), st, reg, ps.bench); err == nil {
 		t.Fatal("in-place failed election reported success")
 	}
 	if before.rewriters.published(customDistroType) != nil {
 		t.Fatal("in-place failed election published part of the new set")
 	}
-	if _, err := buildRewriters(nil, distro.TypeAllDistros, st, reg, ps.bench); err == nil {
+	if _, err := buildRewriters(nil, distro.ModeOf(distro.TypeAllDistros), st, reg, ps.bench); err == nil {
 		t.Fatal("failed election without a previous set reported success")
 	}
 	down.Store(false)
@@ -205,7 +205,7 @@ func TestRefreshRewritersKeepsPreviousMirrorOnFailedElection(t *testing.T) {
 	st := newTestState()
 	st.SetMirror(distro.TypeDebian, "") // Elect rather than pin the mirror.
 	engine := benchmarks.NewEngine()
-	rewriters := CreateNewRewritersWithEngine(distro.TypeDebian, st, reg, engine)
+	rewriters := CreateNewRewritersWithEngine(distro.ModeOf(distro.TypeDebian), st, reg, engine)
 	before := rewriters.published(distro.TypeDebian)
 	if before == nil || before.mirror == nil || before.mirror.String() != upstream.URL+"/debian/" {
 		t.Fatalf("initial election: %+v", before)
@@ -217,7 +217,7 @@ func TestRefreshRewritersKeepsPreviousMirrorOnFailedElection(t *testing.T) {
 		t.Fatal(err)
 	}
 	down.Store(true)
-	if err := RefreshRewritersWithEngine(rewriters, distro.TypeDebian, st, reg, engine); err != nil {
+	if err := RefreshRewritersWithEngine(rewriters, distro.ModeOf(distro.TypeDebian), st, reg, engine); err != nil {
 		t.Fatalf("failed election with a previous mirror: %v", err)
 	}
 	after := rewriters.published(distro.TypeDebian)

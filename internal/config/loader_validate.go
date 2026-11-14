@@ -32,9 +32,28 @@ import (
 	"github.com/soulteary/apt-proxy/internal/state"
 )
 
+// ResolveMode returns the distributions that config enables.
+//
+// The IDs in config.Modes are resolved against reg, which must already hold
+// the distributions from distributions.yaml: an ID is valid only if it is
+// registered there. A nil reg knows the built-in distributions. An unknown ID
+// is an error; see distro.ResolveModeSet for the rules. Without Modes, the
+// single-type config.Mode applies.
+func ResolveMode(config *Config, reg *distro.Registry) (distro.ModeSet, error) {
+	if len(config.Modes) == 0 {
+		return distro.ModeOf(config.Mode), nil
+	}
+	return distro.ResolveModeSet(config.Modes, reg)
+}
+
 // ApplyToState writes the proxy mode and per-distro mirror URLs from
 // config into the supplied AppState. Aliases are resolved against reg
-// when reg is non-nil.
+// when reg is non-nil, and so are the distribution IDs of the mode.
+//
+// A mode that names an unknown distribution is an error, and st is then left
+// unchanged. Callers run this after the registry has been loaded or reloaded,
+// which makes it the place where a mode is checked against the distributions
+// that exist.
 //
 // This replaces the previous package-global UpdateGlobalState helper:
 // callers must now own (and supply) the AppState explicitly so that
@@ -48,7 +67,11 @@ func ApplyToState(config *Config, st *state.AppState, reg *distro.Registry) erro
 		return fmt.Errorf("config: ApplyToState called with nil AppState")
 	}
 
-	st.SetProxyMode(config.Mode)
+	mode, err := ResolveMode(config, reg)
+	if err != nil {
+		return err
+	}
+	st.SetProxyModeSet(mode)
 	st.SetMirrorWithRegistry(distro.TypeUbuntu, config.Mirrors.Ubuntu, reg)
 	st.SetMirrorWithRegistry(distro.TypeUbuntuPorts, config.Mirrors.UbuntuPorts, reg)
 	st.SetMirrorWithRegistry(distro.TypeDebian, config.Mirrors.Debian, reg)

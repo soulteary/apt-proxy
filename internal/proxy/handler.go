@@ -83,11 +83,21 @@ var defaultHostPatterns = []hostPatternEntry{
 // hostPatternsFromRegistry materialises the registry's pattern→rules map
 // into a stable, ordered slice. Distros are walked via distroModesOrder so
 // matching is deterministic for callers that have multiple overlapping rules.
-func hostPatternsFromRegistry(reg *distro.Registry) []hostPatternEntry {
+//
+// Only the distributions in enabled get an entry. A distribution outside the
+// mode has no rewriter, so its entry could claim a request but never serve
+// it: the request would be answered 404 even when an enabled distribution
+// with an overlapping pattern, or an allowlisted origin, could serve it.
+func hostPatternsFromRegistry(reg *distro.Registry, enabled distro.ModeSet) []hostPatternEntry {
 	if reg == nil {
 		return nil
 	}
 	all := reg.GetAll()
+	for id, d := range all {
+		if !enabled.Has(d.Type) {
+			delete(all, id)
+		}
+	}
 	out := make([]hostPatternEntry, 0, len(all))
 	seen := make(map[string]struct{}, len(all))
 	for _, mode := range distroModesOrder {
@@ -155,6 +165,10 @@ type routing struct {
 	healthEpoch uint64
 	patterns    []hostPatternEntry
 	rewriters   *URLRewriters
+	// mode is the set of distributions that patterns and rewriters were
+	// built for. It is part of the snapshot so that a refresh which fails
+	// keeps the previous set together with the previous routing.
+	mode distro.ModeSet
 }
 
 // distribution-specific handlers and applies caching rules. It owns all of
@@ -170,7 +184,6 @@ type PackageStruct struct {
 
 	state    *state.AppState
 	registry *distro.Registry
-	mode     int
 
 	// passthrough is the allowlist of third-party origins served unrewritten.
 	// Empty by default: apt-proxy is not an open forward proxy.
@@ -214,7 +227,8 @@ type Options struct {
 	DownloadTimeout    time.Duration
 	DownloadTempDir    string // directory for unknown-length download spools; empty uses os.TempDir()
 	Logger             *logger.Logger
-	Mode               int
+	Mode               int            // one distribution type, or distro.TypeAllDistros for all; applies when ModeSet is the zero value
+	ModeSet            distro.ModeSet // the distributions to serve; the zero value defers to Mode
 	EnableKeepAlive    bool
 	Async              bool                                      // when true, use async (non-blocking) benchmarks during construction
 	TransportWrapper   func(http.RoundTripper) http.RoundTripper // trusted verification after policy and mirror selection
@@ -282,7 +296,12 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 	if totalBytes == 0 {
 		totalBytes = DefaultTotalSpoolBytes
 	}
-	mode := opts.Mode
+	// Options.Mode is the single-type form of the setting. The set wins
+	// when it names distributions; both zero values mean all of them.
+	mode := opts.ModeSet
+	if mode.All() {
+		mode = distro.ModeOf(opts.Mode)
+	}
 	if opts.TransportWrapper != nil {
 		transport = opts.TransportWrapper(transport)
 	}
@@ -295,12 +314,11 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 	ps := &PackageStruct{
 		metalink:     metalinks,
 		mirrorHealth: health,
-		Rules:        GetRewriteRulesByMode(opts.Registry, mode),
+		Rules:        rulesForMode(opts.Registry, mode),
 		CacheDir:     opts.CacheDir,
 		log:          log,
 		state:        opts.State,
 		registry:     opts.Registry,
-		mode:         mode,
 		passthrough:  opts.Passthrough,
 		bench:        bench,
 		transport:    transport,
@@ -330,14 +348,44 @@ func NewPackageStruct(opts Options) (*PackageStruct, error) {
 	}
 	ps.routing.Store(&routing{
 		healthEpoch: health.Epoch(),
-		patterns:    hostPatternsFromRegistry(opts.Registry),
+		mode:        mode,
+		patterns:    hostPatternsFromRegistry(opts.Registry, mode),
 		rewriters:   rewriters,
 	})
 	return ps, nil
 }
 
+// rulesForMode lists the caching rules of the enabled distributions, in the
+// order their rewriters are built.
+func rulesForMode(reg *distro.Registry, mode distro.ModeSet) []distro.Rule {
+	if mode.All() {
+		return GetRewriteRulesByMode(reg, distro.TypeAllDistros)
+	}
+	var rules []distro.Rule
+	for _, m := range modesToInit(mode, reg) {
+		rules = append(rules, GetRewriteRulesByMode(reg, m)...)
+	}
+	return rules
+}
+
+// defaultPatternsFor returns the entries of defaultHostPatterns that belong
+// to the enabled distributions.
+func defaultPatternsFor(enabled distro.ModeSet) []hostPatternEntry {
+	if enabled.All() {
+		return defaultHostPatterns
+	}
+	var out []hostPatternEntry
+	for _, entry := range defaultHostPatterns {
+		// Every rule of an entry carries the type of its distribution.
+		if enabled.Has(entry.rules[0].OS) {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
 // newRewriters chooses the sync/async constructor based on opts.Async.
-func newRewriters(mode int, st *state.AppState, reg *distro.Registry, async bool, bench *benchmarks.Engine) *URLRewriters {
+func newRewriters(mode distro.ModeSet, st *state.AppState, reg *distro.Registry, async bool, bench *benchmarks.Engine) *URLRewriters {
 	if async {
 		return CreateNewRewritersAsyncWithEngine(mode, st, reg, bench)
 	}
@@ -552,11 +600,11 @@ func (ap *PackageStruct) currentRouting() *routing {
 		return cur
 	}
 
-	entries := hostPatternsFromRegistry(ap.registry)
+	entries := hostPatternsFromRegistry(ap.registry, cur.mode)
 	if len(entries) == 0 {
-		return &routing{patterns: defaultHostPatterns, rewriters: cur.rewriters, healthEpoch: cur.healthEpoch}
+		return &routing{mode: cur.mode, patterns: defaultPatternsFor(cur.mode), rewriters: cur.rewriters, healthEpoch: cur.healthEpoch}
 	}
-	next := &routing{patterns: entries, rewriters: cur.rewriters, healthEpoch: cur.healthEpoch}
+	next := &routing{mode: cur.mode, patterns: entries, rewriters: cur.rewriters, healthEpoch: cur.healthEpoch}
 	if ap.routing.CompareAndSwap(cur, next) {
 		return next
 	}
@@ -658,9 +706,10 @@ func (ap *PackageStruct) processMatchingRule(r *http.Request, rt *routing, entry
 	// A distribution request is fetched from the mirror apt-proxy selected
 	// and from nowhere else. Without the rewrite the upstream would be the
 	// authority the client put in the request line, so such a request is not
-	// served. That covers a distribution the mode does not enable, one without
-	// a mirror, a rule with rewrite disabled, and a path that matches only
-	// after percent-decoding.
+	// served. That covers a distribution without a mirror, a rule with
+	// rewrite disabled, and a path that matches only after percent-decoding.
+	// A distribution the mode does not enable is not matched in the first
+	// place (hostPatternsFromRegistry), and would be refused here as well.
 	if !rule.Rewrite || !ap.rewriteRequest(r, rt, rule, entry.repositoryID) {
 		ap.log.Debug().
 			Str("distribution", entry.repositoryID).
@@ -705,7 +754,26 @@ func (ap *PackageStruct) rewriteRequest(r *http.Request, rt *routing, rule *dist
 // any other Server's mirror selection. (Historically the engine was a
 // package-level singleton; that coupling was removed in favour of the
 // per-Server engine field above.)
+//
+// The set of enabled distributions stays the one in effect. The reload that
+// SIGHUP and the API run goes through RefreshMirrorsWithMode instead, because
+// it reloads distributions.yaml first.
 func (ap *PackageStruct) RefreshMirrors() error {
+	return ap.refreshMirrors(nil)
+}
+
+// RefreshMirrorsWithMode is RefreshMirrors for a mode that was resolved
+// against the registry again. Reloading distributions.yaml can give an
+// enabled ID another type, so the set built at startup may no longer name the
+// distributions the operator enabled. The set takes effect together with the
+// new routing; when the refresh fails, both stay as they were.
+func (ap *PackageStruct) RefreshMirrorsWithMode(mode distro.ModeSet) error {
+	return ap.refreshMirrors(&mode)
+}
+
+// refreshMirrors rebuilds the routing for newMode, or for the mode in effect
+// when newMode is nil.
+func (ap *PackageStruct) refreshMirrors(newMode *distro.ModeSet) error {
 	if ap == nil {
 		return nil
 	}
@@ -720,10 +788,15 @@ func (ap *PackageStruct) RefreshMirrors() error {
 	// The previous snapshot's rewriters go in as well: a distribution whose
 	// election fails keeps the mirror it is being served from.
 	var previous *URLRewriters
+	var mode distro.ModeSet
 	if current := ap.routing.Load(); current != nil {
 		previous = current.rewriters
+		mode = current.mode
 	}
-	rewriters, err := buildRewriters(previous, ap.mode, ap.state, ap.registry, ap.bench)
+	if newMode != nil {
+		mode = *newMode
+	}
+	rewriters, err := buildRewriters(previous, mode, ap.state, ap.registry, ap.bench)
 	if err != nil {
 		return err // Keep the complete old routing, including its match patterns.
 	}
@@ -732,7 +805,8 @@ func (ap *PackageStruct) RefreshMirrors() error {
 	}
 	next := &routing{
 		healthEpoch: ap.mirrorHealth.Reset(),
-		patterns:    hostPatternsFromRegistry(ap.registry),
+		mode:        mode,
+		patterns:    hostPatternsFromRegistry(ap.registry, mode),
 		rewriters:   rewriters,
 	}
 	ap.routing.Store(next)

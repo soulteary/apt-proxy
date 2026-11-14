@@ -51,7 +51,8 @@ func TestMirrorRefreshAPIFailurePreservesRequests(t *testing.T) {
 			case "unreachable-mirror":
 				cfg.Mirrors.Ubuntu = ""
 			case "unreachable-new-distribution":
-				// Custom distributions are only served in the all-distributions mode.
+				// The mode has to include the distribution that the reload
+				// adds. The all-distributions mode does.
 				cfg.Mode = distro.TypeAllDistros
 			}
 			srv, err := NewServer(cfg)

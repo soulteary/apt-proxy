@@ -52,7 +52,7 @@ func TestLateRegistryPopulationPublishesRoutingSnapshot(t *testing.T) {
 	if p.currentRouting() != got {
 		t.Fatal("routing snapshot was unnecessarily replaced")
 	}
-	if hostPatternsFromRegistry(nil) != nil {
+	if hostPatternsFromRegistry(nil, distro.ModeSet{}) != nil {
 		t.Fatal("nil registry invented entries")
 	}
 	if requestHost(nil) != "" {
@@ -76,7 +76,7 @@ func TestProxyUninitializedHandlerFailsClosed(t *testing.T) {
 	// With a mirror the request routes and stops at the missing handler.
 	p.routing.Store(&routing{
 		patterns:  defaultHostPatterns,
-		rewriters: newRewriters(distro.TypeUbuntu, newTestState(), newTestRegistry(), false, nil),
+		rewriters: newRewriters(distro.ModeOf(distro.TypeUbuntu), newTestState(), newTestRegistry(), false, nil),
 	})
 	rec = httptest.NewRecorder()
 	p.ServeHTTP(rec, httptest.NewRequest("GET", "http://example/ubuntu/pool/package.deb", nil))

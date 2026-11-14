@@ -35,12 +35,12 @@ func TestAsyncInitializationPublishesBeforeCallbacks(t *testing.T) {
 			st.SetMirror(d.Type, "")
 		}
 		engine := benchmarks.NewEngine()
-		rewriters := CreateNewRewritersAsyncWithEngine(distro.TypeAllDistros, st, reg, engine)
+		rewriters := CreateNewRewritersAsyncWithEngine(distro.ModeOf(distro.TypeAllDistros), st, reg, engine)
 		deadline := time.Now().Add(5 * time.Second)
 		for {
 			complete := true
 			rewriters.Mu.RLock()
-			for _, mode := range modesToInit(distro.TypeAllDistros, reg) {
+			for _, mode := range modesToInit(distro.ModeOf(distro.TypeAllDistros), reg) {
 				rw := rewriters.get(mode)
 				if rw == nil || rw.mirror == nil {
 					t.Errorf("mode %d was not initialized", mode)

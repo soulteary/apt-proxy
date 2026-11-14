@@ -53,6 +53,16 @@ type Config struct {
 	// Empty (the default) means apt-proxy serves only the distributions it is
 	// configured for; it is never an open forward proxy.
 	Passthrough []string `yaml:"passthrough"`
+	// Modes is the mode setting as written in --mode, APT_PROXY_MODE or the
+	// config file: "all", or the IDs of the distributions to serve. The IDs
+	// are not checked by the loaders, because those from distributions.yaml
+	// are unknown until the distribution registry is loaded; ResolveMode
+	// checks them.
+	//
+	// When Modes is not empty it takes precedence over Mode. Mode is the form
+	// for code that builds a Config directly: one distribution type
+	// (distro.Type*), or distro.TypeAllDistros for every distribution.
+	Modes []string `yaml:"-"`
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors (default true).
 	UpstreamKeepAlive bool `yaml:"upstream_keep_alive"`
 }

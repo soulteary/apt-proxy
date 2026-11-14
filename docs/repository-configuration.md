@@ -192,9 +192,12 @@ that needs a mirror has one. A distribution whose mirror election fails keeps
 the mirror it was using, takes its reloaded match patterns and cache rules, and
 is named in a warning; that alone does not fail the reload. The reload fails
 when a distribution with no previous mirror, such as one the reload adds, cannot
-elect one. A failed reload keeps the previous routing and cache rules;
+elect one. It also fails when [`mode`](configuration-reference.md#mode) names an
+`id` that the reloaded file no longer defines. A failed reload keeps the
+previous routing and cache rules;
 the API returns a structured error (`500` for configuration loading failures,
-`503` for failed mirror election), and SIGHUP logs the failure. Repair the file
+`400` for a mode that no longer matches the file, `503` for failed mirror
+election), and SIGHUP logs the failure. Repair the file
 or mirror connectivity and retry. Routing first tries entries matching both
 host and path, then path-only entries, then host-only fallback. Within each
 phase, built-ins retain their established order and overlapping custom entries
@@ -204,7 +207,7 @@ returns `404` rather than falling through to another repository.
 
 **Field reference:**
 
-- `id` — stable, unique registry identifier, also shown in rewrite debug logs. `url_pattern` determines which URL paths it serves.
+- `id` — stable, unique registry identifier, also shown in rewrite debug logs. It is the name [`mode`](configuration-reference.md#mode) selects the distribution by. `url_pattern` determines which URL paths it serves.
 - `name` — human-readable display name.
 - `type` — integer distro type. `1` Ubuntu, `2` UbuntuPorts, `3` Debian, `4` CentOS and `5` Alpine reconfigure the built-in distributions; `0` is reserved for "all". **Any other positive integer registers a distribution apt-proxy does not ship** — see [Adding a distribution apt-proxy does not ship](#adding-a-distribution-apt-proxy-does-not-ship). A type already in use is rejected at load time, so pick a free number (`6`, `7`, …) and keep it stable: it is the key the mirror and rewriter state is held under across reloads.
 - `url_pattern` — regex matched against the request path; its last captured group is appended to the upstream mirror root.
@@ -297,10 +300,35 @@ Notes that save a round of debugging:
 - `benchmark_url` must be a small file that exists on every mirror in the list; it is fetched to rank them.
 - `cache_rules` are tried in order, first match wins, and **a path matching no rule is a `404`** — not a pass-through. `apt update` fetches package indexes (`Packages.xz`, `by-hash/...`) as well as `InRelease`, so end with a catch-all `".*"` unless you are deliberately serving only certain file types.
 - A custom distribution gets only the lifetimes written in its rules. To treat versioned packages or `by-hash` paths like the built-in Debian-family rules do, add `immutable` to that rule's `cache_control` (for example `max-age=100000, immutable`) and keep the rule ahead of the catch-all.
-- Run with `--mode=all` (the default). `--mode` only names the built-in distributions; a custom one is served whenever the mode is `all`.
-- A distribution that the mode does not select is not served. Its paths answer `404` in every request form, including for a proxy client that names another host: apt-proxy never fetches a distribution path from the host a client names.
+- The mode has to include the distribution. `--mode=all` (the default) serves every registered distribution; a list such as `--mode=debian,deepin` serves the named ones only, built-in or custom, by `id`. See [Serving only some distributions](#serving-only-some-distributions).
+- A distribution that the mode does not select is not served and takes no part in request matching. Its paths answer `404` in every request form, including for a proxy client that names another host: apt-proxy never fetches a distribution path from the host a client names. Two cases remain served: a path that the `url_pattern` of an enabled distribution matches as well goes to that distribution, and a request to an origin on the [`passthrough`](#caching-third-party-archives-passthrough) allowlist goes to that origin.
 - Only requests matching `url_pattern` (or `host_pattern`) are proxied; everything else still returns `404`.
-- The file has to be somewhere apt-proxy looks: one of the search paths above, or named with `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG`. A file the server never loads is an entry that silently does nothing. The startup log names the file in effect and every distribution that registered (`distributions registered config=... distributions=[...]`), which is the quickest way to confirm yours did.
+- The file has to be somewhere apt-proxy looks: one of the search paths above, or named with `--distributions-config` / `APT_PROXY_DISTRIBUTIONS_CONFIG`. A file the server never loads is an entry that silently does nothing. The startup log names the file in effect and every distribution that registered (`distributions registered config=... distributions=[...]`), which is the quickest way to confirm yours did. The line after it, `distributions enabled mode=[...]`, lists the ones the mode serves.
+
+### Serving only some distributions
+
+`mode` limits apt-proxy to the distributions it names, by `id`. Built-in and
+custom distributions can be mixed. A distribution that is not named answers
+`404`, has no mirror elected or benchmarked, and ignores its mirror setting.
+
+```bash
+# Debian and the Deepin entry of distributions.yaml, and nothing else
+./apt-proxy --mode=debian,deepin --distributions-config=./distributions.yaml
+```
+
+```yaml
+# apt-proxy.yaml
+mode: [debian, deepin]
+distributions_config: ./distributions.yaml
+```
+
+`APT_PROXY_MODE=debian,deepin` is the environment form. The IDs are checked at
+startup against the built-in distributions and the loaded `distributions.yaml`:
+an ID that is not registered stops startup with an error that lists the
+registered ones, and `all` cannot be combined with other values. The
+[configuration reference](configuration-reference.md#mode) has the complete
+rules, including what a reload does when an enabled `id` has been removed from
+the file.
 
 ### Custom Mirror Selection
 

@@ -49,7 +49,7 @@ func TestMirrorLifecycleLogsRedactCredentials(t *testing.T) {
 					return createRewriterAsync(distro.TypeUbuntu, st, reg, &URLRewriters{}, engine)
 				}},
 				{"refresh", func() *URLRewriter {
-					rewriters, err := buildRewriters(nil, distro.TypeUbuntu, st, reg, engine)
+					rewriters, err := buildRewriters(nil, distro.ModeOf(distro.TypeUbuntu), st, reg, engine)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -70,7 +70,7 @@ func TestMirrorLifecycleLogsRedactCredentials(t *testing.T) {
 					ubuntu, _ := unelectable.GetByType(distro.TypeUbuntu)
 					ubuntu.Builtin = false
 					ubuntu.Mirrors = []distro.URLWithAlias{{URL: "http://:invalid/", Scheme: "http"}}
-					rewriters, err := buildRewriters(serving, distro.TypeUbuntu, unpinned, unelectable, engine)
+					rewriters, err := buildRewriters(serving, distro.ModeOf(distro.TypeUbuntu), unpinned, unelectable, engine)
 					if err != nil {
 						t.Fatal(err)
 					}

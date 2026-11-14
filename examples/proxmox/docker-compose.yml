@@ -9,6 +9,7 @@ services:
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     command:
+      # Or --mode=debian,proxmox-pbs-client to serve only these two.
       - --mode=all
       - --distributions-config=/etc/apt-proxy/distributions.yaml
       - --cachedir=/var/cache/apt-proxy

@@ -146,11 +146,6 @@ func TestBuildCLIUsesDefaultForMissingAddressHalf(t *testing.T) {
 			t.Fatalf("unexpected listen %s", got.Listen)
 		}
 	}
-	for name, want := range map[string]int{"ubuntu-ports": 2, "centos": 4, "alpine": 5} {
-		if got := ModeToInt(name); got != want {
-			t.Fatalf("%s: %d", name, got)
-		}
-	}
 	t.Setenv(EnvAPIKey, "key")
 	fs := flag.NewFlagSet("", flag.ContinueOnError)
 	defineFlags(fs)

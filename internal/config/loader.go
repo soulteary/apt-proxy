@@ -30,9 +30,10 @@ import (
 )
 
 // ParseFlags parses command-line flags and returns a Config struct with all
-// application settings. It validates the mode parameter and sets up global state.
+// application settings.
 // Configuration priority: CLI flag > environment variable > default value.
-// Returns an error if flag parsing fails or if an invalid mode is specified.
+// Returns an error if flag parsing fails. The mode is returned as written in
+// Config.Modes; ResolveMode validates it once the distribution registry exists.
 func ParseFlags() (*Config, error) {
 	flags := flag.NewFlagSet("apt-proxy", flag.ContinueOnError)
 	defineFlags(flags)
@@ -42,17 +43,8 @@ func ParseFlags() (*Config, error) {
 		return nil, fmt.Errorf("parsing flags: %w", err)
 	}
 
-	// Validate and resolve mode using enum validation
-	modeName, err := configutil.ResolveEnum(flags, "mode", EnvMode, distro.DistroAll, allowedModes, false)
-	if err != nil {
-		return nil, fmt.Errorf("invalid mode: %w", err)
-	}
-
 	// Build CLI configuration with defaults
 	config, ex := buildCLIConfig(flags, DefaultHost, DefaultPort, DefaultCacheDir, DefaultCacheMaxSizeGB, DefaultCacheTTLHours, DefaultCacheCleanupIntervalMin)
-
-	// Set mode (buildCLIConfig may have set it, but we ensure it's set here with validated value)
-	config.Mode = ModeToInt(modeName)
 
 	// Apply defaults for cache only when the user did not explicitly request
 	// a zero value (e.g. `--cache-max-size=0` should genuinely disable the limit).

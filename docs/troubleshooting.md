@@ -69,6 +69,28 @@ check the four paths above in order.)
 If a file you did not expect is named in `config=`, move or delete it, or name
 the one you do want explicitly.
 
+### Startup fails with `invalid mode`
+
+`mode` names the distributions to serve, and each value is checked against the
+registered distributions at startup:
+
+```text
+invalid mode: unknown distribution "debain"; accepted values are "all" and the registered distribution IDs: alpine, centos, debian, ubuntu, ubuntu-ports
+```
+
+The message lists the IDs that exist. Check the value for a typo first. If it
+is an `id` from `distributions.yaml` and the list shows the built-in IDs only,
+the file was not loaded: the `distributions registered` line of the startup log
+names the file in effect, and the section above explains how to tell a file
+that was not found from one that was rejected.
+
+Earlier releases did not report such a value and served every distribution
+instead, so a configuration with a misspelled or comma-separated `mode` started
+and behaved like `mode: all`. Such a configuration now either takes effect as
+written (`mode: debian,ubuntu` serves those two) or stops startup with this
+error. `all` combined with other values is rejected as well. The rules are in
+the [configuration reference](configuration-reference.md#mode).
+
 ### `404` on a PPA or vendor repository
 
 apt-proxy only proxies the distributions it is configured for. A path that

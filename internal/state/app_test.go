@@ -15,6 +15,7 @@
 package state
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/soulteary/apt-proxy/internal/distro"
@@ -49,13 +50,24 @@ func TestNewAppState(t *testing.T) {
 func TestAppStateProxyMode(t *testing.T) {
 	st := NewAppState()
 
-	if mode := st.GetProxyMode(); mode != 0 {
-		t.Errorf("GetProxyMode() = %d, want 0", mode)
+	// A state that was never given a mode serves every distribution.
+	if mode := st.GetProxyMode(); !mode.All() {
+		t.Errorf("GetProxyMode() = %v, want every distribution", mode)
 	}
 
 	st.SetProxyMode(distro.TypeUbuntu)
-	if mode := st.GetProxyMode(); mode != distro.TypeUbuntu {
-		t.Errorf("GetProxyMode() = %d, want %d", mode, distro.TypeUbuntu)
+	if mode := st.GetProxyMode(); mode.All() || !mode.Has(distro.TypeUbuntu) || mode.Has(distro.TypeDebian) {
+		t.Errorf("GetProxyMode() = %v, want Ubuntu only", mode)
+	}
+
+	st.SetProxyModeSet(distro.ModeOf(distro.TypeDebian, distro.TypeAlpine))
+	if got, want := st.GetProxyMode().Types(nil), []int{distro.TypeDebian, distro.TypeAlpine}; !reflect.DeepEqual(got, want) {
+		t.Errorf("GetProxyMode() enables %v, want %v", got, want)
+	}
+
+	st.SetProxyMode(distro.TypeAllDistros)
+	if mode := st.GetProxyMode(); !mode.All() {
+		t.Errorf("GetProxyMode() = %v, want every distribution", mode)
 	}
 }
 
@@ -152,8 +164,8 @@ func TestAppStateClone(t *testing.T) {
 
 	clone := original.Clone()
 
-	if clone.GetProxyMode() != original.GetProxyMode() {
-		t.Errorf("Clone proxy mode = %d, want %d", clone.GetProxyMode(), original.GetProxyMode())
+	if !reflect.DeepEqual(clone.GetProxyMode(), original.GetProxyMode()) {
+		t.Errorf("Clone proxy mode = %v, want %v", clone.GetProxyMode(), original.GetProxyMode())
 	}
 
 	originalMirror := original.GetMirror(distro.TypeUbuntu)
@@ -165,7 +177,7 @@ func TestAppStateClone(t *testing.T) {
 	clone.SetProxyMode(distro.TypeDebian)
 	clone.SetMirror(distro.TypeUbuntu, "https://clone.example.com/ubuntu/")
 
-	if original.GetProxyMode() != distro.TypeUbuntu {
+	if mode := original.GetProxyMode(); !mode.Has(distro.TypeUbuntu) || mode.Has(distro.TypeDebian) {
 		t.Error("Original proxy mode was modified when clone was changed")
 	}
 	if original.GetMirror(distro.TypeUbuntu).String() != "https://original.example.com/ubuntu/" {

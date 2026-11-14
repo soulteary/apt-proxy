@@ -59,7 +59,8 @@ So a flag (e.g. `--port=8000`) always wins over the same key in this YAML.
 - `upstream_access:` — optional direct repository connection policy for
   downloads, mirror probes and Ubuntu geo discovery. Enabled policies bypass
   environment forward proxies; S3 and telemetry clients are outside its scope.
-- `mode:` — restrict to a single distro family or serve them all.
+- `mode:` — serve every registered distribution (`all`) or only the ones
+  listed by ID, built-in or from `distributions.yaml`.
 
 Download/resource limits, download CIDR lists and upstream access policy are YAML-only.
 Restart the daemon after changing them; mirror refresh does not reload these

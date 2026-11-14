@@ -28,49 +28,13 @@ import (
 	"github.com/soulteary/cli-kit/configutil"
 )
 
-var (
-	// allowedModes defines the valid mode values for proxy operation
-	allowedModes = []string{
-		distro.DistroAll,
-		distro.DistroUbuntu,
-		distro.DistroUbuntuPorts,
-		distro.DistroDebian,
-		distro.DistroCentOS,
-		distro.DistroAlpine,
-	}
-)
-
-// GetAllowedModes returns the list of allowed mode values
-func GetAllowedModes() []string {
-	return allowedModes
-}
-
-// ModeToInt converts a validated mode string to its corresponding integer constant.
-// This function should only be called after mode validation via configutil.ResolveEnum.
-func ModeToInt(mode string) int {
-	switch mode {
-	case distro.DistroUbuntu:
-		return distro.TypeUbuntu
-	case distro.DistroUbuntuPorts:
-		return distro.TypeUbuntuPorts
-	case distro.DistroDebian:
-		return distro.TypeDebian
-	case distro.DistroCentOS:
-		return distro.TypeCentOS
-	case distro.DistroAlpine:
-		return distro.TypeAlpine
-	default:
-		return distro.TypeAllDistros
-	}
-}
-
 // defineFlags defines all command-line flags for the application.
 // This function is shared between ParseFlags and ParseFlagsWithConfigFile.
 func defineFlags(flags *flag.FlagSet) {
 	flags.String("host", DefaultHost, "the host to bind to")
 	flags.String("port", DefaultPort, "the port to bind to")
 	flags.String("mode", distro.DistroAll,
-		"select the mode of system to cache: all / ubuntu / ubuntu-ports / debian / centos / alpine")
+		"comma-separated distributions to serve: all, or any of ubuntu / ubuntu-ports / debian / centos / alpine and the IDs in distributions.yaml")
 	flags.Bool("debug", false, "whether to output debugging logging")
 	flags.String("cachedir", DefaultCacheDir, "the dir to store cache data in")
 	flags.String("ubuntu", "", "the ubuntu mirror for fetching packages")
@@ -316,7 +280,7 @@ func flagOrEnvSet(flags *flag.FlagSet, name, env string) bool {
 }
 
 // flagOrEnvValueSet is flagOrEnvSet for options whose value cannot be empty:
-// booleans, numbers and enumerations. The resolvers ignore an environment
+// booleans and numbers. The resolvers ignore an environment
 // variable that is set to the empty string and return the built-in default,
 // so such a variable does not count as explicit. Container tooling passes
 // empty variables for unset host variables; counting them would replace the
@@ -327,6 +291,19 @@ func flagOrEnvValueSet(flags *flag.FlagSet, name, env string) bool {
 		return true
 	}
 	return env != "" && strings.TrimSpace(os.Getenv(env)) != ""
+}
+
+// resolveModes returns the distributions named by --mode or, when the flag
+// names none, by APT_PROXY_MODE. The value is a comma-separated list. An empty
+// value is the same as an unset one at both levels, for the reason given at
+// flagOrEnvValueSet.
+func resolveModes(flags *flag.FlagSet) []string {
+	if flagVisited(flags, "mode") {
+		if modes := splitCommaList(flags.Lookup("mode").Value.String()); len(modes) > 0 {
+			return modes
+		}
+	}
+	return splitCommaList(os.Getenv(EnvMode))
 }
 
 func flagVisited(flags *flag.FlagSet, name string) bool {
@@ -350,7 +327,6 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	ex := &cliExplicit{
 		Debug:                 flagOrEnvValueSet(flags, "debug", EnvDebug),
 		CacheDir:              flagOrEnvSet(flags, "cachedir", EnvCacheDir),
-		Mode:                  flagOrEnvValueSet(flags, "mode", EnvMode),
 		UbuntuMirror:          flagOrEnvSet(flags, "ubuntu", EnvUbuntu),
 		UbuntuPortsMirror:     flagOrEnvSet(flags, "ubuntu-ports", EnvUbuntuPorts),
 		DebianMirror:          flagOrEnvSet(flags, "debian", EnvDebian),
@@ -393,8 +369,13 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	debug := configutil.ResolveBool(flags, "debug", EnvDebug, false)
 	cacheDir := configutil.ResolveString(flags, "cachedir", EnvCacheDir, defaultCacheDir, true)
 
-	// Resolve mode
-	modeName, _ := configutil.ResolveEnum(flags, "mode", EnvMode, "", allowedModes, false)
+	// Resolve mode. The values are kept as written: an ID defined in
+	// distributions.yaml cannot be checked before that file is loaded, so
+	// ResolveMode validates them against the registry at startup.
+	modes := resolveModes(flags)
+	// A flag or variable that names no distribution is not explicit. It must
+	// not replace the config file's mode with the default.
+	ex.Mode = len(modes) > 0
 
 	// Resolve distributions config path
 	distributionsConfig := configutil.ResolveString(flags, "distributions-config", EnvDistributionsConfig, "", true)
@@ -499,9 +480,7 @@ func buildCLIConfig(flags *flag.FlagSet, defaultHost, defaultPort, defaultCacheD
 	}
 
 	// Set mode if specified
-	if modeName != "" {
-		config.Mode = ModeToInt(modeName)
-	}
+	config.Modes = modes
 
 	// Set listen address if host or port specified
 	if host != "" || port != "" {

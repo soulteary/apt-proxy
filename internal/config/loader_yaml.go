@@ -102,7 +102,7 @@ type YAMLConfig struct {
 		} `yaml:"s3"`
 	} `yaml:"storage"`
 
-	Mode                string   `yaml:"mode"`
+	Mode                modeList `yaml:"mode"`
 	DistributionsConfig string   `yaml:"distributions_config"`
 	Passthrough         []string `yaml:"passthrough"`
 
@@ -111,6 +111,32 @@ type YAMLConfig struct {
 	// or CLI/ENV) from "user explicitly set false" (disable keep-alive).
 	Download          DownloadConfig `yaml:"download"`
 	UpstreamKeepAlive *bool          `yaml:"upstream_keep_alive"`
+}
+
+// modeList is the YAML form of the mode setting: one distribution ID, or a
+// list of IDs. A value may also hold a comma-separated list, as --mode and
+// APT_PROXY_MODE do, so that a ${VAR} reference can supply a set.
+type modeList []string
+
+// UnmarshalYAML accepts a scalar or a sequence of scalars.
+func (m *modeList) UnmarshalYAML(node *yaml.Node) error {
+	var values []string
+	switch node.Kind {
+	case yaml.ScalarNode:
+		values = []string{node.Value}
+	case yaml.SequenceNode:
+		if err := node.Decode(&values); err != nil {
+			return err
+		}
+	default:
+		// A TypeError is collected with the other field errors of the
+		// document instead of ending the decoding at this one.
+		return &yaml.TypeError{Errors: []string{
+			fmt.Sprintf("line %d: mode must be a distribution ID or a list of distribution IDs", node.Line),
+		}}
+	}
+	*m = splitCommaList(strings.Join(values, ","))
+	return nil
 }
 
 // LoadConfigFile loads configuration from a YAML file.
@@ -321,10 +347,9 @@ func yamlConfigToConfig(yamlCfg *YAMLConfig) *Config {
 		cfg.UpstreamKeepAlive = true
 	}
 
-	// Convert mode string to int
-	if yamlCfg.Mode != "" {
-		cfg.Mode = ModeToInt(yamlCfg.Mode)
-	}
+	// The mode is kept as written: its IDs are resolved against the
+	// distribution registry at startup (ResolveMode).
+	cfg.Modes = yamlCfg.Mode
 
 	// Build listen address from host and port
 	host := yamlCfg.Server.Host
