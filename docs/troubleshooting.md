@@ -201,6 +201,13 @@ uses its official address, or pin a mirror near the server. See
 **Issue**: Cache directory growing too large
 **Solution**: Configure cache limits with `--cache-max-size` or use the cleanup API endpoint.
 
+### Upgrading to v0.20.0
+
+Review strict config file loading, `mode` validation, redirect following for
+passthrough origins, the mirror in use before and after an election, and
+credential handling for proxy clients before upgrading. See the
+[release and upgrade notes](../docs/releases/v0.20.0.md).
+
 ### Upgrading to v0.18.0
 
 Review integrity verification, Vary migration, download bounds, S3 temporary

@@ -17,8 +17,8 @@
 APT Proxy 是一个轻量级、高性能的包管理器缓存代理。它通过在本地缓存常用软件包来加速下载，大幅减少后续安装的下载时间。无论你是管理多台服务器、构建 Docker 镜像，还是在带宽受限的环境中工作，APT Proxy 都能帮你节省时间和带宽。
 
 本文是项目入口。最新记录的发布版本为
-[v0.19.5](https://github.com/soulteary/apt-proxy/releases/tag/v0.19.5)，
-升级旧部署时请阅读[升级说明](docs/releases/v0.19.5.zh-CN.md)。
+[v0.20.0](https://github.com/soulteary/apt-proxy/releases/tag/v0.20.0)，
+升级旧部署时请阅读[升级说明](docs/releases/v0.20.0.zh-CN.md)。
 
 ### 核心特性
 
@@ -78,7 +78,7 @@ docker run -d \
   --name apt-proxy \
   -p 3142:3142 \
   -v apt-proxy-cache:/var/cache/apt-proxy \
-  soulteary/apt-proxy:v0.19.5
+  soulteary/apt-proxy:v0.20.0
 ```
 
 命名卷挂载到镜像实际使用的 `/var/cache/apt-proxy`，容器删除或重建后仍保留缓存。
@@ -265,7 +265,7 @@ curl -fsS -X POST -H "X-API-Key: $APT_PROXY_API_KEY" \
 ```
 
 遇到 `403`/`404`、路由变化或缓存未命中时，请先查看[故障排查](docs/troubleshooting.zh-CN.md)。
-历史迁移细节保留在该文档和[版本说明](docs/releases/v0.19.5.zh-CN.md)中。
+历史迁移细节保留在该文档和[版本说明](docs/releases/v0.20.0.zh-CN.md)中。
 
 <!-- Preserve previously published README section links. -->
 <a id="架构"></a>
