@@ -235,10 +235,10 @@ func TestPinnedMirrorIsUsedWithElectionOff(t *testing.T) {
 	}
 }
 
-// recordingProxy builds a PackageStruct for every distribution on st and reg.
+// officialMirrorProxy builds a PackageStruct for every distribution on st and reg.
 // Its elections run under offlineAccess, and its downloads end in a transport
 // that records the URLs it is asked for in place of the guarded one.
-func recordingProxy(t *testing.T, st *state.AppState, reg *distro.Registry) (*PackageStruct, *[]string) {
+func officialMirrorProxy(t *testing.T, st *state.AppState, reg *distro.Registry) (*PackageStruct, *[]string) {
 	t.Helper()
 	var fetched []string
 	ps, err := NewPackageStruct(Options{
@@ -295,7 +295,7 @@ func TestMirrorElectionOffServesRequestsFromOfficialMirrors(t *testing.T) {
 			st := unpinnedState(false)
 			st.SetProxyMode(distro.TypeAllDistros)
 			st.SetDebianSecurityMirrorWithRegistry(tc.pinned, reg)
-			ps, fetched := recordingProxy(t, st, reg)
+			ps, fetched := officialMirrorProxy(t, st, reg)
 
 			// The same routes apply after a refresh.
 			for _, step := range []string{"startup", "refresh"} {
