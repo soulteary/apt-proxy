@@ -28,6 +28,7 @@
 | `-mirror-election` | 为没有设置镜像选项的发行版选出最快的镜像；设为 `false` 时使用官方地址，不探测任何镜像（见[镜像选择](repository-configuration.zh-CN.md#自定义镜像选择)） | `true` |
 | `-distributions-config` | 发行版/镜像配置文件路径（distributions.yaml） | （可选） |
 | `-passthrough` | 逗号分隔的第三方源站白名单，原样抓取并缓存 | （空） |
+| `-passthrough-follow-redirects` | 跟随白名单源站的重定向，目标可以是白名单之外的公网主机 | `true` |
 | `-cache-max-size` | 最大缓存大小（GB，0 表示禁用） | `10` |
 | `-cache-ttl` | 缓存 TTL（小时，0 表示禁用） | `168`（7 天） |
 | `-cache-cleanup-interval` | 缓存清理间隔（分钟，0 表示禁用） | `60` |
@@ -149,6 +150,7 @@
 | `APT_PROXY_CONFIG_FILE` | `-config` | `apt-proxy.yaml` 路径 |
 | `APT_PROXY_DISTRIBUTIONS_CONFIG` | `-distributions-config` | `distributions.yaml` 路径 |
 | `APT_PROXY_PASSTHROUGH` | `-passthrough` | 第三方源站白名单 |
+| `APT_PROXY_PASSTHROUGH_FOLLOW_REDIRECTS` | `-passthrough-follow-redirects` | 跟随白名单源站的重定向 |
 
 **日志与链路追踪**（无对应 CLI 参数）
 
@@ -243,6 +245,11 @@ upstream_access:
 
 # 上游传输
 upstream_keep_alive: true
+
+# 第三方源站白名单，以及是否由 apt-proxy 跟随它们的重定向
+# passthrough:
+#   - https://pkgs.k8s.io
+passthrough_follow_redirects: true
 
 # 可选：外部 distributions/mirrors 配置文件（可热重载）
 distributions_config: ./config/distributions.yaml

@@ -49,7 +49,7 @@ func clearConfigEnv(t *testing.T) {
 		EnvCacheMaxSize, EnvCacheTTL, EnvCacheCleanupInterval,
 		EnvDebug, EnvUbuntu, EnvUbuntuPorts, EnvDebian, EnvDebianSecurity,
 		EnvCentOS, EnvAlpine, EnvMirrorElection,
-		EnvTLSEnabled, EnvTLSCertFile, EnvTLSKeyFile, EnvPassthrough,
+		EnvTLSEnabled, EnvTLSCertFile, EnvTLSKeyFile, EnvPassthrough, EnvPassthroughFollowRedirects,
 		EnvAPIKey, EnvAPIRateLimitPerMinute, EnvEnableAPIAuth, EnvTrustedProxies,
 		EnvUpstreamKeepAlive, EnvDistributionsConfig,
 		EnvStorageBackend, EnvS3Endpoint, EnvS3Region, EnvS3Bucket, EnvS3Prefix,
@@ -488,6 +488,7 @@ type valueSettings struct {
 	EnableAPIAuth         bool
 	APIRateLimitPerMinute int
 	UpstreamKeepAlive     bool
+	FollowRedirects       bool
 	MirrorElection        bool
 	S3UseSSL              bool
 	S3UsePathStyle        bool
@@ -505,6 +506,7 @@ func valueSettingsOf(cfg *Config) valueSettings {
 		EnableAPIAuth:         cfg.Security.EnableAPIAuth,
 		APIRateLimitPerMinute: cfg.Security.APIRateLimitPerMinute,
 		UpstreamKeepAlive:     cfg.UpstreamKeepAlive,
+		FollowRedirects:       cfg.PassthroughFollowRedirects,
 		MirrorElection:        !cfg.Mirrors.DisableElection,
 		S3UseSSL:              cfg.Storage.S3.UseSSL,
 		S3UsePathStyle:        cfg.Storage.S3.UsePathStyle,
@@ -521,6 +523,7 @@ func TestEmptyEnvironmentValueKeepsFileSetting(t *testing.T) {
 	// Every setting differs from its default.
 	const file = `mode: debian
 upstream_keep_alive: false
+passthrough_follow_redirects: false
 server:
   debug: true
 cache:
@@ -551,6 +554,7 @@ storage:
 		EnableAPIAuth:         true,
 		APIRateLimitPerMinute: 30,
 		UpstreamKeepAlive:     false,
+		FollowRedirects:       false,
 		MirrorElection:        false,
 		S3UseSSL:              false,
 		S3UsePathStyle:        true,
@@ -570,6 +574,8 @@ storage:
 		EnvS3UseSSL:              "true",
 		EnvS3UsePathStyle:        "false",
 		EnvS3InlineMaxMB:         "8",
+
+		EnvPassthroughFollowRedirects: "true",
 	}
 	fromEnvironment := valueSettings{
 		Mode:                  distro.TypeUbuntu,
@@ -581,6 +587,7 @@ storage:
 		EnableAPIAuth:         false,
 		APIRateLimitPerMinute: 0,
 		UpstreamKeepAlive:     true,
+		FollowRedirects:       true,
 		MirrorElection:        true,
 		S3UseSSL:              true,
 		S3UsePathStyle:        false,

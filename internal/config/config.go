@@ -53,6 +53,12 @@ type Config struct {
 	// Empty (the default) means apt-proxy serves only the distributions it is
 	// configured for; it is never an open forward proxy.
 	Passthrough []string `yaml:"passthrough"`
+	// PassthroughFollowRedirects makes apt-proxy follow the redirects that
+	// passthrough origins answer with (default true). A redirect target does
+	// not have to be listed in Passthrough, but it must have public addresses.
+	// False passes every redirect to the client and keeps upstream fetches
+	// within Passthrough.
+	PassthroughFollowRedirects bool `yaml:"passthrough_follow_redirects"`
 	// UpstreamKeepAlive enables HTTP keep-alive to upstream mirrors (default true).
 	UpstreamKeepAlive bool `yaml:"upstream_keep_alive"`
 }

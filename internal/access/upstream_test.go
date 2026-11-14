@@ -97,6 +97,34 @@ func TestUpstreamAddressPolicy(t *testing.T) {
 		t.Fatal("exception scope incorrect")
 	}
 }
+
+// PublicOnly names no hosts. What it admits is decided by the port and by the
+// addresses a host resolves to.
+func TestPublicOnlyPolicy(t *testing.T) {
+	p := PublicOnly()
+	for _, tc := range []struct {
+		url     string
+		allowed bool
+	}{
+		{"https://cdn.example.net/file", true},
+		{"http://cdn.example.net/file", true},
+		{"https://cdn.example.net:8443/file", false},
+		{"ftp://cdn.example.net/file", false},
+	} {
+		if err := p.CheckURL(mustRequest(t, tc.url).URL); (err == nil) != tc.allowed {
+			t.Errorf("CheckURL(%s) = %v, want allowed=%t", tc.url, err, tc.allowed)
+		}
+	}
+	for address, allowed := range map[string]bool{
+		"93.184.216.34": true, "2606:2800:220:1:248:1893:25c8:1946": true,
+		"127.0.0.1": false, "10.0.0.8": false, "169.254.169.254": false, "198.18.0.1": false, "::1": false, "fd00::1": false,
+	} {
+		if got := p.addressAllowed(netip.MustParseAddr(address)); got != allowed {
+			t.Errorf("addressAllowed(%s) = %t, want %t", address, got, allowed)
+		}
+	}
+}
+
 func TestUpstreamDNSPinningAndRebinding(t *testing.T) {
 	p := mustPolicy(t, UpstreamConfig{Enabled: true})
 	lookups, dials := 0, 0
@@ -246,6 +274,62 @@ func TestUpstreamTLSPreservesAuthority(t *testing.T) {
 	_ = resp.Body.Close()
 	if host != authority || sni != name {
 		t.Fatalf("Host=%s SNI=%s", host, sni)
+	}
+}
+
+// The daemon's transports carry no TLS settings, so they negotiate HTTP/2 with
+// an origin that supports it. The guarded copy inherits the TLS configuration
+// that offers h2 and has to answer in kind: the server below speaks HTTP/2 to
+// a client that offered it. A base that does not negotiate HTTP/2 keeps
+// HTTP/1.1 under the guard.
+func TestUpstreamGuardedTransportFollowsBaseProtocol(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, r.Proto)
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(server.Certificate())
+
+	for _, tc := range []struct {
+		name string
+		base *http.Transport
+		want string
+	}{
+		{"base negotiates HTTP/2", &http.Transport{}, "HTTP/2.0"},
+		{"base has HTTP/2 disabled", &http.Transport{TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}}, "HTTP/1.1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := mustPolicy(t, UpstreamConfig{Enabled: true, AllowedPorts: []int{port}, AllowCIDRs: []string{"127.0.0.1/32"}})
+			transport := p.Transport(tc.base)
+			// Trust the fixture certificate without giving the base a TLS
+			// configuration, which would change what it negotiates.
+			guarded := transport.(*upstreamTransport).base.(*http.Transport)
+			if guarded.TLSClientConfig == nil {
+				guarded.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+			}
+			guarded.TLSClientConfig.RootCAs = pool
+			defer guarded.CloseIdleConnections()
+
+			resp, err := transport.RoundTrip(mustRequest(t, server.URL+"/file"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil || resp.StatusCode != http.StatusOK || string(body) != tc.want {
+				t.Fatalf("status=%d served over %q err=%v, want %s", resp.StatusCode, body, err, tc.want)
+			}
+		})
 	}
 }
 

@@ -120,6 +120,16 @@ path prefix to match.
 The apt-cacher-ng host-prefixed form is unaffected: a single host segment in
 front of the distribution segment (`/ftp.uni-kl.de/debian/...`) still routes.
 
+### A redirect from a passthrough origin reaches the client
+
+apt-proxy follows the redirects of allowlisted origins. When it cannot follow
+one, the client receives the redirect and usually fails on it. The log line
+`redirect from an allowlisted origin was not followed and is passed to the
+client` carries the reason. The common ones are a forward proxy or fake-IP DNS
+between apt-proxy and the internet, where the address of the target cannot be
+checked. Adding the target host to `passthrough` resolves both; see
+[Caching Third-Party Archives](repository-configuration.md#caching-third-party-archives-passthrough).
+
 ### Debug Mode
 
 Enable debug logging to troubleshoot issues:

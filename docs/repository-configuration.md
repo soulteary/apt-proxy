@@ -474,6 +474,61 @@ signatures regardless of transport.
 An entry without a port matches ports 80 and 443 only — an allowlisted archive
 host should not also expose whatever else listens on that machine.
 
+**Redirects.** An origin may answer with a redirect to another host instead of
+the file; `pkgs.k8s.io` sends every index and package request to a CDN. A
+client cannot act on that answer through apt-proxy, so apt-proxy follows the
+redirect itself and caches the file under the URL the client asked for. The
+CDN host does not have to be on the allowlist:
+
+```bash
+./apt-proxy --passthrough=https://pkgs.k8s.io
+```
+
+```text
+deb http://pkgs.k8s.io/core:/stable:/v1.31/deb/ /
+```
+
+Up to five redirects are followed per request. A redirect to another
+allowlisted origin is followed the way a client request for that origin is
+served. A redirect to any other host is followed only if all of these hold:
+
+- The host resolves to public addresses only, and apt-proxy connects to an
+  address it checked. Loopback, private, link-local and other special-purpose
+  addresses are refused, so a redirect cannot lead to the machine apt-proxy
+  runs on or to the network behind it.
+- The port is 80 or 443.
+- The redirect does not go from `https` to `http`.
+- apt-proxy connects directly. Behind a forward proxy (`HTTP_PROXY`,
+  `HTTPS_PROXY`) the proxy resolves the name and the address cannot be
+  checked. The same applies where DNS answers with placeholder addresses, as
+  transparent proxies in fake-IP mode do (`198.18.0.0/15`).
+- [`upstream_access`](upstream-access.md), if enabled, allows the host.
+
+Otherwise the redirect is passed to the client unchanged and a warning in the
+log gives the reason. A host on the allowlist is not subject to the first four
+conditions; its entry decides the port and the scheme. Credentials a client
+sent for the origin are not sent on to a different host.
+
+Following redirects means the allowlist no longer bounds what apt-proxy
+fetches: an allowlisted origin can send it to any public host. The startup log
+says so. To keep fetches within the allowlist, turn it off:
+
+```bash
+./apt-proxy --passthrough=https://prod-cdn.packages.k8s.io --passthrough-follow-redirects=false
+```
+
+```yaml
+passthrough_follow_redirects: false
+```
+
+`APT_PROXY_PASSTHROUGH_FOLLOW_REDIRECTS=false` does the same. Every redirect
+then reaches the client, as in earlier versions. A client behind the proxy can
+use a redirecting origin only by naming the host that serves the files:
+
+```text
+deb http://prod-cdn.packages.k8s.io/repositories/isv:/kubernetes:/core:/stable:/v1.31/deb/ /
+```
+
 **What it does not do:**
 
 - Wildcards are not supported. Name each origin; a typo is rejected at startup
@@ -482,6 +537,7 @@ host should not also expose whatever else listens on that machine.
   entries. A *hostname* that resolves into your network is still accepted — the
   allowlist is the security boundary, not a network-level control. Only put
   origins there that you are willing to let any client of this proxy reach.
+  With redirects followed, that includes the public hosts they redirect to.
 - `GET` and `HEAD` only. apt fetches; it does not write.
 - Cache lifetime is the origin's: apt-proxy knows a distribution's index and
   package TTLs, but nothing about a third-party archive, so its

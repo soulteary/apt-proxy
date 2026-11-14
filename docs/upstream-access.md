@@ -68,11 +68,18 @@ still guarded. Host lists must allow `mirrors.ubuntu.com` (and any permitted
 redirect hosts) to enable Ubuntu geo discovery, as well as the intended mirror
 hosts. User-configured registry mirror lists keep their existing precedence.
 
-The package reverse proxy returns upstream redirects to the client; it does
-not follow them. No proxy-side connection is made to a Location target. If a
-client sends a new request back through apt-proxy, normal repository routing
-and the transport policy apply again. This feature does not validate where a
-client connects after receiving a redirect directly.
+The package reverse proxy returns the redirects of distribution mirrors to the
+client; it does not follow them. No proxy-side connection is made to a Location
+target. If a client sends a new request back through apt-proxy, normal
+repository routing and the transport policy apply again. This feature does not
+validate where a client connects after receiving a redirect directly.
+
+Redirects of [passthrough origins](repository-configuration.md#caching-third-party-archives-passthrough)
+are followed by apt-proxy unless `passthrough_follow_redirects` is `false`.
+With this policy enabled every hop is checked against it. A hop to a host
+outside the passthrough allowlist must in addition resolve to public addresses
+only: the exceptions in `allow_cidrs` do not apply to it. A hop the policy
+denies is not made, and the redirect is returned to the client.
 
 Policy denials are permanent and are not retried. DNS/network failures retain
 the existing retry behavior and each new attempt is checked again.

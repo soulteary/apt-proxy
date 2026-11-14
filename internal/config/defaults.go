@@ -50,6 +50,9 @@ const (
 	// waived here rather than the setting being renamed around a linter.
 	EnvPassthrough = "APT_PROXY_PASSTHROUGH" // #nosec G101 -- env var name, not a credential
 
+	// Whether redirects from passthrough origins are followed (default true).
+	EnvPassthroughFollowRedirects = "APT_PROXY_PASSTHROUGH_FOLLOW_REDIRECTS" // #nosec G101 -- env var name, not a credential
+
 	// Configuration file environment variable
 	EnvConfigFile = "APT_PROXY_CONFIG_FILE"
 
