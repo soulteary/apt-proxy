@@ -96,6 +96,15 @@ func TestCustomDistrosExampleRoutesClientRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPackageStruct: %v", err)
 	}
+	// A request routes only when its distribution has a mirror. The example's
+	// mirrors cannot be elected from a test, so give each one directly.
+	for _, id := range []string{"deepin", "armbian", "archlinux"} {
+		d, ok := reg.GetByID(id)
+		if !ok {
+			t.Fatalf("%s is missing from the example", id)
+		}
+		useMirror(t, ps, d.Type, "http://mirrors.example.com/"+id+"/")
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,6 +112,9 @@ func TestCustomDistrosExampleRoutesClientRequests(t *testing.T) {
 			r.Host = tt.host
 			if rule := ps.handleExternalURLs(r); rule == nil {
 				t.Fatalf("%s %s did not match any distribution (would be a 404)", tt.host, tt.path)
+			}
+			if r.URL.Host != "mirrors.example.com" {
+				t.Fatalf("%s %s was not pointed at the mirror: %s", tt.host, tt.path, r.URL)
 			}
 		})
 	}

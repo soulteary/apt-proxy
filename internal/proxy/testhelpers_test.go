@@ -15,6 +15,9 @@
 package proxy
 
 import (
+	"net/url"
+	"testing"
+
 	"github.com/soulteary/apt-proxy/internal/distro"
 	"github.com/soulteary/apt-proxy/internal/state"
 )
@@ -36,4 +39,25 @@ func newTestState() *state.AppState {
 // newTestRegistry returns a registry seeded with the built-in distributions.
 func newTestRegistry() *distro.Registry {
 	return distro.NewBuiltinRegistry()
+}
+
+// useMirror gives the distribution of the given type a mirror without an
+// election, as a finished election or a pinned mirror would.
+func useMirror(t *testing.T, ps *PackageStruct, distType int, raw string) {
+	t.Helper()
+	mirror, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("mirror %q: %v", raw, err)
+	}
+	rewriters := ps.currentRouting().rewriters
+	rewriters.Mu.Lock()
+	defer rewriters.Mu.Unlock()
+	current := rewriters.get(distType)
+	if current == nil {
+		t.Fatalf("no rewriter for distribution type %d", distType)
+	}
+	// Published rewriters are immutable: replace the pointer.
+	next := *current
+	next.mirror = mirror
+	rewriters.set(distType, &next)
 }

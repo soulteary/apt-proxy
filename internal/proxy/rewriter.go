@@ -542,15 +542,23 @@ func GetRewriteRulesByMode(reg *distro.Registry, mode int) []distro.Rule {
 // distribution-specific patterns and replaces the URL scheme, host, and path
 // with the mirror's configuration. If rewriters is nil, the function returns early.
 func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
+	rewriteToMirror(r, rewriters, mode)
+}
+
+// rewriteToMirror is RewriteRequestByMode and reports whether the request now
+// points at a mirror. It does not when the distribution has no rewriter or no
+// mirror in this mode, or when the escaped request path matches neither the
+// distribution's pattern nor its host pattern. The request is then unchanged.
+func rewriteToMirror(r *http.Request, rewriters *URLRewriters, mode int) bool {
 	if rewriters == nil {
-		return
+		return false
 	}
 	rewriters.Mu.RLock()
 	defer rewriters.Mu.RUnlock()
 
 	rewriter := rewriters.get(mode)
 	if rewriter == nil || rewriter.mirror == nil || rewriter.pattern == nil {
-		return
+		return false
 	}
 
 	// Match only the escaped path. URL.String also contains RawQuery; matching
@@ -574,7 +582,7 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 		suffixRaw = strings.TrimPrefix(escapedPath, "/")
 		hostMatched = true
 	default:
-		return
+		return false
 	}
 
 	suffixPath, err := url.PathUnescape(suffixRaw)
@@ -624,6 +632,7 @@ func RewriteRequestByMode(r *http.Request, rewriters *URLRewriters, mode int) {
 	} else {
 		r.URL.RawPath = ""
 	}
+	return true
 }
 
 // MatchingRule finds a matching rule for the given path
