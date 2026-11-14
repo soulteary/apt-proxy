@@ -13,7 +13,7 @@ docker run -d \
   --name=apt-proxy \
   -p 3142:3142 \
   -v apt-proxy-cache:/var/cache/apt-proxy \
-  soulteary/apt-proxy:v0.19.5
+  soulteary/apt-proxy:v0.20.0
 ```
 
 命名卷挂载到当前镜像实际使用的缓存路径，可在容器删除或重建后保留数据。

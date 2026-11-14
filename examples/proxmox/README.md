@@ -4,11 +4,12 @@ Cache the Proxmox Backup Client repository while retaining its official APT
 source URL. This example addresses the `/debian/` path collision reported in
 [issue #167](https://github.com/soulteary/apt-proxy/issues/167).
 
-**Version availability:** use v0.19.3 or later; v0.19.5 is the current release.
+**Version availability:** use v0.19.3 or later; v0.20.0 is the current release.
 v0.19.2 introduced the host-and-path routing fix for #167, and v0.19.3 fixed
-URL joining for mirror roots without a trailing slash. The Compose example
-builds this checkout locally. Review the
-[upgrade notes](../../docs/releases/v0.19.5.md) before updating an older deployment.
+URL joining for mirror roots without a trailing slash. Naming several
+distributions in `--mode` requires v0.20.0. The Compose example builds this
+checkout locally. Review the
+[upgrade notes](../../docs/releases/v0.20.0.md) before updating an older deployment.
 
 ## Run
 
