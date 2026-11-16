@@ -5,21 +5,21 @@ go 1.27.4
 require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/minio/minio-go/v7 v7.4.1
-	github.com/soulteary/cli-kit v1.9.3
-	github.com/soulteary/health-kit/v4 v4.0.5
-	github.com/soulteary/http-kit/v2 v2.1.0
-	github.com/soulteary/httpcache-kit/v4 v4.1.2
-	github.com/soulteary/logger-kit/v3 v3.0.4
-	github.com/soulteary/metrics-kit/v3 v3.0.4
-	github.com/soulteary/middleware-kit/v3 v3.0.4
-	github.com/soulteary/tracing-kit/v2 v2.0.3
-	github.com/soulteary/version-kit/v4 v4.0.3
-	github.com/soulteary/vfs-kit v1.4.6
+	github.com/soulteary/cli-kit v1.9.4
+	github.com/soulteary/health-kit/v4 v4.0.7
+	github.com/soulteary/http-kit/v2 v2.1.1
+	github.com/soulteary/httpcache-kit/v4 v4.1.4
+	github.com/soulteary/logger-kit/v3 v3.0.6
+	github.com/soulteary/metrics-kit/v3 v3.0.6
+	github.com/soulteary/middleware-kit/v3 v3.0.6
+	github.com/soulteary/tracing-kit/v2 v2.0.4
+	github.com/soulteary/version-kit/v4 v4.0.5
+	github.com/soulteary/vfs-kit v1.4.7
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 	golang.org/x/sync v0.25.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -49,7 +49,7 @@ require (
 	github.com/prometheus/procfs v0.23.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/tinylib/msgp v1.6.5 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
