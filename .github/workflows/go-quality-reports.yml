@@ -33,7 +33,7 @@ jobs:
       enabled: ${{ steps.trigger.outputs.enabled }}
       source_sha: ${{ steps.trigger.outputs.source_sha }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.source_ref || github.sha }}
@@ -148,7 +148,7 @@ jobs:
       source_sha: ${{ steps.source.outputs.sha }}
       artifact_name: ${{ steps.source.outputs.artifact_name }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release_gate.outputs.source_sha }}
           fetch-depth: 0
@@ -168,36 +168,36 @@ jobs:
           test ! -L .github
           rm -f -- .github/go-test-report.md .github/go-test-report.json .github/coverage.svg .github/goreportcard.svg .github/goreportcard-report.md
           rm -rf -- .github/test-results
-      - name: Test, race and coverage (GTR v1.1.2)
+      - name: Test, race and coverage (GTR v1.1.3)
         id: go_test_report
-        uses: soulteary/go-test-report-action@2760569379a1c95a195c602872ba00cd61495d89  # v1.1.3
+        uses: soulteary/go-test-report-action@2760569379a1c95a195c602872ba00cd61495d89 # v1.1.3
         with:
           directory: "."
           packages: "./..."
           race: "true"
           coverage_threshold: "95"
           test_args: "-short -count=1"
-          version: "v1.1.2"
+          version: "v1.1.3"
           cover_mode: "atomic"
           commit: "false"
-      - name: Go quality report (v1.1.3)
+      - name: Go quality report (v1.1.7)
         if: "!cancelled() && steps.report_cleanup.outcome == 'success'"
         id: go_report_card
-        uses: soulteary/goreportcard-action@9744d0297ca0116cd4ef83e4ff6f3ba42a65a24d  # v1.1.7
+        uses: soulteary/goreportcard-action@9744d0297ca0116cd4ef83e4ff6f3ba42a65a24d # v1.1.7
         with:
           directory: "."
-          version: "v1.1.3"
+          version: "v1.1.7"
           threshold: "0"
           report: "true"
           commit: "false"
       - name: Restore project Go toolchain
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
       - name: Upload stable reports
         if: "always() && steps.report_cleanup.outcome == 'success'"
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.source.outputs.artifact_name }}
           path: |
@@ -211,7 +211,7 @@ jobs:
           retention-days: 14
       - name: Upload raw test evidence
         if: "always() && steps.report_cleanup.outcome == 'success'"
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: go-quality-raw-${{ github.run_id }}-${{ github.run_attempt }}
           path: .github/test-results/
@@ -232,11 +232,11 @@ jobs:
       group: go-report-writeback-${{ github.repository }}-${{ needs.reports.outputs.source_sha }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.reports.outputs.source_sha }}
           fetch-depth: 0
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ github.run_id }}
