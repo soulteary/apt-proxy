@@ -7,9 +7,9 @@
     "skipped": 1
   },
   "coverage": {
-    "covered_statements": 6035,
+    "covered_statements": 6036,
     "total_statements": 6232,
-    "percentage": 96.84,
+    "percentage": 96.85,
     "threshold": 95
   },
   "packages": [
@@ -109,7 +109,7 @@
       "status": "pass",
       "tests": 214,
       "failed": 0,
-      "coverage": 96.43
+      "coverage": 96.52
     },
     {
       "name": "internal/repository",

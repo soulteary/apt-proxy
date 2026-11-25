@@ -8,7 +8,7 @@
 | Passed | 792 |
 | Failed | 0 |
 | Skipped | 1 |
-| Coverage | 96.84% |
+| Coverage | 96.85% |
 | Threshold | 95.00% |
 
 ### Packages
@@ -28,7 +28,7 @@
 | internal/mirrorhealth | pass | 29 | 0 | 96.67% |
 | internal/mirrors | pass | 24 | 0 | 97.89% |
 | internal/passthrough | pass | 6 | 0 | 100.00% |
-| internal/proxy | pass | 214 | 0 | 96.43% |
+| internal/proxy | pass | 214 | 0 | 96.52% |
 | internal/repository | pass | 30 | 0 | 95.49% |
 | internal/resource | pass | 10 | 0 | 98.02% |
 | internal/sharedcache | pass | 30 | 0 | 96.15% |
